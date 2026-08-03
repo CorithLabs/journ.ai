@@ -15,10 +15,14 @@ export default function HomePage() {
   // which bypasses the Dexie index type restriction entirely, is TypeScript-safe
   // under `strict: true`, and works correctly with boolean values. This matches
   // the Sidebar query exactly.
-  const plans = useLiveQuery(
-    () => db.plans.filter((p) => !p.deleted).sortBy('createdAt'),
-    [],
-  );
+  //
+  // The `?? []` fallback guarantees `plans` is never `undefined` during the
+  // initial loading state, so the component always receives a concrete array.
+  const plans =
+    useLiveQuery(
+      () => db.plans.filter((p) => !p.deleted).sortBy('createdAt'),
+      [],
+    ) ?? [];
 
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-6">
@@ -26,7 +30,7 @@ export default function HomePage() {
       <h1 className="text-2xl font-bold text-ink-primary tracking-tight mb-2">
         Welcome to Journ.ai
       </h1>
-      {plans && plans.length === 0 ? (
+      {plans.length === 0 ? (
         <>
           <p className="text-sm text-ink-secondary mb-6 max-w-sm">
             Your AI-powered travel planner. Create your first trip and let the AI
