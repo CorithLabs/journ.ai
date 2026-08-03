@@ -8,6 +8,7 @@ import {
   BODY_MAX,
   BODY_WARN,
 } from './clipboardConstants';
+import FileDropzone, { type SelectedFile } from './FileDropzone';
 
 interface Props {
   planId: string;
@@ -17,13 +18,15 @@ interface Props {
 
 /**
  * Slide-in drawer to add a new clipboard item.
- * Supports a text note (type + title + rich body). File upload is layered
- * in via the FileDropzone in a later story.
+ * Supports a text note (type + title + rich body) and an optional file
+ * attachment (boarding pass PDF / image), stored as a native Blob in
+ * IndexedDB with a 10 MB per-item cap enforced by FileDropzone.
  */
 export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
   const [type, setType] = useState<ClipboardType>('Note');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [file, setFile] = useState<SelectedFile | null>(null);
   const [saving, setSaving] = useState(false);
 
   const overLimit = body.length > BODY_MAX;
@@ -39,13 +42,18 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
         id: uuidv4(),
         planId,
         type,
-        // Empty title → fall back to the type as a default title
-        title: title.trim() || type,
+        // Empty title → fall back to the file name, then the type as a default.
+        title: title.trim() || file?.fileName || type,
         body: body.trim() ? body : undefined,
+        fileBlob: file?.blob,
+        fileName: file?.fileName,
+        fileSize: file?.fileSize,
         createdAt: now,
         updatedAt: now,
       };
       await db.clipboard.add(item);
+      // Preview URL is no longer needed once the item is persisted.
+      if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl);
       onSaved();
       onClose();
     } finally {
@@ -108,6 +116,12 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
               className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
               data-testid="title-input"
             />
+          </div>
+
+          {/* File upload */}
+          <div>
+            <span className="block text-sm text-ink-secondary mb-1.5">Attachment</span>
+            <FileDropzone file={file} onFile={setFile} />
           </div>
 
           {/* Body */}
