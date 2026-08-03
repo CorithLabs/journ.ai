@@ -3,10 +3,58 @@ import { type Plan } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import { totalRouteDistanceKm, type PinActivity } from '../../services/mapbox';
 
-// We use window.mapboxgl loaded from CDN (see index.html)
-type MapboxGLType = NonNullable<Window['mapboxgl']>;
-type MapInstance = InstanceType<MapboxGLType['Map']>;
-type MarkerInstance = InstanceType<MapboxGLType['Marker']>;
+// Minimal types for CDN-loaded mapbox-gl (window.mapboxgl)
+interface MapboxGLMap {
+  on(event: string, handler: () => void): this;
+  on(event: string, layerId: string, handler: (e: unknown) => void): this;
+  off(event: string, handler: () => void): this;
+  remove(): void;
+  addSource(id: string, source: Record<string, unknown>): this;
+  addLayer(layer: Record<string, unknown>): this;
+  removeLayer(id: string): this;
+  removeSource(id: string): this;
+  getSource(id: string): { setData?: (data: unknown) => void } | undefined;
+  hasImage(id: string): boolean;
+  loadImage(url: string, callback: (error: Error | null, image: unknown) => void): void;
+  addImage(id: string, image: unknown): void;
+  fitBounds(bounds: MapboxLngLatBounds, options?: { padding?: number; duration?: number; maxZoom?: number }): this;
+  flyTo(options: { center?: [number, number]; zoom?: number; padding?: number; duration?: number }): this;
+  loaded?(): boolean;
+}
+
+interface MapboxLngLatBounds {
+  extend(coord: [number, number]): this;
+  isEmpty(): boolean;
+}
+
+interface MapboxMarker {
+  setLngLat(coords: [number, number]): this;
+  setPopup(popup: MapboxPopup): this;
+  addTo(map: MapboxGLMap): this;
+  remove(): void;
+}
+
+interface MapboxPopup {
+  setHTML(html: string): this;
+}
+
+interface MapboxGLLib {
+  Map: new (opts: {
+    container: HTMLElement;
+    style: string;
+    center?: [number, number];
+    zoom?: number;
+  }) => MapboxGLMap;
+  Marker: new (element?: HTMLElement) => MapboxMarker;
+  Popup: new (opts?: { closeButton?: boolean; closeOnClick?: boolean; offset?: number; maxWidth?: string }) => MapboxPopup;
+  LngLatBounds: new () => MapboxLngLatBounds;
+  accessToken: string;
+}
+
+function getMapboxGL(): MapboxGLLib | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as unknown as { mapboxgl?: MapboxGLLib }).mapboxgl ?? null;
+}
 
 interface Props {
   plan: Plan;
@@ -24,7 +72,6 @@ const ARROW_LAYER_ID = 'route-arrow-layer';
 function createPinElement(
   sequenceNumber: number,
   color: string,
-  isHighlighted = false,
 ): HTMLElement {
   const el = document.createElement('div');
   el.style.cssText = `
@@ -32,7 +79,7 @@ function createPinElement(
     height: 28px;
     border-radius: 50%;
     background-color: ${color};
-    border: 2px solid ${isHighlighted ? '#fff' : 'rgba(255,255,255,0.6)'};
+    border: 2px solid rgba(255,255,255,0.6);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -60,8 +107,8 @@ export default function MapboxMap({
   onPinClick,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MapInstance | null>(null);
-  const markersRef = useRef<MarkerInstance[]>([]);
+  const mapRef = useRef<MapboxGLMap | null>(null);
+  const markersRef = useRef<MapboxMarker[]>([]);
 
   // Remove all existing markers
   const clearMarkers = useCallback(() => {
@@ -75,9 +122,6 @@ export default function MapboxMap({
     if (!map) return;
     try {
       if (map.getSource(ROUTE_SOURCE_ID)) {
-        if (map.getSource(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
-        if (map.getSource(ARROW_LAYER_ID)) map.removeLayer(ARROW_LAYER_ID);
-        // Check layer by ID (layers use different API)
         try { map.removeLayer(ROUTE_LAYER_ID); } catch { /* already removed */ }
         try { map.removeLayer(ARROW_LAYER_ID); } catch { /* already removed */ }
         map.removeSource(ROUTE_SOURCE_ID);
@@ -87,7 +131,7 @@ export default function MapboxMap({
 
   const drawRouteForDay = useCallback((dayPins: PinActivity[], dayIndex: number) => {
     const map = mapRef.current;
-    const mapboxgl = window.mapboxgl;
+    const mapboxgl = getMapboxGL();
     if (!map || !mapboxgl) return;
 
     clearRoute();
@@ -112,7 +156,7 @@ export default function MapboxMap({
         },
         properties: {},
       },
-    } as Parameters<MapInstance['addSource']>[1]);
+    });
 
     map.addLayer({
       id: ROUTE_LAYER_ID,
@@ -129,7 +173,6 @@ export default function MapboxMap({
       },
     });
 
-    // Arrow symbols
     map.addLayer({
       id: ARROW_LAYER_ID,
       type: 'symbol',
@@ -151,7 +194,7 @@ export default function MapboxMap({
 
   const renderPins = useCallback((pinsToRender: PinActivity[]) => {
     const map = mapRef.current;
-    const mapboxgl = window.mapboxgl;
+    const mapboxgl = getMapboxGL();
     if (!map || !mapboxgl) return;
 
     clearMarkers();
@@ -199,7 +242,7 @@ export default function MapboxMap({
 
   // Initialise the map once
   useEffect(() => {
-    const mapboxgl = window.mapboxgl;
+    const mapboxgl = getMapboxGL();
     if (!mapboxgl || !containerRef.current || mapRef.current) return;
 
     mapboxgl.accessToken = token;
@@ -217,7 +260,7 @@ export default function MapboxMap({
       // Load arrow image for route direction
       map.loadImage(
         'https://docs.mapbox.com/mapbox-gl-js/assets/arrow.png',
-        (error, image) => {
+        (error: Error | null, image: unknown) => {
           if (!error && image && !map.hasImage('arrow')) {
             map.addImage('arrow', image);
           }
@@ -235,8 +278,8 @@ export default function MapboxMap({
 
   // Update pins & route when selectedDayIndex or pins change
   useEffect(() => {
-    if (!mapRef.current) return;
     const map = mapRef.current;
+    if (!map) return;
 
     const update = () => {
       if (selectedDayIndex === null) {
@@ -245,12 +288,11 @@ export default function MapboxMap({
         onDistanceChange(null);
         renderPins(pins);
       } else {
-        // Specific day — show that day's pins and route
+        // Specific day
         const dayPins = pins.filter(p => p.dayIndex === selectedDayIndex);
         clearRoute();
         renderPins(dayPins);
         if (dayPins.length >= 2) {
-          // Wait for map to be idle then draw route
           const drawOnIdle = () => {
             drawRouteForDay(dayPins, selectedDayIndex);
             map.off('idle', drawOnIdle);
@@ -262,8 +304,7 @@ export default function MapboxMap({
       }
     };
 
-    // Check if map is loaded
-    if ((map as unknown as { loaded: () => boolean }).loaded?.()) {
+    if (map.loaded?.()) {
       update();
     } else {
       const onLoad = () => { update(); map.off('load', onLoad); };
