@@ -6,15 +6,17 @@ import { db } from '../db';
 export default function HomePage() {
   const navigate = useNavigate();
   // IMPORTANT: Plan.deleted is a boolean (true/false), NOT a number.
-  // Dexie 3.x IndexableType doesn't include boolean, but Dexie correctly
-  // handles boolean indexed values at runtime. Cast to satisfy TypeScript.
-  // .equals(0) silently returns no results — always use .equals(false).
+  // Dexie's IndexableType does not include boolean in its TypeScript
+  // definition, so index-based queries are unsafe:
+  //   .where('deleted').equals(0)                       -> false !== 0, silently returns no results
+  //   .where('deleted').equals(false as unknown as ...) -> throws DataError at runtime on Vercel
+  //     (IDBKeyRange rejects a boolean bound: "The parameter is not a valid key")
+  // The ONLY correct pattern is `.filter(p => !p.deleted).sortBy('createdAt')`,
+  // which bypasses the Dexie index type restriction entirely, is TypeScript-safe
+  // under `strict: true`, and works correctly with boolean values. This matches
+  // the Sidebar query exactly.
   const plans = useLiveQuery(
-    () =>
-      db.plans
-        .where('deleted')
-        .equals(false as unknown as string)
-        .sortBy('createdAt'),
+    () => db.plans.filter((p) => !p.deleted).sortBy('createdAt'),
     [],
   );
 
