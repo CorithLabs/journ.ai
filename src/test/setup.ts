@@ -7,6 +7,10 @@ vi.mock('../db', () => ({
     plans: {
       where: vi.fn().mockReturnThis(),
       equals: vi.fn().mockReturnThis(),
+      // .filter(predicate).sortBy('createdAt') is the canonical soft-delete
+      // query pattern — Plan.deleted is a boolean, so index-based .where/.equals
+      // is unsafe. The mock returns a chainable object exposing sortBy.
+      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
       sortBy: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue(null),
       add: vi.fn().mockResolvedValue('mock-id'),
@@ -19,6 +23,7 @@ vi.mock('../db', () => ({
     todos: {
       where: vi.fn().mockReturnThis(),
       equals: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
       sortBy: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue('mock-id'),
       update: vi.fn().mockResolvedValue(1),
@@ -30,6 +35,7 @@ vi.mock('../db', () => ({
     clipboard: {
       where: vi.fn().mockReturnThis(),
       equals: vi.fn().mockReturnThis(),
+      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
       sortBy: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue('mock-id'),
       update: vi.fn().mockResolvedValue(1),

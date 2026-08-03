@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Sidebar from '../Sidebar';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../../db';
 
 vi.mock('dexie-react-hooks');
 
@@ -41,7 +42,7 @@ describe('Sidebar', () => {
     expect(screen.getByText(/No trips yet/i)).toBeInTheDocument();
   });
 
-  it('renders plan rows when plans exist', () => {
+  it('renders plan rows with destination and date range when plans exist', () => {
     mockUseLiveQuery.mockReturnValue([
       {
         id: 'plan-1',
@@ -57,12 +58,21 @@ describe('Sidebar', () => {
     ]);
     renderSidebar();
     expect(screen.getByText('Tokyo')).toBeInTheDocument();
+    // Date range is rendered on the plan row
+    expect(screen.getByText(/Mar 14/)).toBeInTheDocument();
   });
 
   it('shows settings button at the bottom', () => {
     mockUseLiveQuery.mockReturnValue([]);
     renderSidebar();
     expect(screen.getByLabelText('Open settings')).toBeInTheDocument();
+  });
+
+  it('shows a collapse/expand hamburger toggle', () => {
+    mockUseLiveQuery.mockReturnValue([]);
+    renderSidebar();
+    // Sidebar starts expanded, so the toggle collapses it.
+    expect(screen.getByLabelText('Collapse sidebar')).toBeInTheDocument();
   });
 
   it('shows loading skeleton when plans is undefined', () => {
@@ -72,14 +82,19 @@ describe('Sidebar', () => {
     expect(screen.queryByTestId('sidebar-empty-state')).not.toBeInTheDocument();
   });
 
-  it('passes boolean false (not number 0) to Dexie equals — soft-delete regression', () => {
-    // Regression test: Plan.deleted is stored as a boolean. Dexie treats
-    // false !== 0 in indexed comparisons, so .equals(0) silently returns
-    // no results. This test captures the useLiveQuery factory and verifies
-    // the query argument is the boolean false.
+  it('queries plans with .filter(p => !p.deleted).sortBy — soft-delete regression', async () => {
+    // Regression test: Plan.deleted is stored as a boolean. Index-based
+    // .where('deleted').equals(0) silently returns no results, and
+    // .equals(false as unknown as string) is a TypeScript footgun. The ONLY
+    // correct pattern is `.filter(p => !p.deleted).sortBy('createdAt')`.
+    // We capture the query factory passed to useLiveQuery, run it against the
+    // mocked db, and assert it exercises .filter (NOT .where) and sorts by
+    // 'createdAt'.
     const capturedFactories: (() => unknown)[] = [];
     mockUseLiveQuery.mockImplementation((factory) => {
-      if (typeof factory === 'function') capturedFactories.push(factory as () => unknown);
+      if (typeof factory === 'function') {
+        capturedFactories.push(factory as () => unknown);
+      }
       return [];
     });
 
@@ -87,27 +102,28 @@ describe('Sidebar', () => {
 
     expect(capturedFactories.length).toBeGreaterThan(0);
 
-    // The db mock's .equals() records calls — we check what value it received
-    // via the mock chain: db.plans.where('deleted').equals(false)
-    const factory = capturedFactories[0];
-    // Re-capture calls by running the factory with a fresh mock
-    const equalsMock = vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) });
-    const whereMock = vi.fn().mockReturnValue({ equals: equalsMock });
+    const plansTable = vi.mocked(db.plans);
+    const sortBy = vi.fn().mockResolvedValue([]);
+    plansTable.filter.mockReturnValue({ sortBy } as unknown as ReturnType<
+      typeof plansTable.filter
+    >);
 
-    // Temporarily override db.plans.where for this call
-    const { db } = vi.mocked(
-      // We need to re-import the mocked db to spy on it
-      // Since the module is mocked globally, use the vi.mocked approach
-      { db: { plans: { where: whereMock } } }
-    );
-    void db; // suppress unused warning
+    // Run the captured query factory — it should call
+    // db.plans.filter(...).sortBy('createdAt')
+    await capturedFactories[0]();
 
-    // The factory already ran — what matters is we call it again with a spy
-    // to verify the equals argument. We use vi.doMock to re-inject.
-    // Simplest approach: check via a wrapper that the boolean value is false
-    const resultOfEquals = equalsMock(false as unknown as string);
-    expect(equalsMock).toHaveBeenCalledWith(false);
-    expect(equalsMock).not.toHaveBeenCalledWith(0);
-    expect(resultOfEquals).toBeDefined();
+    // Correct pattern used
+    expect(plansTable.filter).toHaveBeenCalledTimes(1);
+    expect(sortBy).toHaveBeenCalledWith('createdAt');
+
+    // Forbidden index-based pattern (.where('deleted').equals(...)) NOT used
+    expect(plansTable.where).not.toHaveBeenCalled();
+
+    // The predicate passed to filter excludes soft-deleted plans and keeps live ones
+    const predicate = plansTable.filter.mock.calls[0][0] as (p: {
+      deleted: boolean;
+    }) => boolean;
+    expect(predicate({ deleted: false })).toBe(true);
+    expect(predicate({ deleted: true })).toBe(false);
   });
 });
