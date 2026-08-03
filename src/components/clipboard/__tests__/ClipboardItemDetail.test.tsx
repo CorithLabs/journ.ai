@@ -7,8 +7,7 @@ import { db } from '../../../db';
 
 vi.mock('dexie-react-hooks');
 
-// useParams is globally mocked in setup to return { planId: 'test-plan-id' }.
-// Extend it here so itemId resolves for the detail view.
+// useParams is globally mocked in setup; extend it so itemId resolves here.
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {
@@ -57,9 +56,17 @@ beforeEach(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true, configurable: true });
 });
 
+/**
+ * The component calls useLiveQuery twice per render, in order: (1) the item,
+ * (2) the plan. Alternate the mock return so every render resolves both.
+ */
 function renderWith(item: typeof baseItem | Record<string, unknown>) {
-  // First call → item, second call → plan
-  vi.mocked(useLiveQuery).mockReturnValueOnce(item).mockReturnValueOnce(plan);
+  let call = 0;
+  vi.mocked(useLiveQuery).mockImplementation(() => {
+    const isItem = call % 2 === 0;
+    call += 1;
+    return isItem ? item : plan;
+  });
   render(
     <MemoryRouter>
       <ClipboardItemDetail planId="plan-1" />
