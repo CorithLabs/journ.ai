@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import RouteOptimisationPanel from '../RouteOptimisation';
+import RouteOptimisation from '../../tabs/RouteOptimisation';
 import { type Day } from '../../../db';
 
 const dayWith3Stops: Day = {
@@ -62,7 +62,7 @@ const dayWith2Stops: Day = {
   ],
 };
 
-describe('RouteOptimisationPanel', () => {
+describe('RouteOptimisation', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
     localStorage.setItem('aitp_api_key', JSON.stringify({ ciphertext: 'abc', iv: 'def' }));
@@ -71,7 +71,7 @@ describe('RouteOptimisationPanel', () => {
 
   it('shows the optimise button', () => {
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
@@ -83,7 +83,7 @@ describe('RouteOptimisationPanel', () => {
 
   it('disables Optimise Route when fewer than 3 geocoded stops', () => {
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith2Stops}
         planStartDate="2025-07-14"
@@ -96,7 +96,7 @@ describe('RouteOptimisationPanel', () => {
 
   it('disables Optimise Route when offline', () => {
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
@@ -112,7 +112,7 @@ describe('RouteOptimisationPanel', () => {
     vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
 
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
@@ -138,7 +138,7 @@ describe('RouteOptimisationPanel', () => {
     } as Response);
 
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
@@ -164,7 +164,7 @@ describe('RouteOptimisationPanel', () => {
     } as Response);
 
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
@@ -188,7 +188,7 @@ describe('RouteOptimisationPanel', () => {
     } as Response);
 
     render(
-      <RouteOptimisationPanel
+      <RouteOptimisation
         planId="plan-1"
         day={dayWith3Stops}
         planStartDate="2025-07-14"
