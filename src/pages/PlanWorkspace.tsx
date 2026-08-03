@@ -6,6 +6,7 @@ import ItineraryTab from '../components/tabs/ItineraryTab';
 import TodoTab from '../components/tabs/TodoTab';
 import MapTab from '../components/tabs/MapTab';
 import ClipboardTab from '../components/tabs/ClipboardTab';
+import ClipboardItemDetail from '../components/clipboard/ClipboardItemDetail';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
@@ -43,6 +44,7 @@ export default function PlanWorkspace() {
           <Route path="todo" element={<TodoTab planId={planId} />} />
           <Route path="map" element={<MapTab planId={planId} />} />
           <Route path="clipboard" element={<ClipboardTab planId={planId} />} />
+          <Route path="clipboard/:itemId" element={<ClipboardItemDetail planId={planId} />} />
           <Route path="*" element={<Navigate to="itinerary" replace />} />
         </Routes>
       </div>
