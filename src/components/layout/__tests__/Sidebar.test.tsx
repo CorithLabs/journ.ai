@@ -88,8 +88,8 @@ describe('Sidebar', () => {
     // .equals(false as unknown as string) is a TypeScript footgun. The ONLY
     // correct pattern is `.filter(p => !p.deleted).sortBy('createdAt')`.
     // We capture the query factory passed to useLiveQuery, run it against the
-    // mocked db, and assert it exercises .filter (NOT .where/.equals) and
-    // sorts by 'createdAt'.
+    // mocked db, and assert it exercises .filter (NOT .where) and sorts by
+    // 'createdAt'.
     const capturedFactories: (() => unknown)[] = [];
     mockUseLiveQuery.mockImplementation((factory) => {
       if (typeof factory === 'function') {
@@ -108,16 +108,16 @@ describe('Sidebar', () => {
       typeof plansTable.filter
     >);
 
-    // Run the captured query factory — it should call db.plans.filter(...).sortBy('createdAt')
+    // Run the captured query factory — it should call
+    // db.plans.filter(...).sortBy('createdAt')
     await capturedFactories[0]();
 
     // Correct pattern used
     expect(plansTable.filter).toHaveBeenCalledTimes(1);
     expect(sortBy).toHaveBeenCalledWith('createdAt');
 
-    // Forbidden index-based patterns NOT used
+    // Forbidden index-based pattern (.where('deleted').equals(...)) NOT used
     expect(plansTable.where).not.toHaveBeenCalled();
-    expect(plansTable.equals).not.toHaveBeenCalled();
 
     // The predicate passed to filter excludes soft-deleted plans and keeps live ones
     const predicate = plansTable.filter.mock.calls[0][0] as (p: {
