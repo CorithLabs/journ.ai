@@ -18,26 +18,48 @@ interface Props {
 
 export default function MapTab({ planId }: Props) {
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
+
+  // selectedDayIndex: null = "All days", number = specific day's dayIndex
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+  // Debounced selected day to avoid janky camera re-fits on rapid clicks
+  const [debouncedDayIndex, setDebouncedDayIndex] = useState<number | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [distance, setDistance] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string } | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
-  const geocodedRef = useRef<string | null>(null); // track last geocoded planId+updatedAt
+  const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
 
-  // Auto-select Day 1 (dayIndex 0) on plan open
+  // Auto-select Day 1 on plan open
   useEffect(() => {
     if (plan?.itinerary?.length) {
       setSelectedDayIndex(0);
+      setDebouncedDayIndex(0);
     }
-  }, [planId]);
+  }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce day selection for camera re-fit (300ms)
+  const handleDaySelect = (dayIndex: number | null) => {
+    setSelectedDayIndex(dayIndex);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedDayIndex(dayIndex);
+    }, 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, []);
 
   // Geocode unresolved activities
   const triggerGeocoding = useCallback(async () => {
     if (!plan || !mapboxToken) return;
     const cacheKey = `${plan.id}:${plan.updatedAt}`;
-    if (geocodedRef.current === cacheKey) return; // already geocoded this version
+    if (geocodedRef.current === cacheKey) return;
     geocodedRef.current = cacheKey;
 
     const unresolved = plan.itinerary
@@ -74,7 +96,7 @@ export default function MapTab({ planId }: Props) {
   // No Mapbox token
   if (!mapboxToken) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center px-6">
+      <div className="flex flex-col items-center justify-center h-full text-center px-6" data-testid="map-no-token">
         <Map size={48} className="text-accent-muted mb-4" aria-hidden="true" />
         <h2 className="text-lg font-semibold text-ink-primary mb-2">Configure Mapbox Token</h2>
         <p className="text-sm text-ink-secondary mb-4">
@@ -105,47 +127,53 @@ export default function MapTab({ planId }: Props) {
   }
 
   const pins = getPinActivities(plan);
-  const hasCoordinates = pins.length > 0;
-  const allActivities = plan.itinerary.flatMap(d => d.activities);
-  const hasUnresolved = allActivities.some(a => a.locationName && !a.coordinates);
-
   const selectedDay =
     selectedDayIndex !== null
       ? plan.itinerary.find(d => d.dayIndex === selectedDayIndex)
       : null;
 
-  const selectedDayPins = selectedDayIndex !== null
-    ? pins.filter(p => p.dayIndex === selectedDayIndex)
-    : pins;
+  const selectedDayPins =
+    debouncedDayIndex !== null ? pins.filter(p => p.dayIndex === debouncedDayIndex) : pins;
 
-  const allCoordsForDay = selectedDay
-    ? selectedDay.activities.filter(a => a.locationName).length > 0 &&
-      selectedDay.activities.filter(a => a.locationName && !a.coordinates).length ===
-        selectedDay.activities.filter(a => a.locationName).length
-    : false;
+  // Check if the selected day has activities with location names but none have coordinates
+  const selectedDayAllUnresolved =
+    selectedDay !== null &&
+    selectedDay !== undefined &&
+    selectedDay.activities.some(a => a.locationName) &&
+    selectedDay.activities.every(a => !a.locationName || !a.coordinates);
+
+  const hasAnyCoordinates = pins.length > 0;
+  const allActivities = plan.itinerary.flatMap(d => d.activities);
+  const hasUnresolved = allActivities.some(a => a.locationName && !a.coordinates);
 
   return (
     <div className="flex flex-col h-full" data-testid="map-tab">
-      {/* Day selector */}
-      <div className="px-3 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto shrink-0">
+      {/* Day selector — scrollable row of pills */}
+      <div
+        className="px-3 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto shrink-0"
+        role="group"
+        aria-label="Day selector"
+      >
         <button
-          onClick={() => { setSelectedDayIndex(null); setDistance(null); }}
+          onClick={() => handleDaySelect(null)}
           className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
             selectedDayIndex === null
               ? 'bg-accent text-ink-inverse border-accent font-semibold'
               : 'border-white/10 text-ink-secondary hover:text-ink-primary'
           }`}
           data-testid="day-selector-all"
+          aria-pressed={selectedDayIndex === null}
         >
           All days
         </button>
+
         {plan.itinerary.map(day => {
           const color = getDayColor(day.dayIndex);
           const isSelected = selectedDayIndex === day.dayIndex;
           return (
             <button
               key={day.dayIndex}
-              onClick={() => setSelectedDayIndex(day.dayIndex)}
+              onClick={() => handleDaySelect(day.dayIndex)}
               style={isSelected ? { backgroundColor: color, borderColor: color } : {}}
               className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
                 isSelected
@@ -153,6 +181,7 @@ export default function MapTab({ planId }: Props) {
                   : 'border-white/10 text-ink-secondary hover:text-ink-primary'
               }`}
               data-testid={`day-selector-${day.dayIndex}`}
+              aria-pressed={isSelected}
             >
               {day.label.split(' — ')[0]}
             </button>
@@ -161,7 +190,7 @@ export default function MapTab({ planId }: Props) {
 
         {geocoding && (
           <span className="shrink-0 flex items-center gap-1 text-xs text-ink-muted ml-auto">
-            <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-label="Geocoding in progress" />
             Geocoding…
           </span>
         )}
@@ -169,20 +198,25 @@ export default function MapTab({ planId }: Props) {
 
       {/* Map container */}
       <div className="flex-1 relative min-h-0">
-        {/* No coordinates warning */}
-        {allCoordsForDay && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-surface-overlay border border-white/10 rounded-xl px-4 py-2 text-xs text-ink-secondary shadow-glass" role="status">
+        {/* Day has activities but none are geocoded yet */}
+        {selectedDayAllUnresolved && (
+          <div
+            className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-surface-overlay border border-white/10 rounded-xl px-4 py-2 text-xs text-ink-secondary shadow-glass"
+            role="status"
+            data-testid="geocoding-in-progress-banner"
+          >
             Locations not yet resolved — geocoding in progress
           </div>
         )}
 
-        {!hasCoordinates && !geocoding && (
+        {/* No geocoded coords at all (with no geocoding in progress) */}
+        {!hasAnyCoordinates && !geocoding && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10 bg-surface-base/80">
             <MapPin size={36} className="text-accent-muted mb-3" aria-hidden="true" />
-            <p className="text-sm text-ink-secondary">
+            <p className="text-sm text-ink-secondary" data-testid="no-locations-message">
               {hasUnresolved
                 ? 'Geocoding activity locations…'
-                : 'No locations found in your itinerary. Add location names to activities.'}
+                : 'No locations found. Add location names to your activities.'}
             </p>
           </div>
         )}
@@ -191,43 +225,54 @@ export default function MapTab({ planId }: Props) {
           key={`${planId}-${mapboxToken}`}
           plan={plan}
           token={mapboxToken}
-          selectedDayIndex={selectedDayIndex}
-          pins={pins}
+          selectedDayIndex={debouncedDayIndex}
+          pins={selectedDayPins}
           onDistanceChange={setDistance}
           onPinClick={(_pin: PinActivity) => {
-            // Pin click handled in MapboxMap via popup
+            // Pin click handled inside MapboxMap via popup
           }}
         />
       </div>
 
       {/* Bottom info strip */}
-      <div className="px-4 py-2 border-t border-white/5 flex items-center gap-3 shrink-0 text-xs">
-        {selectedDayIndex !== null && selectedDay ? (
+      <div
+        className="px-4 py-2 border-t border-white/5 flex items-center gap-3 shrink-0 text-xs"
+        data-testid="map-info-strip"
+      >
+        {debouncedDayIndex !== null && selectedDay ? (
           <>
             <span
-              className="w-2.5 h-2.5 rounded-full"
-              style={{ backgroundColor: getDayColor(selectedDayIndex) }}
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: getDayColor(debouncedDayIndex) }}
               aria-hidden="true"
             />
             <span className="text-ink-secondary">{selectedDay.label}</span>
             <span className="text-ink-muted">·</span>
             {selectedDayPins.length === 0 ? (
-              <span className="text-ink-muted">No geocoded locations</span>
+              <span className="text-ink-muted" data-testid="no-route-message">
+                No geocoded locations for this day
+              </span>
             ) : selectedDayPins.length === 1 ? (
-              <span className="text-ink-muted">Single stop — no route to draw</span>
+              <span className="text-ink-muted" data-testid="single-stop-message">
+                Single stop — no route to draw
+              </span>
             ) : distance !== null ? (
-              <span className="text-accent font-medium">
+              <span className="text-accent font-medium" data-testid="distance-display">
                 ~{distance.toFixed(1)} km straight-line distance
               </span>
-            ) : null}
+            ) : (
+              <span className="text-ink-muted">Calculating route…</span>
+            )}
           </>
         ) : (
-          <span className="text-ink-muted">
+          <span className="text-ink-muted" data-testid="all-days-summary">
             {pins.length} location{pins.length !== 1 ? 's' : ''} across {plan.itinerary.length} day{plan.itinerary.length !== 1 ? 's' : ''}
           </span>
         )}
         {geocodeError && (
-          <span className="ml-auto text-status-warning text-xs">{geocodeError}</span>
+          <span className="ml-auto text-status-warning text-xs" role="status">
+            {geocodeError}
+          </span>
         )}
       </div>
 
