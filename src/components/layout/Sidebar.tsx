@@ -35,8 +35,11 @@ export default function Sidebar() {
 
   const { canInstall, triggerInstall } = usePwaInstall();
 
+  // IMPORTANT: Plan.deleted is a boolean (true/false), NOT a number.
+  // .equals(0) silently returns no results because false !== 0 in Dexie
+  // indexed comparisons. Always use .equals(false).
   const plans = useLiveQuery(
-    () => db.plans.where('deleted').equals(0).sortBy('createdAt'),
+    () => db.plans.where('deleted').equals(false).sortBy('createdAt'),
     [],
   );
 
