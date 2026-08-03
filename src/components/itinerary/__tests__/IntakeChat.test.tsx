@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import IntakeChat from '../IntakeChat';
 import type { Plan } from '../../../db';
@@ -15,6 +15,19 @@ const mockPlan: Plan = {
   deleted: false,
   itinerary: [],
 };
+
+async function sendAnswer(text: string) {
+  const input = screen.getByTestId('intake-input');
+  await act(async () => {
+    fireEvent.change(input, { target: { value: text } });
+  });
+  const form = input.closest('form');
+  if (form) {
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+  }
+}
 
 describe('IntakeChat', () => {
   beforeEach(() => {
@@ -33,27 +46,28 @@ describe('IntakeChat', () => {
 
   it('advances to kids question after entering traveller count', async () => {
     render(<MemoryRouter><IntakeChat plan={mockPlan} /></MemoryRouter>);
-    fireEvent.change(screen.getByTestId('intake-input'), { target: { value: '2' } });
-    fireEvent.submit(screen.getByTestId('intake-input').closest('form')!);
+    await sendAnswer('2');
     await waitFor(() => {
       expect(screen.getByText(/children/i)).toBeInTheDocument();
     });
   });
 
-  it('shows budget quick-select buttons when on budget step', async () => {
+  it('shows budget quick-select buttons after answering likes and dislikes', async () => {
     render(<MemoryRouter><IntakeChat plan={mockPlan} /></MemoryRouter>);
-    // Walk through steps: travellers -> kids -> likes -> dislikes -> budget
-    const sendAnswer = async (answer: string) => {
-      fireEvent.change(screen.getByTestId('intake-input'), { target: { value: answer } });
-      fireEvent.submit(screen.getByTestId('intake-input').closest('form')!);
-      await new Promise(r => setTimeout(r, 50));
-    };
+    // travellers
     await sendAnswer('2');
+    await waitFor(() => expect(screen.getByText(/children/i)).toBeInTheDocument());
+    // kids
     await sendAnswer('no');
-    await sendAnswer('hiking, food');
+    await waitFor(() => expect(screen.getByText(/interests/i)).toBeInTheDocument());
+    // likes
+    await sendAnswer('hiking');
+    await waitFor(() => expect(screen.getByText(/avoid/i)).toBeInTheDocument());
+    // dislikes
     await sendAnswer('skip');
     await waitFor(() => {
-      expect(screen.getByText(/Budget/i)).toBeInTheDocument();
+      // Budget buttons appear (one for each tier)
+      expect(screen.getByText(/Budget.*\$100/i)).toBeInTheDocument();
     });
   });
 });
