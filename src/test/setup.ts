@@ -50,7 +50,13 @@ vi.mock('react-router-dom', async () => {
     ...actual,
     useNavigate: () => vi.fn(),
     useParams: () => ({ planId: 'test-plan-id' }),
-    useLocation: () => ({ pathname: '/plan/test-plan-id/itinerary', search: '', hash: '', state: null, key: 'default' }),
+    useLocation: () => ({
+      pathname: '/plan/test-plan-id/itinerary',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'default',
+    }),
   };
 });
 
@@ -76,4 +82,19 @@ Object.defineProperty(globalThis, 'crypto', {
   value: mockCrypto,
   writable: true,
   configurable: true,
+});
+
+// Mock window.matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
 });
