@@ -35,8 +35,18 @@ export default function Sidebar() {
 
   const { canInstall, triggerInstall } = usePwaInstall();
 
+  // IMPORTANT: Plan.deleted is a boolean (true/false), NOT a number.
+  // Dexie's IndexableType doesn't include boolean in TypeScript, but Dexie
+  // correctly handles boolean indexed values at runtime. We cast to satisfy
+  // the type checker while preserving correct runtime behavior.
+  // .equals(0) silently returns no results because false !== 0 in Dexie
+  // indexed comparisons — always use .equals(false as unknown as string).
   const plans = useLiveQuery(
-    () => db.plans.where('deleted').equals(0).sortBy('createdAt'),
+    () =>
+      db.plans
+        .where('deleted')
+        .equals(false as unknown as string)
+        .sortBy('createdAt'),
     [],
   );
 

@@ -5,8 +5,16 @@ import { db } from '../db';
 
 export default function HomePage() {
   const navigate = useNavigate();
+  // IMPORTANT: Plan.deleted is a boolean (true/false), NOT a number.
+  // Dexie 3.x IndexableType doesn't include boolean, but Dexie correctly
+  // handles boolean indexed values at runtime. Cast to satisfy TypeScript.
+  // .equals(0) silently returns no results — always use .equals(false).
   const plans = useLiveQuery(
-    () => db.plans.where('deleted').equals(0).sortBy('createdAt'),
+    () =>
+      db.plans
+        .where('deleted')
+        .equals(false as unknown as string)
+        .sortBy('createdAt'),
     [],
   );
 
