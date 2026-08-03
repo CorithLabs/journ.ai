@@ -12,7 +12,7 @@ import {
 import { useAppStore } from '../../store';
 import Toast from '../ui/Toast';
 import MapboxMap from '../map/MapboxMap';
-import RouteOptimisationPanel from '../map/RouteOptimisationPanel';
+import RouteOptimisationPanel from '../map/RouteOptimisation';
 
 interface Props {
   planId: string;
@@ -22,9 +22,7 @@ export default function MapTab({ planId }: Props) {
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
   const isOffline = useAppStore((s) => s.offlineBannerVisible);
 
-  // selectedDayIndex: null = "All days", number = specific day's dayIndex
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
-  // Debounced selected day to avoid janky camera re-fits on rapid clicks (< 300ms)
   const [debouncedDayIndex, setDebouncedDayIndex] = useState<number | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -35,7 +33,7 @@ export default function MapTab({ planId }: Props) {
   const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
 
-  // Auto-select Day 1 on plan open; resets to Day 1 when planId changes
+  // Auto-select Day 1 on plan open
   useEffect(() => {
     if (plan?.itinerary?.length) {
       setSelectedDayIndex(0);
@@ -58,7 +56,6 @@ export default function MapTab({ planId }: Props) {
     };
   }, []);
 
-  // Geocode unresolved activities when plan loads or changes
   const triggerGeocoding = useCallback(async () => {
     if (!plan || !mapboxToken) return;
     const cacheKey = `${plan.id}:${plan.updatedAt}`;
@@ -87,7 +84,6 @@ export default function MapTab({ planId }: Props) {
     if (plan) triggerGeocoding();
   }, [plan, triggerGeocoding]);
 
-  // Loading state
   if (!plan) {
     return (
       <div className="flex-1 flex items-center justify-center h-full">
@@ -99,7 +95,6 @@ export default function MapTab({ planId }: Props) {
     );
   }
 
-  // No Mapbox token — show settings prompt
   if (!mapboxToken) {
     return (
       <div
@@ -122,7 +117,6 @@ export default function MapTab({ planId }: Props) {
     );
   }
 
-  // No itinerary yet
   if (!plan.itinerary?.length) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-6">
@@ -141,11 +135,9 @@ export default function MapTab({ planId }: Props) {
       ? plan.itinerary.find(d => d.dayIndex === selectedDayIndex)
       : null;
 
-  // Use debounced index for actual map rendering to prevent jank
   const selectedDayPins =
     debouncedDayIndex !== null ? pins.filter(p => p.dayIndex === debouncedDayIndex) : pins;
 
-  // Check if selected day has unresolved locations (all activities have locationName but no coords)
   const selectedDayAllUnresolved =
     selectedDay != null &&
     selectedDay.activities.some(a => a.locationName) &&
@@ -157,7 +149,7 @@ export default function MapTab({ planId }: Props) {
 
   return (
     <div className="flex flex-col h-full" data-testid="map-tab">
-      {/* Day selector — scrollable row of pills */}
+      {/* Day selector */}
       <div
         className="px-3 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto shrink-0"
         role="group"
@@ -208,9 +200,8 @@ export default function MapTab({ planId }: Props) {
         )}
       </div>
 
-      {/* Map container — fills remaining space */}
+      {/* Map area */}
       <div className="flex-1 relative min-h-0">
-        {/* Day has locations but none geocoded yet */}
         {selectedDayAllUnresolved && (
           <div
             className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-surface-overlay border border-white/10 rounded-xl px-4 py-2 text-xs text-ink-secondary shadow-glass"
@@ -221,7 +212,6 @@ export default function MapTab({ planId }: Props) {
           </div>
         )}
 
-        {/* No geocoded coordinates (and not geocoding) */}
         {!hasAnyCoordinates && !geocoding && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 z-10 bg-surface-base/80">
             <MapPin size={36} className="text-accent-muted mb-3" aria-hidden="true" />
@@ -241,12 +231,12 @@ export default function MapTab({ planId }: Props) {
           pins={selectedDayPins}
           onDistanceChange={setDistance}
           onPinClick={(_pin: PinActivity) => {
-            // Pin click is handled inside MapboxMap via Mapbox popups
+            // Handled by Mapbox popup
           }}
         />
       </div>
 
-      {/* Bottom info strip */}
+      {/* Info strip */}
       <div
         className="px-4 py-2 border-t border-white/5 flex items-center gap-3 shrink-0 text-xs"
         data-testid="map-info-strip"
@@ -289,7 +279,7 @@ export default function MapTab({ planId }: Props) {
         )}
       </div>
 
-      {/* Route Optimisation Panel — only shown when a specific day is selected */}
+      {/* Route optimisation — shown when a specific day is selected */}
       {selectedDay && (
         <RouteOptimisationPanel
           planId={planId}
