@@ -23,16 +23,12 @@ async function sendAnswer(text: string) {
   });
   const form = input.closest('form');
   if (form) {
-    await act(async () => {
-      fireEvent.submit(form);
-    });
+    await act(async () => { fireEvent.submit(form); });
   }
 }
 
 describe('IntakeChat', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  beforeEach(() => { vi.clearAllMocks(); });
 
   it('renders the opening question about number of travellers', () => {
     render(<MemoryRouter><IntakeChat plan={mockPlan} /></MemoryRouter>);
@@ -57,16 +53,16 @@ describe('IntakeChat', () => {
     // travellers
     await sendAnswer('2');
     await waitFor(() => expect(screen.getByText(/children/i)).toBeInTheDocument());
-    // kids
+    // kids -> no
     await sendAnswer('no');
-    await waitFor(() => expect(screen.getByText(/interests/i)).toBeInTheDocument());
-    // likes
+    // likes question: "What kinds of activities do you enjoy?"
+    await waitFor(() => expect(screen.getByText(/activities do you enjoy/i)).toBeInTheDocument());
     await sendAnswer('hiking');
+    // dislikes question
     await waitFor(() => expect(screen.getByText(/avoid/i)).toBeInTheDocument());
-    // dislikes
     await sendAnswer('skip');
+    // budget buttons appear
     await waitFor(() => {
-      // Budget buttons appear (one for each tier)
       expect(screen.getByText(/Budget.*\$100/i)).toBeInTheDocument();
     });
   });
