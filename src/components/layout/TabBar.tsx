@@ -56,7 +56,7 @@ export default function TabBar({ planId }: Props) {
     navigate(`/plan/${planId}/${tab.path}`);
   };
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>, index: number) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next = index;
     if (e.key === 'ArrowRight') {
       next = (index + 1) % TABS.length;
