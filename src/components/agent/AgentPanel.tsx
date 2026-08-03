@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Sparkles, X, Send, AlertTriangle } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db';
 import { useAppStore, type ActiveTab } from '../../store';
 import { hasStoredKey } from '../../services/aiKey';
@@ -156,11 +155,6 @@ export default function AgentPanel({ planId }: Props) {
           <Send size={16} />
         </button>
       </form>
-
-      {/* uuid import kept meaningful — used by useAgentChat via the store */}
-      <span className="hidden" aria-hidden="true">
-        {uuidv4.name}
-      </span>
     </aside>
   );
 }
