@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import RouteOptimisationPanel from '../RouteOptimisationPanel';
+import RouteOptimisationPanel from '../RouteOptimisation';
 import { type Day } from '../../../db';
 
 const dayWith3Stops: Day = {
@@ -109,7 +109,6 @@ describe('RouteOptimisationPanel', () => {
   });
 
   it('shows loading state when optimise is clicked', async () => {
-    // Mock AI call to never resolve during test
     vi.mocked(fetch).mockImplementation(() => new Promise(() => {}));
 
     render(
