@@ -12,7 +12,7 @@ import {
 import { useAppStore } from '../../store';
 import Toast from '../ui/Toast';
 import MapboxMap from '../map/MapboxMap';
-import RouteOptimisationPanel from '../map/RouteOptimisation';
+import RouteOptimisation from './RouteOptimisation';
 
 interface Props {
   planId: string;
@@ -281,7 +281,7 @@ export default function MapTab({ planId }: Props) {
 
       {/* Route optimisation — shown when a specific day is selected */}
       {selectedDay && (
-        <RouteOptimisationPanel
+        <RouteOptimisation
           planId={planId}
           day={selectedDay}
           planStartDate={plan.startDate}
