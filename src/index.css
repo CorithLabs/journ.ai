@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Colour palette as CSS custom properties for easy theming */
+  --color-surface-base: #0a0f1a;
+  --color-surface-raised: #111827;
+  --color-surface-overlay: #1a2235;
+  --color-accent: #06b6d4;
+  --color-accent-light: #67e8f9;
+  --color-accent-muted: #0e7490;
+  --color-accent-sky: #0ea5e9;
+  --color-ink-primary: #f1f5f9;
+  --color-ink-secondary: #94a3b8;
+  --color-ink-muted: #475569;
+  --color-ink-inverse: #0a0f1a;
+  --color-status-success: #10b981;
+  --color-status-warning: #f59e0b;
+  --color-status-danger: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-surface-base);
+  color: var(--color-ink-primary);
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ink-muted);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-secondary);
+}
+
+/* Focus ring */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-accent);
+  border-radius: 4px;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+}
