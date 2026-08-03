@@ -28,15 +28,14 @@ const basePlan: Plan = {
 describe('autoGenerateTodos', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // The mock setup in setup.ts already chains where().equals().toArray()
-    // but we need the full chain to resolve
     const mockChain = {
       equals: vi.fn().mockReturnThis(),
       toArray: vi.fn().mockResolvedValue([]),
       sortBy: vi.fn().mockResolvedValue([]),
     };
     vi.mocked(db.todos.where).mockReturnValue(mockChain as never);
-    vi.mocked(db.todos.bulkAdd).mockResolvedValue([]);
+    // bulkAdd returns a lastKey (string), use 'last-key' as mock value
+    vi.mocked(db.todos.bulkAdd).mockResolvedValue('last-key' as never);
   });
 
   it('creates flights task when flights not booked', async () => {
