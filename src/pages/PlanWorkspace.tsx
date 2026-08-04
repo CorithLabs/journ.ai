@@ -6,6 +6,9 @@ import ItineraryTab from '../components/tabs/ItineraryTab';
 import TodoTab from '../components/tabs/TodoTab';
 import MapTab from '../components/tabs/MapTab';
 import ClipboardTab from '../components/tabs/ClipboardTab';
+import ClipboardItemDetail from '../components/clipboard/ClipboardItemDetail';
+import AgentButton from '../components/agent/AgentButton';
+import AgentPanel from '../components/agent/AgentPanel';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
@@ -23,11 +26,19 @@ function PlanWeatherLoader({ planId }: { planId: string }) {
 export default function PlanWorkspace() {
   const { planId } = useParams<{ planId: string }>();
   const setActivePlan = useAppStore((s) => s.setActivePlan);
+  const setAgentPanelOpen = useAppStore((s) => s.setAgentPanelOpen);
+  const clearAgentSession = useAppStore((s) => s.clearAgentSession);
 
   useEffect(() => {
     if (planId) setActivePlan(planId);
     return () => setActivePlan(null);
   }, [planId, setActivePlan]);
+
+  // Reset the agent session when switching to a different plan.
+  useEffect(() => {
+    setAgentPanelOpen(false);
+    clearAgentSession();
+  }, [planId, setAgentPanelOpen, clearAgentSession]);
 
   if (!planId) return <Navigate to="/" replace />;
 
@@ -43,9 +54,14 @@ export default function PlanWorkspace() {
           <Route path="todo" element={<TodoTab planId={planId} />} />
           <Route path="map" element={<MapTab planId={planId} />} />
           <Route path="clipboard" element={<ClipboardTab planId={planId} />} />
+          <Route path="clipboard/:itemId" element={<ClipboardItemDetail planId={planId} />} />
           <Route path="*" element={<Navigate to="itinerary" replace />} />
         </Routes>
       </div>
+
+      {/* Persistent AI agent — available on every tab within this plan */}
+      <AgentButton />
+      <AgentPanel planId={planId} />
     </div>
   );
 }
