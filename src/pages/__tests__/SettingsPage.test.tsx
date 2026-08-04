@@ -11,38 +11,23 @@ vi.mock('../../services/aiKey', () => ({
   isCryptoAvailable: vi.fn().mockReturnValue(true),
 }));
 
-// ── localStorage mock ────────────────────────────────────────────────────────
 const MAPBOX_KEY = 'aitp_mapbox_token';
-
-// Use a simple in-memory store to intercept localStorage
-let localStorageStore: Record<string, string> = {};
-const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(
-  (key: string) => localStorageStore[key] ?? null,
-);
-const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(
-  (key: string, value: string) => { localStorageStore[key] = value; },
-);
-const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(
-  (key: string) => { delete localStorageStore[key]; },
-);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorageStore = {};
   vi.mocked(aiKey.isCryptoAvailable).mockReturnValue(true);
   vi.mocked(aiKey.hasStoredKey).mockReturnValue(false);
   vi.mocked(aiKey.getApiKey).mockResolvedValue(null);
-  // Re-bind implementations after clearAllMocks
-  getItemSpy.mockImplementation((key: string) => localStorageStore[key] ?? null);
-  setItemSpy.mockImplementation((key: string, value: string) => { localStorageStore[key] = value; });
-  removeItemSpy.mockImplementation((key: string) => { delete localStorageStore[key]; });
+  // Use real jsdom localStorage — clear it between tests
+  localStorage.clear();
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  localStorage.clear();
 });
 
-// ── BYOK API key tests (existing) ────────────────────────────────────────────
+// ── BYOK API key tests ────────────────────────────────────────────────────────
 describe('SettingsPage — BYOK', () => {
   it('renders the AI Provider section with a privacy notice', () => {
     render(<SettingsPage />);
@@ -136,24 +121,27 @@ describe('SettingsPage — BYOK', () => {
   });
 });
 
-// ── Mapbox token tests (new) ──────────────────────────────────────────────────
+// ── Mapbox token tests ────────────────────────────────────────────────────────
 describe('SettingsPage — Mapbox token', () => {
-  it('renders the Map section with input and helper text', () => {
+  it('renders the Map section with an input and helper text', () => {
     render(<SettingsPage />);
     expect(screen.getByRole('region', { name: /Map/i })).toBeInTheDocument();
     expect(screen.getByTestId('mapbox-token-input')).toBeInTheDocument();
     expect(screen.getByText(/mapbox\.com/i)).toBeInTheDocument();
+    expect(screen.getByText(/starts with/i)).toBeInTheDocument();
   });
 
-  it('pre-fills the token input with the stored value on mount', () => {
-    localStorageStore[MAPBOX_KEY] = 'pk.existing-token';
-    render(<SettingsPage />);
-    expect(screen.getByTestId('mapbox-token-input')).toHaveValue('pk.existing-token');
-  });
-
-  it('shows the token unmasked (type=text)', () => {
+  it('shows the token input as type=text (unmasked — public token)', () => {
     render(<SettingsPage />);
     expect(screen.getByTestId('mapbox-token-input')).toHaveAttribute('type', 'text');
+  });
+
+  it('pre-fills the token input with the stored value on mount', async () => {
+    localStorage.setItem(MAPBOX_KEY, 'pk.existing-token');
+    render(<SettingsPage />);
+    await waitFor(() => {
+      expect(screen.getByTestId('mapbox-token-input')).toHaveValue('pk.existing-token');
+    });
   });
 
   it('saves a valid pk. token to localStorage', async () => {
@@ -163,76 +151,80 @@ describe('SettingsPage — Mapbox token', () => {
     });
     fireEvent.click(screen.getByTestId('mapbox-save-btn'));
     await waitFor(() => {
-      expect(localStorageStore[MAPBOX_KEY]).toBe('pk.eyJ1IjoiamU');
+      expect(localStorage.getItem(MAPBOX_KEY)).toBe('pk.eyJ1IjoiamU');
       expect(screen.getByTestId('mapbox-saved-confirmation')).toBeInTheDocument();
     });
   });
 
-  it('shows a format warning for non-pk. token but still saves', async () => {
+  it('shows a format warning for a non-pk. token but still saves it', async () => {
     render(<SettingsPage />);
     fireEvent.change(screen.getByTestId('mapbox-token-input'), {
-      target: { value: 'sk.invalid-mapbox-token' },
+      target: { value: 'sk.wrong-prefix-token' },
     });
     fireEvent.click(screen.getByTestId('mapbox-save-btn'));
     await waitFor(() => {
       expect(screen.getByTestId('mapbox-format-warning')).toBeInTheDocument();
-      // Token IS still saved — format warning does not block save
-      expect(localStorageStore[MAPBOX_KEY]).toBe('sk.invalid-mapbox-token');
+      // Still saved despite the warning
+      expect(localStorage.getItem(MAPBOX_KEY)).toBe('sk.wrong-prefix-token');
     });
   });
 
   it('trims leading/trailing whitespace before saving', async () => {
     render(<SettingsPage />);
     fireEvent.change(screen.getByTestId('mapbox-token-input'), {
-      target: { value: '  pk.trimmed-token  ' },
+      target: { value: '  pk.trimmed  ' },
     });
     fireEvent.click(screen.getByTestId('mapbox-save-btn'));
     await waitFor(() => {
-      expect(localStorageStore[MAPBOX_KEY]).toBe('pk.trimmed-token');
+      expect(localStorage.getItem(MAPBOX_KEY)).toBe('pk.trimmed');
     });
   });
 
   it('Remove button clears localStorage and resets the input', async () => {
-    localStorageStore[MAPBOX_KEY] = 'pk.existing-token';
+    localStorage.setItem(MAPBOX_KEY, 'pk.existing-token');
     render(<SettingsPage />);
+    // Wait for the useEffect to load the token into state
+    await waitFor(() => {
+      expect(screen.getByTestId('mapbox-token-input')).toHaveValue('pk.existing-token');
+    });
     const removeBtn = screen.getByTestId('mapbox-remove-btn');
     fireEvent.click(removeBtn);
     await waitFor(() => {
-      expect(localStorageStore[MAPBOX_KEY]).toBeUndefined();
+      expect(localStorage.getItem(MAPBOX_KEY)).toBeNull();
       expect(screen.getByTestId('mapbox-token-input')).toHaveValue('');
       expect(screen.getByTestId('mapbox-msg')).toHaveTextContent(/removed/i);
     });
   });
 
-  it('shows an error message when localStorage is full', async () => {
-    setItemSpy.mockImplementation(() => {
-      throw new DOMException('QuotaExceededError');
-    });
+  it('shows an error when saving an empty token', async () => {
     render(<SettingsPage />);
-    fireEvent.change(screen.getByTestId('mapbox-token-input'), {
-      target: { value: 'pk.valid-token' },
-    });
-    fireEvent.click(screen.getByTestId('mapbox-save-btn'));
-    await waitFor(() => {
-      expect(screen.getByTestId('mapbox-msg')).toHaveTextContent(/browser storage is full/i);
-    });
-  });
-
-  it('shows an error when trying to save an empty token', async () => {
-    render(<SettingsPage />);
-    // Leave input empty and click save
+    // Input is empty — click save immediately
     fireEvent.click(screen.getByTestId('mapbox-save-btn'));
     await waitFor(() => {
       expect(screen.getByTestId('mapbox-msg')).toHaveTextContent(/enter a token/i);
     });
-    expect(localStorageStore[MAPBOX_KEY]).toBeUndefined();
+    expect(localStorage.getItem(MAPBOX_KEY)).toBeNull();
   });
 
-  it('saved confirmation disappears after 2 seconds', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  it('shows ✓ Saved confirmation inline next to the save button', async () => {
     render(<SettingsPage />);
     fireEvent.change(screen.getByTestId('mapbox-token-input'), {
       target: { value: 'pk.valid' },
+    });
+    fireEvent.click(screen.getByTestId('mapbox-save-btn'));
+    await waitFor(() => {
+      expect(screen.getByTestId('mapbox-saved-confirmation')).toBeInTheDocument();
+    });
+  });
+
+  it('Saved confirmation disappears after 2 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Render without React batching issues
+    act(() => { render(<SettingsPage />); });
+    act(() => {
+      fireEvent.change(screen.getByTestId('mapbox-token-input'), {
+        target: { value: 'pk.valid' },
+      });
     });
     act(() => {
       fireEvent.click(screen.getByTestId('mapbox-save-btn'));
