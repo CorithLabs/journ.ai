@@ -30,7 +30,7 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function fromBase64(b64: string): Uint8Array {
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
@@ -38,7 +38,7 @@ function fromBase64(b64: string): Uint8Array {
  * Returns the per-device salt, generating and persisting a random one on first
  * use. The salt is not secret — it exists so the derived key differs per device.
  */
-function getOrCreateDeviceSalt(): Uint8Array {
+function getOrCreateDeviceSalt(): Uint8Array<ArrayBuffer> {
   let stored = localStorage.getItem(DEVICE_SALT_STORAGE);
   if (!stored) {
     const salt = new Uint8Array(16);
@@ -55,7 +55,7 @@ function getOrCreateDeviceSalt(): Uint8Array {
  * setApiKey() can be read back by getApiKey().
  */
 async function deriveKey(
-  saltBytes: Uint8Array,
+  saltBytes: Uint8Array<ArrayBuffer>,
   usage: KeyUsage[],
 ): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
