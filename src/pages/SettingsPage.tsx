@@ -1,295 +1,337 @@
-import { useEffect, useState } from 'react';
-import { Settings, Sparkles, Check, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  getApiKey,
+  Settings,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Map as MapIcon,
+} from 'lucide-react';
+import {
   setApiKey,
+  getApiKey,
   clearApiKey,
-  OPENAI_KEY_STORAGE,
-  ANTHROPIC_KEY_STORAGE,
+  hasStoredKey,
+  isCryptoAvailable,
 } from '../services/aiKey';
-import {
-  getActiveProvider,
-  setActiveProvider,
-  ANTHROPIC_MODEL,
-  type AiProvider,
-} from '../services/aiClient';
+import { useAppStore } from '../store';
 
-type TestState = 'idle' | 'testing' | 'valid' | 'invalid';
+type TestState =
+  | { kind: 'idle' }
+  | { kind: 'testing' }
+  | { kind: 'valid' }
+  | { kind: 'invalid'; message: string };
 
-interface ProviderConfig {
-  id: AiProvider;
-  label: string;
-  storageKey: string;
-  placeholder: string;
-  helper: string;
-}
-
-const PROVIDERS: ProviderConfig[] = [
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    storageKey: OPENAI_KEY_STORAGE,
-    placeholder: 'sk-...',
-    helper: "Your key starts with 'sk-'. Get it at platform.openai.com.",
-  },
-  {
-    id: 'anthropic',
-    label: 'Anthropic (Claude)',
-    storageKey: ANTHROPIC_KEY_STORAGE,
-    placeholder: 'sk-ant-...',
-    helper: "Your key starts with 'sk-ant-'. Get it at console.anthropic.com.",
-  },
-];
+const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
 
 export default function SettingsPage() {
-  const [provider, setProvider] = useState<AiProvider>(getActiveProvider());
-  const [keyInput, setKeyInput] = useState('');
-  const [hasStoredKey, setHasStoredKey] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [testState, setTestState] = useState<TestState>('idle');
-  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [key, setKey] = useState('');
+  const [hasKey, setHasKey] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [formatWarning, setFormatWarning] = useState(false);
+  const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  const setAiProvider = useAppStore((s) => s.setAiProvider);
 
-  const config = PROVIDERS.find((p) => p.id === provider)!;
+  const [mapboxToken, setMapboxToken] = useState('');
+  const [mapboxFormatWarning, setMapboxFormatWarning] = useState(false);
+  const [mapboxSaved, setMapboxSaved] = useState(false);
+  const [mapboxMsg, setMapboxMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Reflect whether a key is already stored for the selected provider (we
-  // never render the plaintext key).
+  const cryptoOk = isCryptoAvailable();
+
   useEffect(() => {
-    setKeyInput('');
-    setSaveError(null);
-    setTestState('idle');
-    setTestMessage(null);
-    getApiKey(config.storageKey).then((k) => setHasStoredKey(!!k));
-  }, [config.storageKey]);
+    setHasKey(hasStoredKey());
+    const stored = localStorage.getItem(MAPBOX_TOKEN_KEY);
+    if (stored) setMapboxToken(stored);
+  }, []);
 
-  const handleProviderChange = (next: AiProvider) => {
-    // Persist the selection. Switching does NOT delete the previous provider's
-    // stored key — the user can switch back without re-entering.
-    setActiveProvider(next);
-    setProvider(next);
-  };
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
-  const handleSave = async () => {
-    setSaveError(null);
-    setSaved(false);
-    const trimmed = keyInput.trim(); // trim guard (same as OpenAI key fix)
+  const onSave = async () => {
+    setSaveMsg(null);
+    setTest({ kind: 'idle' });
+    const trimmed = key.trim();
+
     if (!trimmed) {
-      setSaveError('Please enter a valid API key.');
+      clearApiKey();
+      setAiProvider(null);
+      setHasKey(false);
+      setSaveMsg({ ok: true, text: 'API key removed. AI features are now disabled.' });
       return;
     }
-    const expectedPrefix = provider === 'anthropic' ? 'sk-ant-' : 'sk-';
-    if (!trimmed.startsWith(expectedPrefix)) {
-      setSaveError(
-        `Warning: ${config.label} keys usually start with '${expectedPrefix}'. Saved anyway.`,
-      );
+
+    if (!trimmed.startsWith('sk-')) {
+      setFormatWarning(true);
+      return;
     }
+    setFormatWarning(false);
+
     try {
-      await setApiKey(trimmed, config.storageKey);
-      setHasStoredKey(true);
-      setKeyInput('');
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      await setApiKey(trimmed);
+      setAiProvider('byok');
+      setHasKey(true);
+      setKey('');
+      setSaveMsg({ ok: true, text: 'API key saved securely in your browser.' });
     } catch (err) {
-      setSaveError(
-        err instanceof Error
-          ? err.message
-          : 'Could not save key — browser storage may be unavailable.',
-      );
+      const reason = err instanceof Error ? err.message : '';
+      if (reason === 'crypto-unavailable') {
+        setSaveMsg({
+          ok: false,
+          text: 'Your browser does not support encrypted storage — key will not be saved.',
+        });
+      } else {
+        setSaveMsg({ ok: false, text: 'Could not save key — browser storage is full.' });
+      }
     }
   };
 
-  const handleClear = () => {
-    clearApiKey(config.storageKey);
-    setHasStoredKey(false);
-    setKeyInput('');
-    setTestState('idle');
-    setTestMessage(null);
-  };
-
-  const handleTest = async () => {
-    setTestState('testing');
-    setTestMessage(null);
+  const onTest = async () => {
+    setTest({ kind: 'testing' });
+    const activeKey = key.trim() || (await getApiKey());
+    if (!activeKey) {
+      setTest({ kind: 'invalid', message: 'No API key to test.' });
+      return;
+    }
+    if (!activeKey.startsWith('sk-')) {
+      setTest({ kind: 'invalid', message: 'Key format looks wrong (should start with "sk-").' });
+      return;
+    }
     try {
-      const key = await getApiKey(config.storageKey);
-      if (!key) {
-        setTestState('invalid');
-        setTestMessage('No key stored. Save your key first.');
-        return;
-      }
-
-      let ok: boolean;
-      let status = 0;
-      if (provider === 'anthropic') {
-        const resp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': key,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: ANTHROPIC_MODEL,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'hi' }],
-          }),
-        });
-        ok = resp.ok;
-        status = resp.status;
+      const resp = await fetch('https://api.openai.com/v1/models', {
+        headers: { Authorization: `Bearer ${activeKey}` },
+      });
+      if (resp.ok) {
+        setTest({ kind: 'valid' });
       } else {
-        const resp = await fetch('https://api.openai.com/v1/models', {
-          headers: { Authorization: `Bearer ${key}` },
-        });
-        ok = resp.ok;
-        status = resp.status;
-      }
-
-      if (ok) {
-        setTestState('valid');
-        setTestMessage('Connection valid.');
-      } else {
-        setTestState('invalid');
-        setTestMessage(
-          status === 401
-            ? `Invalid key — ${config.label} rejected the request.`
-            : `${config.label} returned ${status}.`,
-        );
+        setTest({ kind: 'invalid', message: 'Invalid key — OpenAI rejected the request.' });
       }
     } catch {
-      setTestState('invalid');
-      setTestMessage(`Could not reach ${config.label} — check your connection.`);
+      setTest({ kind: 'invalid', message: 'Could not reach OpenAI — check your connection.' });
     }
+  };
+
+  const flashSaved = () => {
+    setMapboxSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setMapboxSaved(false), 2000);
+  };
+
+  const onMapboxSave = () => {
+    setMapboxMsg(null);
+    setMapboxSaved(false);
+    const trimmed = mapboxToken.trim();
+
+    if (!trimmed) {
+      setMapboxFormatWarning(false);
+      setMapboxMsg({ ok: false, text: 'Please enter a token before saving.' });
+      return;
+    }
+
+    setMapboxToken(trimmed);
+    setMapboxFormatWarning(!trimmed.startsWith('pk.'));
+
+    try {
+      localStorage.setItem(MAPBOX_TOKEN_KEY, trimmed);
+      flashSaved();
+    } catch {
+      setMapboxMsg({ ok: false, text: 'Could not save token — browser storage is full.' });
+    }
+  };
+
+  const onMapboxRemove = () => {
+    localStorage.removeItem(MAPBOX_TOKEN_KEY);
+    setMapboxToken('');
+    setMapboxFormatWarning(false);
+    setMapboxSaved(false);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    setMapboxMsg({ ok: true, text: 'Mapbox token removed.' });
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center gap-3 mb-6">
         <Settings size={24} className="text-accent" aria-hidden="true" />
-        <h1 className="text-2xl font-bold text-ink-primary tracking-tight">
-          Settings
-        </h1>
+        <h1 className="text-2xl font-bold text-ink-primary tracking-tight">Settings</h1>
       </div>
 
       <section
         className="max-w-lg bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
-        aria-labelledby="ai-provider-heading"
+        aria-label="AI Provider"
       >
-        <div className="flex items-center gap-2 mb-3">
-          <Sparkles size={18} className="text-accent" aria-hidden="true" />
-          <h2
-            id="ai-provider-heading"
-            className="text-lg font-semibold text-ink-primary"
-          >
-            AI Provider
-          </h2>
-        </div>
-
-        {/* Provider toggle */}
-        <div
-          className="inline-flex rounded-xl bg-surface-overlay border border-white/10 p-1 mb-4"
-          role="tablist"
-          aria-label="AI provider"
-        >
-          {PROVIDERS.map((p) => (
-            <button
-              key={p.id}
-              role="tab"
-              aria-selected={provider === p.id}
-              onClick={() => handleProviderChange(p.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
-                provider === p.id
-                  ? 'bg-accent text-ink-inverse'
-                  : 'text-ink-secondary hover:text-ink-primary'
-              }`}
-              data-testid={`provider-tab-${p.id}`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
+        <h2 className="text-lg font-semibold text-ink-primary mb-1">AI Provider</h2>
         <p className="text-sm text-ink-secondary mb-4">
-          Your key is stored only in your browser (encrypted at rest) and never
-          sent to our servers.
+          Bring your own OpenAI API key to enable AI itinerary generation, route
+          optimisation, and the AI agent.
         </p>
 
-        <label
-          htmlFor="provider-key"
-          className="block text-sm text-ink-secondary mb-1"
-        >
-          {config.label} API Key
-          {hasStoredKey && (
-            <span className="ml-2 text-xs text-status-success">✓ key saved</span>
-          )}
+        {!cryptoOk && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 mb-4 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl"
+          >
+            <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" />
+            <p className="text-sm text-status-warning">
+              Your browser does not support encrypted storage — key will not be saved.
+            </p>
+          </div>
+        )}
+
+        <label htmlFor="api-key" className="block text-sm text-ink-secondary mb-1.5">
+          OpenAI API key
         </label>
         <input
-          id="provider-key"
+          id="api-key"
           type="password"
-          value={keyInput}
-          onChange={(e) => setKeyInput(e.target.value)}
-          placeholder={hasStoredKey ? '•••••••••• (saved)' : config.placeholder}
-          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
-          data-testid="provider-key-input"
+          value={key}
+          onChange={(e) => {
+            setKey(e.target.value);
+            setFormatWarning(false);
+          }}
+          placeholder={hasKey ? '•••••••• (saved — enter a new key to replace)' : 'sk-…'}
           autoComplete="off"
+          data-testid="api-key-input"
+          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
         />
-        <p className="mt-1 text-xs text-ink-muted">{config.helper}</p>
 
-        <div className="flex items-center gap-3 mt-3 flex-wrap">
+        {formatWarning && (
+          <p role="alert" className="mt-1.5 text-xs text-status-warning" data-testid="format-warning">
+            API keys usually start with &quot;sk-&quot;. Double-check before saving.
+          </p>
+        )}
+
+        <div className="flex items-start gap-2 mt-3 mb-4 text-xs text-ink-muted">
+          <ShieldCheck size={14} className="text-accent shrink-0 mt-0.5" aria-hidden="true" />
+          <p>
+            Your key is stored only in your browser and never sent to our servers.
+            It is encrypted at rest with AES-GCM.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleSave}
-            className="bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-2 rounded-xl transition-colors text-sm focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            onClick={onSave}
+            disabled={!cryptoOk}
             data-testid="save-key-btn"
+            className="bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
           >
             Save
           </button>
           <button
-            onClick={handleTest}
-            disabled={testState === 'testing' || !hasStoredKey}
-            className="border border-accent-muted text-accent hover:bg-accent/10 disabled:opacity-50 px-4 py-2 rounded-xl transition-colors text-sm focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            onClick={onTest}
+            disabled={test.kind === 'testing'}
             data-testid="test-connection-btn"
+            className="border border-accent-muted text-accent hover:bg-accent/10 px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
           >
-            {testState === 'testing' ? 'Testing…' : 'Test Connection'}
+            {test.kind === 'testing' ? 'Testing…' : 'Test Connection'}
           </button>
-          {hasStoredKey && (
-            <button
-              onClick={handleClear}
-              className="text-ink-muted hover:text-status-danger px-3 py-2 rounded-xl transition-colors text-sm"
-              data-testid="clear-key-btn"
-            >
-              Clear
-            </button>
-          )}
-          {saved && (
+        </div>
+
+        {test.kind === 'valid' && (
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-status-success" data-testid="test-result">
+            <CheckCircle2 size={16} /> Valid
+          </p>
+        )}
+        {test.kind === 'invalid' && (
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-status-danger" data-testid="test-result">
+            <XCircle size={16} /> {test.message}
+          </p>
+        )}
+        {saveMsg && (
+          <p
+            role="status"
+            className={`mt-3 text-sm ${saveMsg.ok ? 'text-status-success' : 'text-status-danger'}`}
+            data-testid="save-result"
+          >
+            {saveMsg.text}
+          </p>
+        )}
+      </section>
+
+      <section
+        className="max-w-lg bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
+        aria-label="Map"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <MapIcon size={18} className="text-accent" aria-hidden="true" />
+          <h2 className="text-lg font-semibold text-ink-primary">Map</h2>
+        </div>
+        <p className="text-sm text-ink-secondary mb-4">
+          Add your Mapbox public token to enable the map, geocoding, and route
+          visualisation.
+        </p>
+
+        <label htmlFor="mapbox-token" className="block text-sm text-ink-secondary mb-1.5">
+          Mapbox Public Token
+        </label>
+        <input
+          id="mapbox-token"
+          type="text"
+          value={mapboxToken}
+          onChange={(e) => {
+            setMapboxToken(e.target.value);
+            setMapboxFormatWarning(false);
+            setMapboxMsg(null);
+          }}
+          placeholder="pk.…"
+          autoComplete="off"
+          spellCheck={false}
+          data-testid="mapbox-token-input"
+          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+        />
+
+        <p className="mt-1.5 text-xs text-ink-muted">
+          Get your free token at mapbox.com — starts with pk.
+        </p>
+
+        {mapboxFormatWarning && (
+          <p
+            role="alert"
+            className="mt-1.5 text-xs text-status-warning"
+            data-testid="mapbox-format-warning"
+          >
+            Mapbox public tokens usually start with &quot;pk.&quot;. Saved anyway — double-check it&apos;s correct.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 mt-4">
+          <button
+            onClick={onMapboxSave}
+            data-testid="mapbox-save-btn"
+            className="bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          >
+            Save
+          </button>
+          <button
+            onClick={onMapboxRemove}
+            data-testid="mapbox-remove-btn"
+            className="border border-accent-muted text-accent hover:bg-accent/10 px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          >
+            Remove
+          </button>
+          {mapboxSaved && (
             <span
               role="status"
-              className="text-xs text-status-success"
-              data-testid="save-confirmation"
+              className="flex items-center gap-1 text-sm text-status-success"
+              data-testid="mapbox-saved-confirmation"
             >
-              ✓ Saved
+              <CheckCircle2 size={16} /> Saved
             </span>
           )}
         </div>
 
-        {saveError && (
-          <p role="alert" className="mt-2 text-xs text-status-warning">
-            {saveError}
-          </p>
-        )}
-
-        {testMessage && (
-          <div
+        {mapboxMsg && (
+          <p
             role="status"
-            className={`mt-3 flex items-center gap-1.5 text-sm ${
-              testState === 'valid' ? 'text-status-success' : 'text-status-danger'
-            }`}
+            className={`mt-3 text-sm ${mapboxMsg.ok ? 'text-status-success' : 'text-status-danger'}`}
+            data-testid="mapbox-msg"
           >
-            {testState === 'valid' ? (
-              <Check size={14} aria-hidden="true" />
-            ) : (
-              <X size={14} aria-hidden="true" />
-            )}
-            {testMessage}
-          </div>
+            {mapboxMsg.text}
+          </p>
         )}
       </section>
     </div>

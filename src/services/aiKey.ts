@@ -1,76 +1,66 @@
 /**
- * AES-GCM encrypted BYOK key storage.
+ * BYOK API key storage — AES-GCM 256-bit encryption at rest.
  *
- * Storage format: localStorage[<storageKey>] = JSON { ciphertext: "<base64>", iv: "<base64>" }
- * Salt: localStorage['aitp_device_salt'] = base64 string
+ * Storage format:
+ *   localStorage['aitp_api_key']     = JSON { ciphertext: "<base64>", iv: "<base64>" }
+ *   localStorage['aitp_device_salt'] = base64 string (per-device random salt)
  *
- * The raw key is NEVER written to localStorage in plaintext, and is held in
- * memory only for the duration of an AI call.
- *
- * Two providers share this module. Each stores its encrypted key under a
- * distinct localStorage key:
- *   - OpenAI:    'aitp_api_key'
- *   - Anthropic: 'aitp_anthropic_key'
- * The default `setApiKey`/`getApiKey`/`clearApiKey` operate on the OpenAI key
- * for backward compatibility; pass an explicit storageKey for Anthropic.
+ * The raw key is NEVER written to any persistent store. The plaintext key is
+ * held in memory only for the duration of each AI call (the return value of
+ * getApiKey()) and never serialised into Zustand or elsewhere.
  */
 
-export const OPENAI_KEY_STORAGE = 'aitp_api_key';
-export const ANTHROPIC_KEY_STORAGE = 'aitp_anthropic_key';
-const SALT_STORAGE = 'aitp_device_salt';
+export const API_KEY_STORAGE = 'aitp_api_key';
+export const DEVICE_SALT_STORAGE = 'aitp_device_salt';
 
-function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
-  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+const KEY_INFO = 'journ-ai-key';
+
+/** True when the Web Crypto SubtleCrypto API is available (secure context). */
+export function isCryptoAvailable(): boolean {
+  return (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.subtle !== 'undefined' &&
+    typeof crypto.subtle.encrypt === 'function'
+  );
+}
+
+function toBase64(bytes: Uint8Array): string {
   let binary = '';
-  for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
 /**
- * Decode base64 to a fresh ArrayBuffer-backed Uint8Array. The return type is
- * explicitly `Uint8Array<ArrayBuffer>` (not the default `ArrayBufferLike`) so
- * the value satisfies the Web Crypto `BufferSource` overloads under strict lib
- * typings — `Uint8Array<ArrayBufferLike>` is not assignable to
- * `ArrayBufferView<ArrayBuffer>` because `ArrayBufferLike` includes
- * `SharedArrayBuffer`.
+ * Returns the per-device salt, generating and persisting a random one on first
+ * use. The salt is not secret — it exists so the derived key differs per device.
  */
-function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
-  const binary = atob(b64);
-  const buf = new ArrayBuffer(binary.length);
-  const view = new Uint8Array(buf);
-  for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
-  return view;
-}
-
-/** Allocate a fresh ArrayBuffer-backed Uint8Array (typed as ArrayBuffer). */
-function freshBytes(len: number): Uint8Array<ArrayBuffer> {
-  return new Uint8Array(new ArrayBuffer(len));
-}
-
-/** Encode a UTF-8 string into an ArrayBuffer-backed Uint8Array. */
-function encodeUtf8(text: string): Uint8Array<ArrayBuffer> {
-  const encoded = new TextEncoder().encode(text);
-  const buf = new ArrayBuffer(encoded.length);
-  const view = new Uint8Array(buf);
-  view.set(encoded);
-  return view;
-}
-
-/** Return the per-device salt, generating and persisting one on first use. */
 function getOrCreateDeviceSalt(): Uint8Array<ArrayBuffer> {
-  const existing = localStorage.getItem(SALT_STORAGE);
-  if (existing) return base64ToBytes(existing);
-  const salt = freshBytes(16);
-  crypto.getRandomValues(salt);
-  localStorage.setItem(SALT_STORAGE, bytesToBase64(salt));
-  return salt;
+  let stored = localStorage.getItem(DEVICE_SALT_STORAGE);
+  if (!stored) {
+    const salt = new Uint8Array(16);
+    crypto.getRandomValues(salt);
+    stored = toBase64(salt);
+    localStorage.setItem(DEVICE_SALT_STORAGE, stored);
+  }
+  return fromBase64(stored);
 }
 
-async function deriveKey(usage: KeyUsage[]): Promise<CryptoKey> {
-  const salt = getOrCreateDeviceSalt();
+/**
+ * Derive an AES-GCM key from the device salt via HKDF. The derivation is
+ * intentionally identical for encrypt and decrypt so a key encrypted with
+ * setApiKey() can be read back by getApiKey().
+ */
+async function deriveKey(
+  saltBytes: Uint8Array<ArrayBuffer>,
+  usage: KeyUsage[],
+): Promise<CryptoKey> {
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
-    salt,
+    saltBytes,
     { name: 'HKDF' },
     false,
     ['deriveKey'],
@@ -79,8 +69,8 @@ async function deriveKey(usage: KeyUsage[]): Promise<CryptoKey> {
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: freshBytes(16),
-      info: encodeUtf8('journ-ai-key'),
+      salt: new Uint8Array(16),
+      info: new TextEncoder().encode(KEY_INFO),
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
@@ -90,62 +80,59 @@ async function deriveKey(usage: KeyUsage[]): Promise<CryptoKey> {
 }
 
 /**
- * Encrypt and store an API key under the given localStorage key (defaults to
- * the OpenAI key).
- *
- * The raw key is trimmed before encoding — users copy-pasting from a provider
- * dashboard frequently include a trailing newline or leading space, which
- * would otherwise be encrypted, stored, and sent verbatim, causing a 401.
- * An empty (or whitespace-only) key is rejected so we never store a blank key.
+ * Encrypt and persist the raw API key. Throws on failure (e.g. quota full)
+ * so the caller can surface a specific error WITHOUT any plaintext fallback.
  */
-export async function setApiKey(
-  rawKey: string,
-  storageKey: string = OPENAI_KEY_STORAGE,
-): Promise<void> {
-  const trimmed = rawKey.trim();
-  if (!trimmed) {
-    throw new Error('API key cannot be empty.');
+export async function setApiKey(rawKey: string): Promise<void> {
+  if (!isCryptoAvailable()) {
+    throw new Error('crypto-unavailable');
   }
-  const iv = freshBytes(12);
+  const saltBytes = getOrCreateDeviceSalt();
+  const derivedKey = await deriveKey(saltBytes, ['encrypt']);
+  const iv = new Uint8Array(12); // 96-bit IV, fresh per encryption
   crypto.getRandomValues(iv);
-  const derivedKey = await deriveKey(['encrypt']);
-  const plaintext = encodeUtf8(trimmed);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     derivedKey,
-    plaintext,
+    new TextEncoder().encode(rawKey),
   );
-  localStorage.setItem(
-    storageKey,
-    JSON.stringify({
-      ciphertext: bytesToBase64(ciphertext),
-      iv: bytesToBase64(iv),
-    }),
-  );
+  const payload = JSON.stringify({
+    ciphertext: toBase64(new Uint8Array(ciphertext)),
+    iv: toBase64(iv),
+  });
+  // localStorage.setItem throws QuotaExceededError when storage is full —
+  // let it propagate; we never write a plaintext fallback.
+  localStorage.setItem(API_KEY_STORAGE, payload);
 }
 
-/** Remove the stored key (defaults to the OpenAI key). */
-export function clearApiKey(storageKey: string = OPENAI_KEY_STORAGE): void {
-  localStorage.removeItem(storageKey);
+/** Remove the stored key entirely (reverts AI features to degraded mode). */
+export function clearApiKey(): void {
+  localStorage.removeItem(API_KEY_STORAGE);
 }
 
 /**
- * Decrypt and return the stored API key from the given localStorage key
- * (defaults to the OpenAI key). Returns null if no key is stored, decryption
- * fails, or crypto is unavailable.
+ * Decrypt and return the stored API key from localStorage.
+ * Returns null if no key is stored, the salt is missing, decryption fails
+ * (tampered storage), or crypto is unavailable. On corruption the stale
+ * ciphertext is cleared so the user is prompted to re-enter their key.
  */
 export async function getApiKey(
   storageKey: string = OPENAI_KEY_STORAGE,
 ): Promise<string | null> {
   try {
-    const stored = localStorage.getItem(storageKey);
+    const stored = localStorage.getItem(API_KEY_STORAGE);
     if (!stored) return null;
+    const deviceSalt = localStorage.getItem(DEVICE_SALT_STORAGE);
+    if (!deviceSalt) {
+      // Salt missing but ciphertext present → unrecoverable; clear and prompt.
+      clearApiKey();
+      return null;
+    }
     const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
-    const deviceSalt = localStorage.getItem(SALT_STORAGE);
-    if (!deviceSalt) return null;
-    const derivedKey = await deriveKey(['decrypt']);
-    const ivBytes = base64ToBytes(parsed.iv);
-    const cipherBytes = base64ToBytes(parsed.ciphertext);
+    const saltBytes = fromBase64(deviceSalt);
+    const derivedKey = await deriveKey(saltBytes, ['decrypt']);
+    const ivBytes = fromBase64(parsed.iv);
+    const cipherBytes = fromBase64(parsed.ciphertext);
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: ivBytes },
       derivedKey,
@@ -155,4 +142,9 @@ export async function getApiKey(
   } catch {
     return null;
   }
+}
+
+/** True when a (readable) key is currently stored. */
+export function hasStoredKey(): boolean {
+  return localStorage.getItem(API_KEY_STORAGE) !== null;
 }
