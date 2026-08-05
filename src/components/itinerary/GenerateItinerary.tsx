@@ -3,7 +3,7 @@ import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
-import { getApiKey } from '../../services/aiKey';
+import { streamCompletion, MissingKeyError } from '../../services/aiClient';
 
 interface Props {
   plan: Plan;
@@ -101,66 +101,6 @@ function tryParseItinerary(text: string): Day[] | null {
   return validateAndParseDays(parsed);
 }
 
-/**
- * Stream a chat completion, updating `onToken` with the accumulated text as
- * deltas arrive. Resolves with the full concatenated text.
- *
- * `max_tokens` is 8000 (well within gpt-4o-mini's 16k output limit) so that
- * itineraries up to ~21 days are not truncated mid-JSON. If the stream still
- * ends with finish_reason 'length' the response was cut off and cannot be
- * repaired — we throw an actionable error immediately.
- */
-async function streamCompletion(
-  apiKey: string,
-  messages: { role: string; content: string }[],
-  onToken: (full: string) => void,
-): Promise<string> {
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 8000 }),
-  });
-  if (!resp.ok) {
-    const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
-    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
-  }
-  const reader = resp.body?.getReader();
-  if (!reader) throw new Error('No response body');
-  let fullText = '';
-  const dec = new TextDecoder();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-      try {
-        const p2 = JSON.parse(data) as {
-          choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
-        };
-        const choice = p2.choices?.[0];
-        fullText += choice?.delta?.content ?? '';
-        onToken(fullText);
-        // Truncated response — the model hit the token cap mid-JSON. A
-        // truncated response cannot be repaired, so surface a clear,
-        // actionable error rather than the generic "could not read" one.
-        if (choice?.finish_reason === 'length') {
-          throw new Error(
-            'The itinerary was too long to generate in one response. Try a shorter trip (fewer days) or retry.',
-          );
-        }
-      } catch (e) {
-        // Re-throw our own token-limit error; swallow partial-SSE parse errors.
-        if (e instanceof Error && e.message.startsWith('The itinerary was too long')) {
-          throw e;
-        }
-        /* ignore partial SSE frames */
-      }
-    }
-  }
-  return fullText;
-}
-
 export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -169,11 +109,14 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const generate = async () => {
     setStatus('generating'); setError(null); setStreamText('');
     try {
-      const apiKey = await getApiKey();
-      if (!apiKey) { setError('No API key configured. Please add your OpenAI API key in Settings.'); setStatus('error'); return; }
-
       const prompt = buildPrompt(plan);
-      const fullText = await streamCompletion(apiKey, [{ role: 'user', content: prompt }], setStreamText);
+      // Provider-agnostic streaming — routes to OpenAI or Anthropic based on
+      // the active provider preference. max_tokens 8000 (default) avoids
+      // mid-JSON truncation for trips up to ~21 days.
+      const fullText = await streamCompletion(
+        [{ role: 'user', content: prompt }],
+        { onToken: setStreamText },
+      );
 
       // First attempt: extract + local repair.
       let days = tryParseItinerary(fullText);
@@ -182,7 +125,6 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       // follow-up prompt before giving up (per acceptance criteria).
       if (!days) {
         const repaired = await streamCompletion(
-          apiKey,
           [
             { role: 'user', content: prompt },
             { role: 'assistant', content: fullText },
@@ -193,7 +135,7 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
                 'Reply again with ONLY the corrected JSON object — no markdown, no prose, no code fences.',
             },
           ],
-          setStreamText,
+          { onToken: setStreamText },
         );
         days = tryParseItinerary(repaired);
       }
@@ -208,7 +150,17 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       const updatedPlan = await db.plans.get(plan.id);
       if (updatedPlan) await autoGenerateTodos(updatedPlan);
       onGenerated();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Generation failed'); setStatus('error'); }
+    } catch (err) {
+      if (err instanceof MissingKeyError) {
+        setError('No API key configured. Please add your API key in Settings.');
+      } else if (err instanceof Error && err.message.startsWith('The response was too long')) {
+        // Map the generic client message to an itinerary-specific one.
+        setError('The itinerary was too long to generate in one response. Try a shorter trip (fewer days) or retry.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Generation failed');
+      }
+      setStatus('error');
+    }
   };
 
   return (
