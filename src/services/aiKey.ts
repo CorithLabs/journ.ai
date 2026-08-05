@@ -27,12 +27,14 @@ function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
 }
 
 /**
- * Decode base64 to a fresh ArrayBuffer-backed Uint8Array. Returning the
- * concrete ArrayBuffer keeps the Web Crypto `BufferSource` overloads happy
- * under strict lib typings (Uint8Array<ArrayBufferLike> is not assignable to
- * ArrayBufferView<ArrayBuffer>).
+ * Decode base64 to a fresh ArrayBuffer-backed Uint8Array. The return type is
+ * explicitly `Uint8Array<ArrayBuffer>` (not the default `ArrayBufferLike`) so
+ * the value satisfies the Web Crypto `BufferSource` overloads under strict lib
+ * typings — `Uint8Array<ArrayBufferLike>` is not assignable to
+ * `ArrayBufferView<ArrayBuffer>` because `ArrayBufferLike` includes
+ * `SharedArrayBuffer`.
  */
-function base64ToBytes(b64: string): Uint8Array {
+function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(b64);
   const buf = new ArrayBuffer(binary.length);
   const view = new Uint8Array(buf);
@@ -40,12 +42,22 @@ function base64ToBytes(b64: string): Uint8Array {
   return view;
 }
 
-function freshBytes(len: number): Uint8Array {
+/** Allocate a fresh ArrayBuffer-backed Uint8Array (typed as ArrayBuffer). */
+function freshBytes(len: number): Uint8Array<ArrayBuffer> {
   return new Uint8Array(new ArrayBuffer(len));
 }
 
+/** Encode a UTF-8 string into an ArrayBuffer-backed Uint8Array. */
+function encodeUtf8(text: string): Uint8Array<ArrayBuffer> {
+  const encoded = new TextEncoder().encode(text);
+  const buf = new ArrayBuffer(encoded.length);
+  const view = new Uint8Array(buf);
+  view.set(encoded);
+  return view;
+}
+
 /** Return the per-device salt, generating and persisting one on first use. */
-function getOrCreateDeviceSalt(): Uint8Array {
+function getOrCreateDeviceSalt(): Uint8Array<ArrayBuffer> {
   const existing = localStorage.getItem(SALT_STORAGE);
   if (existing) return base64ToBytes(existing);
   const salt = freshBytes(16);
@@ -68,7 +80,7 @@ async function deriveKey(usage: KeyUsage[]): Promise<CryptoKey> {
       name: 'HKDF',
       hash: 'SHA-256',
       salt: freshBytes(16),
-      info: new TextEncoder().encode('journ-ai-key'),
+      info: encodeUtf8('journ-ai-key'),
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
@@ -97,7 +109,7 @@ export async function setApiKey(
   const iv = freshBytes(12);
   crypto.getRandomValues(iv);
   const derivedKey = await deriveKey(['encrypt']);
-  const plaintext = new TextEncoder().encode(trimmed);
+  const plaintext = encodeUtf8(trimmed);
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     derivedKey,
