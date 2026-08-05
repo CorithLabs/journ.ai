@@ -1,5 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Settings, ShieldCheck, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Settings,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Map as MapIcon,
+} from 'lucide-react';
 import {
   setApiKey,
   getApiKey,
@@ -15,6 +22,8 @@ type TestState =
   | { kind: 'valid' }
   | { kind: 'invalid'; message: string };
 
+const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
+
 export default function SettingsPage() {
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
@@ -23,10 +32,24 @@ export default function SettingsPage() {
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
   const setAiProvider = useAppStore((s) => s.setAiProvider);
 
+  const [mapboxToken, setMapboxToken] = useState('');
+  const [mapboxFormatWarning, setMapboxFormatWarning] = useState(false);
+  const [mapboxSaved, setMapboxSaved] = useState(false);
+  const [mapboxMsg, setMapboxMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const cryptoOk = isCryptoAvailable();
 
   useEffect(() => {
     setHasKey(hasStoredKey());
+    const stored = localStorage.getItem(MAPBOX_TOKEN_KEY);
+    if (stored) setMapboxToken(stored);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
   }, []);
 
   const onSave = async () => {
@@ -34,7 +57,6 @@ export default function SettingsPage() {
     setTest({ kind: 'idle' });
     const trimmed = key.trim();
 
-    // Clearing the field and saving removes the key → degraded mode.
     if (!trimmed) {
       clearApiKey();
       setAiProvider(null);
@@ -43,7 +65,6 @@ export default function SettingsPage() {
       return;
     }
 
-    // Client-side format warning before persisting.
     if (!trimmed.startsWith('sk-')) {
       setFormatWarning(true);
       return;
@@ -64,7 +85,6 @@ export default function SettingsPage() {
           text: 'Your browser does not support encrypted storage — key will not be saved.',
         });
       } else {
-        // QuotaExceededError and friends → never persist a plaintext fallback.
         setSaveMsg({ ok: false, text: 'Could not save key — browser storage is full.' });
       }
     }
@@ -72,7 +92,6 @@ export default function SettingsPage() {
 
   const onTest = async () => {
     setTest({ kind: 'testing' });
-    // Decrypt in-memory for the duration of the test call only.
     const activeKey = key.trim() || (await getApiKey());
     if (!activeKey) {
       setTest({ kind: 'invalid', message: 'No API key to test.' });
@@ -96,8 +115,45 @@ export default function SettingsPage() {
     }
   };
 
+  const flashSaved = () => {
+    setMapboxSaved(true);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setMapboxSaved(false), 2000);
+  };
+
+  const onMapboxSave = () => {
+    setMapboxMsg(null);
+    setMapboxSaved(false);
+    const trimmed = mapboxToken.trim();
+
+    if (!trimmed) {
+      setMapboxFormatWarning(false);
+      setMapboxMsg({ ok: false, text: 'Please enter a token before saving.' });
+      return;
+    }
+
+    setMapboxToken(trimmed);
+    setMapboxFormatWarning(!trimmed.startsWith('pk.'));
+
+    try {
+      localStorage.setItem(MAPBOX_TOKEN_KEY, trimmed);
+      flashSaved();
+    } catch {
+      setMapboxMsg({ ok: false, text: 'Could not save token — browser storage is full.' });
+    }
+  };
+
+  const onMapboxRemove = () => {
+    localStorage.removeItem(MAPBOX_TOKEN_KEY);
+    setMapboxToken('');
+    setMapboxFormatWarning(false);
+    setMapboxSaved(false);
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    setMapboxMsg({ ok: true, text: 'Mapbox token removed.' });
+  };
+
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center gap-3 mb-6">
         <Settings size={24} className="text-accent" aria-hidden="true" />
         <h1 className="text-2xl font-bold text-ink-primary tracking-tight">Settings</h1>
@@ -192,6 +248,89 @@ export default function SettingsPage() {
             data-testid="save-result"
           >
             {saveMsg.text}
+          </p>
+        )}
+      </section>
+
+      <section
+        className="max-w-lg bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
+        aria-label="Map"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <MapIcon size={18} className="text-accent" aria-hidden="true" />
+          <h2 className="text-lg font-semibold text-ink-primary">Map</h2>
+        </div>
+        <p className="text-sm text-ink-secondary mb-4">
+          Add your Mapbox public token to enable the map, geocoding, and route
+          visualisation.
+        </p>
+
+        <label htmlFor="mapbox-token" className="block text-sm text-ink-secondary mb-1.5">
+          Mapbox Public Token
+        </label>
+        <input
+          id="mapbox-token"
+          type="text"
+          value={mapboxToken}
+          onChange={(e) => {
+            setMapboxToken(e.target.value);
+            setMapboxFormatWarning(false);
+            setMapboxMsg(null);
+          }}
+          placeholder="pk.…"
+          autoComplete="off"
+          spellCheck={false}
+          data-testid="mapbox-token-input"
+          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+        />
+
+        <p className="mt-1.5 text-xs text-ink-muted">
+          Get your free token at mapbox.com — starts with pk.
+        </p>
+
+        {mapboxFormatWarning && (
+          <p
+            role="alert"
+            className="mt-1.5 text-xs text-status-warning"
+            data-testid="mapbox-format-warning"
+          >
+            Mapbox public tokens usually start with &quot;pk.&quot;. Saved anyway — double-check it&apos;s correct.
+          </p>
+        )}
+
+        <div className="flex items-center gap-2 mt-4">
+          <button
+            onClick={onMapboxSave}
+            data-testid="mapbox-save-btn"
+            className="bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          >
+            Save
+          </button>
+          <button
+            onClick={onMapboxRemove}
+            data-testid="mapbox-remove-btn"
+            className="border border-accent-muted text-accent hover:bg-accent/10 px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          >
+            Remove
+          </button>
+          {mapboxSaved && (
+            <span
+              role="status"
+              className="flex items-center gap-1 text-sm text-status-success"
+              data-testid="mapbox-saved-confirmation"
+            >
+              <CheckCircle2 size={16} /> Saved
+            </span>
+          )}
+        </div>
+
+        {mapboxMsg && (
+          <p
+            role="status"
+            className={`mt-3 text-sm ${mapboxMsg.ok ? 'text-status-success' : 'text-status-danger'}`}
+            data-testid="mapbox-msg"
+          >
+            {mapboxMsg.text}
           </p>
         )}
       </section>
