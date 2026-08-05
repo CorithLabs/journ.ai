@@ -9,6 +9,7 @@ import ClipboardTab from '../components/tabs/ClipboardTab';
 import ClipboardItemDetail from '../components/clipboard/ClipboardItemDetail';
 import AgentButton from '../components/agent/AgentButton';
 import AgentPanel from '../components/agent/AgentPanel';
+import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
