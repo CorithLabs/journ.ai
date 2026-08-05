@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Sparkles, CheckCircle2, XCircle, AlertTriangle, GripVertical } from 'lucide-react';
 import { type Day, type Activity, db } from '../../db';
-import { getApiKey } from '../../services/aiKey';
+import { streamCompletion, MissingKeyError } from '../../services/aiClient';
 import { totalRouteDistanceKm } from '../../services/mapbox';
 import Toast from '../ui/Toast';
 
@@ -16,25 +16,32 @@ function buildPrompt(day: Day): string {
   return `Optimise the visit order for "${day.label}" to minimise travel distance.\nActivities:\n${list}\n\nReturn ONLY a JSON array of activity names in optimised order. No other text.`;
 }
 
+/**
+ * Ask the active AI provider (OpenAI or Anthropic, via the shared aiClient) to
+ * reorder the day's stops. Returns the ordered activity names, or null on any
+ * failure. The AI call is provider-agnostic — call sites no longer talk to a
+ * provider endpoint directly.
+ */
 async function callAI(day: Day): Promise<string[] | null> {
-  const key = await getApiKey();
-  if (!key) return null;
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: 'You are a travel route optimiser. Return only a JSON array of activity names. No other text.' }, { role: 'user', content: buildPrompt(day) }], temperature: 0.2, max_tokens: 500 }),
-    });
-    if (!r.ok) return null;
-    const d = await r.json() as { choices?: { message?: { content?: string } }[] };
-    const c = d.choices?.[0]?.message?.content?.trim();
+    const full = await streamCompletion(
+      [
+        { role: 'system', content: 'You are a travel route optimiser. Return only a JSON array of activity names. No other text.' },
+        { role: 'user', content: buildPrompt(day) },
+      ],
+      { temperature: 0.2, maxTokens: 500 },
+    );
+    const c = full.trim();
     if (!c) return null;
     const m = c.match(/\[[\s\S]*\]/);
     if (!m) return null;
     const p = JSON.parse(m[0]) as unknown;
     if (!Array.isArray(p)) return null;
     return p.filter(n => typeof n === 'string') as string[];
-  } catch { return null; }
+  } catch (e) {
+    if (e instanceof MissingKeyError) return null;
+    return null;
+  }
 }
 
 function reorder(acts: Activity[], names: string[]): Activity[] {
