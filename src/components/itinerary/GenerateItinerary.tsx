@@ -25,12 +25,13 @@ function buildPrompt(plan: Plan): string {
     `Destination: ${plan.destination}`,
     `Dates: ${plan.startDate} to ${plan.endDate}`,
     `Travellers: ${intake?.numTravellers ?? 1}`,
-    `Kids: ${intake?.kids ? 'yes, ages: ' + (intake.kidAges?.join(', ') ?? 'unknown') : 'no'}`,
+    `Kids: ${intake?.kids ? 'yes, ages: ' + (intake.kidAges?.join(', ') ?? 'unknown (generate general family-friendly, age-appropriate activities)') : 'no'}`,
     `Likes: ${intake?.likes?.join(', ') || 'general sightseeing'}`,
     `Dislikes: ${intake?.dislikes?.join(', ') || 'none'}`,
     `Budget: ${budgetLabel}`,
-    'Rules: set budgetWarning:true if activity may exceed budget.',
-    'Return estimatedDailySpend {min,max,currency:"USD"} per day.',
+    'Rules: keep activities within the stated budget tier. Set budgetWarning:true on any activity that may borderline or exceed the budget (err on the side of warning, not silence).',
+    'If kids are present, all activities must be age-appropriate.',
+    'Return estimatedDailySpend {min,max,currency:"USD"} per day using world-knowledge cost estimates.',
     'Schema: {"days":[{"dayIndex":0,"label":"Day 1","estimatedDailySpend":{"min":80,"max":150,"currency":"USD"},"activities":[{"id":"uuid","name":"...","time":"09:00","locationName":"...","notes":"...","budgetWarning":false}]}]}',
   ].join('\n');
 }
@@ -38,15 +39,17 @@ function buildPrompt(plan: Plan): string {
 function parseDaySpend(raw: unknown): { min: number; max: number; currency: 'USD' } | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const s = raw as Record<string, unknown>;
+  if (typeof s.min !== 'number' && typeof s.max !== 'number') return undefined;
   const a = typeof s.min === 'number' ? s.min : 0;
   const b = typeof s.max === 'number' ? s.max : 0;
+  // If min > max, swap silently before storing.
   return { min: Math.min(a, b), max: Math.max(a, b), currency: 'USD' };
 }
 
 function validateAndParseDays(raw: unknown): Day[] | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Record<string, unknown>;
-  if (!Array.isArray(obj.days)) return null;
+  if (!Array.isArray(obj.days) || obj.days.length === 0) return null;
   return obj.days.map((d: unknown, i: number) => {
     const day = d as Record<string, unknown>;
     return {
@@ -71,6 +74,29 @@ function validateAndParseDays(raw: unknown): Day[] | null {
   });
 }
 
+/**
+ * Attempt to parse the AI's raw text into a validated Day[].
+ * 1. Extract the first JSON object.
+ * 2. Parse directly.
+ * 3. On failure, apply a local trailing-comma repair and retry.
+ * Returns null if the text cannot be coerced into a valid itinerary.
+ */
+function tryParseItinerary(text: string): Day[] | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(m[0]);
+  } catch {
+    try {
+      parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
+    } catch {
+      return null;
+    }
+  }
+  return validateAndParseDays(parsed);
+}
+
 async function getApiKey(): Promise<string | null> {
   try {
     const stored = localStorage.getItem('aitp_api_key');
@@ -91,6 +117,44 @@ async function getApiKey(): Promise<string | null> {
   } catch { return null; }
 }
 
+/**
+ * Stream a chat completion, updating `onToken` with the accumulated text as
+ * deltas arrive. Resolves with the full concatenated text.
+ */
+async function streamCompletion(
+  apiKey: string,
+  messages: { role: string; content: string }[],
+  onToken: (full: string) => void,
+): Promise<string> {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 4000 }),
+  });
+  if (!resp.ok) {
+    const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
+  }
+  const reader = resp.body?.getReader();
+  if (!reader) throw new Error('No response body');
+  let fullText = '';
+  const dec = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
+      const data = line.slice(6);
+      if (data === '[DONE]') continue;
+      try {
+        const p2 = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+        fullText += p2.choices?.[0]?.delta?.content ?? '';
+        onToken(fullText);
+      } catch { /* ignore partial SSE frames */ }
+    }
+  }
+  return fullText;
+}
+
 export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -101,36 +165,37 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
     try {
       const apiKey = await getApiKey();
       if (!apiKey) { setError('No API key configured. Please add your OpenAI API key in Settings.'); setStatus('error'); return; }
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: buildPrompt(plan) }], stream: true, temperature: 0.7, max_tokens: 4000 }),
-      });
-      if (!resp.ok) {
-        const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new Error(ed.error?.message ?? `API error ${resp.status}`);
+
+      const prompt = buildPrompt(plan);
+      const fullText = await streamCompletion(apiKey, [{ role: 'user', content: prompt }], setStreamText);
+
+      // First attempt: extract + local repair.
+      let days = tryParseItinerary(fullText);
+
+      // Second attempt: ask the AI to repair its own malformed output with a
+      // follow-up prompt before giving up (per acceptance criteria).
+      if (!days) {
+        const repaired = await streamCompletion(
+          apiKey,
+          [
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: fullText },
+            {
+              role: 'user',
+              content:
+                'Your previous response was not valid JSON matching the schema. ' +
+                'Reply again with ONLY the corrected JSON object — no markdown, no prose, no code fences.',
+            },
+          ],
+          setStreamText,
+        );
+        days = tryParseItinerary(repaired);
       }
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error('No response body');
-      let fullText = '';
-      const dec = new TextDecoder();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
-          const data = line.slice(6);
-          if (data === '[DONE]') continue;
-          try { const p2 = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] }; fullText += p2.choices?.[0]?.delta?.content ?? ''; setStreamText(fullText); }
-          catch { /* ignore */ }
-        }
-      }
-      const m = fullText.match(/\{[\s\S]*\}/);
-      if (!m) throw new Error('No JSON found in response');
-      let parsed: unknown;
-      try { parsed = JSON.parse(m[0]); }
-      catch { try { parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')); } catch { throw new Error('Malformed JSON from AI'); } }
-      const days = validateAndParseDays(parsed);
-      if (!days) throw new Error('Invalid response structure from AI');
+
+      // Still malformed → show error and keep the previous itinerary intact
+      // (no write has happened, so nothing is lost).
+      if (!days) throw new Error('The AI returned an itinerary we could not read. Your previous plan is unchanged — please retry.');
+
       await db.plans.update(plan.id, { itinerary: days, updatedAt: new Date().toISOString() });
       await autoGenerateTodos(plan);
       onGenerated();
