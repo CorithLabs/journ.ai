@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import TabBar from '../TabBar';
 import { useAppStore } from '../../../store';
 
@@ -41,6 +41,15 @@ describe('TabBar', () => {
   });
 
   it('syncs the store activeTab from the current URL on mount', async () => {
+    // The global test setup mocks useLocation to a fixed pathname; override it
+    // here so the mount effect derives 'map' from the URL.
+    vi.mocked(useLocation).mockReturnValueOnce({
+      pathname: '/plan/test-plan-id/map',
+      search: '',
+      hash: '',
+      state: null,
+      key: 'default',
+    });
     useAppStore.setState({ activeTab: 'itinerary' });
     render(
       <MemoryRouter initialEntries={['/plan/test-plan-id/map']}>
