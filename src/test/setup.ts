@@ -9,9 +9,15 @@ vi.mock('../db', () => ({
       equals: vi.fn().mockReturnThis(),
       // .filter(predicate).sortBy('createdAt') is the canonical soft-delete
       // query pattern — Plan.deleted is a boolean, so index-based .where/.equals
-      // is unsafe. The mock returns a chainable object exposing sortBy.
-      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
+      // is unsafe. The mock returns a chainable object exposing sortBy AND count
+      // (the demo seed calls .filter(...).count() on first launch).
+      filter: vi.fn().mockReturnValue({
+        sortBy: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        toArray: vi.fn().mockResolvedValue([]),
+      }),
       sortBy: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
       get: vi.fn().mockResolvedValue(null),
       add: vi.fn().mockResolvedValue('mock-id'),
       update: vi.fn().mockResolvedValue(1),
@@ -23,7 +29,11 @@ vi.mock('../db', () => ({
     todos: {
       where: vi.fn().mockReturnThis(),
       equals: vi.fn().mockReturnThis(),
-      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
+      filter: vi.fn().mockReturnValue({
+        sortBy: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        toArray: vi.fn().mockResolvedValue([]),
+      }),
       sortBy: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue('mock-id'),
       update: vi.fn().mockResolvedValue(1),
@@ -35,11 +45,16 @@ vi.mock('../db', () => ({
     clipboard: {
       where: vi.fn().mockReturnThis(),
       equals: vi.fn().mockReturnThis(),
-      filter: vi.fn().mockReturnValue({ sortBy: vi.fn().mockResolvedValue([]) }),
+      filter: vi.fn().mockReturnValue({
+        sortBy: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+        toArray: vi.fn().mockResolvedValue([]),
+      }),
       sortBy: vi.fn().mockResolvedValue([]),
       add: vi.fn().mockResolvedValue('mock-id'),
       update: vi.fn().mockResolvedValue(1),
       delete: vi.fn().mockResolvedValue(undefined),
+      bulkAdd: vi.fn().mockResolvedValue([]),
       toArray: vi.fn().mockResolvedValue([]),
     },
   },
