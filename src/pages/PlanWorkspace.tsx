@@ -6,6 +6,7 @@ import ItineraryTab from '../components/tabs/ItineraryTab';
 import TodoTab from '../components/tabs/TodoTab';
 import MapTab from '../components/tabs/MapTab';
 import ClipboardTab from '../components/tabs/ClipboardTab';
+import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
@@ -35,6 +36,8 @@ export default function PlanWorkspace() {
     <div className="flex flex-col h-full min-h-0">
       {/* Weather loader — invisible, side-effect only */}
       <PlanWeatherLoader planId={planId} />
+      {/* Demo banner — renders only for the seeded demo plan, until dismissed */}
+      <DemoBanner planId={planId} />
       <TabBar planId={planId} />
       <div className="flex-1 min-h-0 overflow-hidden">
         <Routes>
