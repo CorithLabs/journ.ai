@@ -4,6 +4,7 @@ import {
   setActiveProvider,
   keyStorageFor,
   streamCompletion,
+  chatWithTools,
   MissingKeyError,
   PROVIDER_STORAGE,
 } from '../aiClient';
@@ -26,6 +27,16 @@ function sseResponse(lines: string[], ok = true, status = 200): Response {
     status,
     body: stream,
     json: async () => ({}),
+  } as unknown as Response;
+}
+
+/** Build a plain JSON Response for the non-streaming chatWithTools calls. */
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
+  return {
+    ok,
+    status,
+    body: null,
+    json: async () => body,
   } as unknown as Response;
 }
 
@@ -132,5 +143,154 @@ describe('streamCompletion routing', () => {
     await expect(
       streamCompletion([{ role: 'user', content: 'hi' }]),
     ).rejects.toThrow(/unavailable/i);
+  });
+});
+
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'add_activity',
+      description: 'Add an activity',
+      parameters: {
+        type: 'object',
+        properties: { dayIndex: { type: 'integer' }, name: { type: 'string' } },
+        required: ['dayIndex', 'name'],
+      },
+    },
+  },
+] as const;
+
+describe('chatWithTools routing', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws MissingKeyError when the active provider has no key', async () => {
+    setActiveProvider('openai');
+    await expect(
+      chatWithTools([{ role: 'user', content: 'hi' }], TOOLS),
+    ).rejects.toBeInstanceOf(MissingKeyError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('parses an OpenAI tool call into { name, args }', async () => {
+    setActiveProvider('openai');
+    await setApiKey('sk-test', OPENAI_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  function: {
+                    name: 'add_activity',
+                    arguments: JSON.stringify({ dayIndex: 2, name: 'Tsukiji' }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const { text, toolCalls } = await chatWithTools(
+      [{ role: 'user', content: 'add sushi' }],
+      TOOLS,
+    );
+    expect(text).toBe('');
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].name).toBe('add_activity');
+    expect(toolCalls[0].args).toEqual({ dayIndex: 2, name: 'Tsukiji' });
+    expect(toolCalls[0].malformed).toBeFalsy();
+    // Tools are forwarded to OpenAI
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.tools).toBeTruthy();
+    expect(body.stream).toBeFalsy();
+  });
+
+  it('returns assistant text and no tool calls when the model just chats', async () => {
+    setActiveProvider('openai');
+    await setApiKey('sk-test', OPENAI_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        choices: [{ message: { content: 'Which evening did you mean?' } }],
+      }),
+    );
+    const { text, toolCalls } = await chatWithTools(
+      [{ role: 'user', content: 'add something tonight' }],
+      TOOLS,
+    );
+    expect(text).toBe('Which evening did you mean?');
+    expect(toolCalls).toHaveLength(0);
+  });
+
+  it('flags malformed tool arguments instead of throwing', async () => {
+    setActiveProvider('openai');
+    await setApiKey('sk-test', OPENAI_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [{ function: { name: 'add_activity', arguments: '{not json' } }],
+            },
+          },
+        ],
+      }),
+    );
+    const { toolCalls } = await chatWithTools(
+      [{ role: 'user', content: 'do a thing' }],
+      TOOLS,
+    );
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].malformed).toBe(true);
+  });
+
+  it('parses an Anthropic tool_use block into { name, args }', async () => {
+    setActiveProvider('anthropic');
+    await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        content: [
+          { type: 'text', text: 'Adding that now.' },
+          {
+            type: 'tool_use',
+            name: 'add_activity',
+            input: { dayIndex: 2, name: 'Tsukiji' },
+          },
+        ],
+      }),
+    );
+    const { text, toolCalls } = await chatWithTools(
+      [
+        { role: 'system', content: 'be helpful' },
+        { role: 'user', content: 'add sushi' },
+      ],
+      TOOLS,
+    );
+    expect(text).toBe('Adding that now.');
+    expect(toolCalls).toHaveLength(1);
+    expect(toolCalls[0].name).toBe('add_activity');
+    expect(toolCalls[0].args).toEqual({ dayIndex: 2, name: 'Tsukiji' });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://api.anthropic.com/v1/messages');
+    const body = JSON.parse((init as RequestInit).body as string);
+    // Anthropic tools use input_schema, and system is lifted out
+    expect(body.system).toBe('be helpful');
+    expect(body.tools[0].name).toBe('add_activity');
+    expect(body.tools[0].input_schema).toBeTruthy();
   });
 });
