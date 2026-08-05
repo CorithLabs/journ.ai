@@ -1,16 +1,23 @@
 /**
  * BYOK API key storage — AES-GCM 256-bit encryption at rest.
  *
- * Storage format:
- *   localStorage['aitp_api_key']     = JSON { ciphertext: "<base64>", iv: "<base64>" }
- *   localStorage['aitp_device_salt'] = base64 string (per-device random salt)
+ * Storage format (per provider):
+ *   localStorage['aitp_api_key']         = OpenAI    JSON { ciphertext, iv }
+ *   localStorage['aitp_anthropic_key']   = Anthropic JSON { ciphertext, iv }
+ *   localStorage['aitp_device_salt']     = base64 string (per-device random salt)
  *
  * The raw key is NEVER written to any persistent store. The plaintext key is
  * held in memory only for the duration of each AI call (the return value of
  * getApiKey()) and never serialised into Zustand or elsewhere.
+ *
+ * `API_KEY_STORAGE` is the legacy/default OpenAI slot. `OPENAI_KEY_STORAGE` is
+ * an alias so provider-aware call sites can be explicit; `ANTHROPIC_KEY_STORAGE`
+ * is the second BYOK provider slot.
  */
 
 export const API_KEY_STORAGE = 'aitp_api_key';
+export const OPENAI_KEY_STORAGE = API_KEY_STORAGE;
+export const ANTHROPIC_KEY_STORAGE = 'aitp_anthropic_key';
 export const DEVICE_SALT_STORAGE = 'aitp_device_salt';
 
 const KEY_INFO = 'journ-ai-key';
@@ -80,12 +87,23 @@ async function deriveKey(
 }
 
 /**
- * Encrypt and persist the raw API key. Throws on failure (e.g. quota full)
- * so the caller can surface a specific error WITHOUT any plaintext fallback.
+ * Encrypt and persist the raw API key under the given provider slot (defaults
+ * to the OpenAI slot). Trims leading/trailing whitespace — pasted keys often
+ * carry a trailing newline that would otherwise be sent verbatim and rejected.
+ * Throws 'empty-key' when nothing remains after trimming, and 'crypto-unavailable'
+ * / QuotaExceededError so callers can surface a specific error WITHOUT any
+ * plaintext fallback.
  */
-export async function setApiKey(rawKey: string): Promise<void> {
+export async function setApiKey(
+  rawKey: string,
+  storageKey: string = OPENAI_KEY_STORAGE,
+): Promise<void> {
   if (!isCryptoAvailable()) {
     throw new Error('crypto-unavailable');
+  }
+  const trimmed = rawKey.trim();
+  if (!trimmed) {
+    throw new Error('empty-key');
   }
   const saltBytes = getOrCreateDeviceSalt();
   const derivedKey = await deriveKey(saltBytes, ['encrypt']);
@@ -94,7 +112,7 @@ export async function setApiKey(rawKey: string): Promise<void> {
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     derivedKey,
-    new TextEncoder().encode(rawKey),
+    new TextEncoder().encode(trimmed),
   );
   const payload = JSON.stringify({
     ciphertext: toBase64(new Uint8Array(ciphertext)),
@@ -102,16 +120,16 @@ export async function setApiKey(rawKey: string): Promise<void> {
   });
   // localStorage.setItem throws QuotaExceededError when storage is full —
   // let it propagate; we never write a plaintext fallback.
-  localStorage.setItem(API_KEY_STORAGE, payload);
+  localStorage.setItem(storageKey, payload);
 }
 
-/** Remove the stored key entirely (reverts AI features to degraded mode). */
-export function clearApiKey(): void {
-  localStorage.removeItem(API_KEY_STORAGE);
+/** Remove the stored key for a provider (reverts AI features to degraded mode). */
+export function clearApiKey(storageKey: string = OPENAI_KEY_STORAGE): void {
+  localStorage.removeItem(storageKey);
 }
 
 /**
- * Decrypt and return the stored API key from localStorage.
+ * Decrypt and return the stored API key for a provider slot from localStorage.
  * Returns null if no key is stored, the salt is missing, decryption fails
  * (tampered storage), or crypto is unavailable. On corruption the stale
  * ciphertext is cleared so the user is prompted to re-enter their key.
@@ -120,12 +138,12 @@ export async function getApiKey(
   storageKey: string = OPENAI_KEY_STORAGE,
 ): Promise<string | null> {
   try {
-    const stored = localStorage.getItem(API_KEY_STORAGE);
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
     const deviceSalt = localStorage.getItem(DEVICE_SALT_STORAGE);
     if (!deviceSalt) {
       // Salt missing but ciphertext present → unrecoverable; clear and prompt.
-      clearApiKey();
+      clearApiKey(storageKey);
       return null;
     }
     const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
@@ -144,7 +162,7 @@ export async function getApiKey(
   }
 }
 
-/** True when a (readable) key is currently stored. */
-export function hasStoredKey(): boolean {
-  return localStorage.getItem(API_KEY_STORAGE) !== null;
+/** True when a key is currently stored for the given provider slot. */
+export function hasStoredKey(storageKey: string = OPENAI_KEY_STORAGE): boolean {
+  return localStorage.getItem(storageKey) !== null;
 }
