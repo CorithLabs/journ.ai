@@ -1,18 +1,109 @@
 /**
- * Shared utility: decrypt and return the stored API key from localStorage.
- * Returns null if no key is stored, decryption fails, or crypto is unavailable.
+ * AES-GCM encrypted BYOK key storage.
  *
  * Storage format: localStorage['aitp_api_key'] = JSON { ciphertext: "<base64>", iv: "<base64>" }
  * Salt: localStorage['aitp_device_salt'] = base64 string
+ *
+ * The raw key is NEVER written to localStorage in plaintext, and is held in
+ * memory only for the duration of an AI call.
+ */
+
+const KEY_STORAGE = 'aitp_api_key';
+const SALT_STORAGE = 'aitp_device_salt';
+
+function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let binary = '';
+  for (let i = 0; i < arr.length; i++) binary += String.fromCharCode(arr[i]);
+  return btoa(binary);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+/** Return the per-device salt, generating and persisting one on first use. */
+function getOrCreateDeviceSalt(): Uint8Array {
+  const existing = localStorage.getItem(SALT_STORAGE);
+  if (existing) return base64ToBytes(existing);
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  localStorage.setItem(SALT_STORAGE, bytesToBase64(salt));
+  return salt;
+}
+
+async function deriveKey(
+  usage: KeyUsage[],
+): Promise<CryptoKey> {
+  const salt = getOrCreateDeviceSalt();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    salt,
+    { name: 'HKDF' },
+    false,
+    ['deriveKey'],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(16),
+      info: new TextEncoder().encode('journ-ai-key'),
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    usage,
+  );
+}
+
+/**
+ * Encrypt and store the API key.
+ *
+ * The raw key is trimmed before encoding — users copy-pasting from the OpenAI
+ * dashboard frequently include a trailing newline or leading space, which
+ * would otherwise be encrypted, stored, and sent verbatim, causing a 401.
+ * An empty (or whitespace-only) key is rejected so we never store a blank key.
+ */
+export async function setApiKey(rawKey: string): Promise<void> {
+  const trimmed = rawKey.trim();
+  if (!trimmed) {
+    throw new Error('API key cannot be empty.');
+  }
+  const iv = new Uint8Array(12);
+  crypto.getRandomValues(iv);
+  const derivedKey = await deriveKey(['encrypt']);
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    derivedKey,
+    new TextEncoder().encode(trimmed),
+  );
+  localStorage.setItem(
+    KEY_STORAGE,
+    JSON.stringify({
+      ciphertext: bytesToBase64(ciphertext),
+      iv: bytesToBase64(iv),
+    }),
+  );
+}
+
+/** Remove the stored key. AI features revert to degraded mode. */
+export function clearApiKey(): void {
+  localStorage.removeItem(KEY_STORAGE);
+}
+
+/**
+ * Shared utility: decrypt and return the stored API key from localStorage.
+ * Returns null if no key is stored, decryption fails, or crypto is unavailable.
  */
 export async function getApiKey(): Promise<string | null> {
   try {
-    const stored = localStorage.getItem('aitp_api_key');
+    const stored = localStorage.getItem(KEY_STORAGE);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
-    const deviceSalt = localStorage.getItem('aitp_device_salt');
+    const deviceSalt = localStorage.getItem(SALT_STORAGE);
     if (!deviceSalt) return null;
-    const saltBytes = Uint8Array.from(atob(deviceSalt), (c) => c.charCodeAt(0));
+    const saltBytes = base64ToBytes(deviceSalt);
     const keyMaterial = await crypto.subtle.importKey(
       'raw',
       saltBytes,
@@ -32,8 +123,8 @@ export async function getApiKey(): Promise<string | null> {
       false,
       ['decrypt'],
     );
-    const ivBytes = Uint8Array.from(atob(parsed.iv), (c) => c.charCodeAt(0));
-    const cipherBytes = Uint8Array.from(atob(parsed.ciphertext), (c) => c.charCodeAt(0));
+    const ivBytes = base64ToBytes(parsed.iv);
+    const cipherBytes = base64ToBytes(parsed.ciphertext);
     const plaintext = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: ivBytes },
       derivedKey,
