@@ -5,9 +5,9 @@ import { totalRouteDistanceKm, type PinActivity } from '../../services/mapbox';
 
 // Minimal types for CDN-loaded mapbox-gl (window.mapboxgl)
 interface MapboxGLMap {
-  on(event: string, handler: () => void): this;
+  on(event: string, handler: (e?: unknown) => void): this;
   on(event: string, layerId: string, handler: (e: unknown) => void): this;
-  off(event: string, handler: () => void): this;
+  off(event: string, handler: (e?: unknown) => void): this;
   remove(): void;
   addSource(id: string, source: Record<string, unknown>): this;
   addLayer(layer: Record<string, unknown>): this;
@@ -63,11 +63,27 @@ interface Props {
   pins: PinActivity[];
   onDistanceChange: (km: number | null) => void;
   onPinClick: (pin: PinActivity) => void;
+  /** Called when Mapbox GL emits an error. kind distinguishes an auth failure
+   * (invalid/expired token → HTTP 401 from tile servers) from any other error. */
+  onMapError?: (kind: 'auth' | 'other') => void;
 }
 
 const ROUTE_SOURCE_ID = 'route-line-source';
 const ROUTE_LAYER_ID = 'route-line-layer';
 const ARROW_LAYER_ID = 'route-arrow-layer';
+
+// Shape of a Mapbox GL error event — we only need the optional status code.
+interface MapboxErrorEvent {
+  error?: { status?: number; message?: string };
+}
+
+function isAuthError(e: unknown): boolean {
+  const err = (e as MapboxErrorEvent | undefined)?.error;
+  if (!err) return false;
+  if (err.status === 401 || err.status === 403) return true;
+  const msg = err.message?.toLowerCase() ?? '';
+  return msg.includes('401') || msg.includes('unauthorized') || msg.includes('access token');
+}
 
 function createPinElement(
   sequenceNumber: number,
@@ -105,10 +121,13 @@ export default function MapboxMap({
   pins,
   onDistanceChange,
   onPinClick,
+  onMapError,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxGLMap | null>(null);
   const markersRef = useRef<MapboxMarker[]>([]);
+  const onMapErrorRef = useRef(onMapError);
+  onMapErrorRef.current = onMapError;
 
   // Remove all existing markers
   const clearMarkers = useCallback(() => {
@@ -256,6 +275,13 @@ export default function MapboxMap({
 
     mapRef.current = map;
 
+    // Surface Mapbox errors (e.g. HTTP 401 from an invalid/expired token) so the
+    // MapTab can show an actionable message instead of a broken map.
+    const handleError = (e?: unknown) => {
+      onMapErrorRef.current?.(isAuthError(e) ? 'auth' : 'other');
+    };
+    map.on('error', handleError);
+
     map.on('load', () => {
       // Load arrow image for route direction
       map.loadImage(
@@ -269,6 +295,7 @@ export default function MapboxMap({
     });
 
     return () => {
+      map.off('error', handleError);
       clearMarkers();
       clearRoute();
       map.remove();
