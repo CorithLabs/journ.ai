@@ -12,11 +12,27 @@ export interface WeatherDay {
 
 export type ActiveTab = 'itinerary' | 'todo' | 'map' | 'clipboard';
 
+/** Which BYOK AI provider is currently selected. Mirrors `aitp_ai_provider`. */
+export type SelectedProvider = 'openai' | 'anthropic';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+}
+
+const PROVIDER_STORAGE = 'aitp_ai_provider';
+
+/** Read the persisted provider preference, defaulting to OpenAI. */
+function initialSelectedProvider(): SelectedProvider {
+  try {
+    return localStorage.getItem(PROVIDER_STORAGE) === 'anthropic'
+      ? 'anthropic'
+      : 'openai';
+  } catch {
+    return 'openai';
+  }
 }
 
 interface AppStore {
@@ -32,6 +48,9 @@ interface AppStore {
 
   // AI provider (read from localStorage on init)
   aiProvider: 'byok' | 'mcp' | null;
+  // Which BYOK provider is active (openai | anthropic), initialised from
+  // localStorage['aitp_ai_provider'] on boot.
+  selectedProvider: SelectedProvider;
 
   // Actions
   setActivePlan: (planId: string | null) => void;
@@ -43,6 +62,7 @@ interface AppStore {
   setOfflineBanner: (visible: boolean) => void;
   setWeather: (data: Record<string, WeatherDay>) => void;
   setAiProvider: (provider: 'byok' | 'mcp' | null) => void;
+  setSelectedProvider: (provider: SelectedProvider) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -53,6 +73,7 @@ export const useAppStore = create<AppStore>((set) => ({
   offlineBannerVisible: false,
   weatherByDate: null,
   aiProvider: null,
+  selectedProvider: initialSelectedProvider(),
 
   setActivePlan: (planId) => set({ activePlanId: planId }),
   setActiveTab: (tab) => set({ activeTab: tab }),
@@ -64,4 +85,5 @@ export const useAppStore = create<AppStore>((set) => ({
   setOfflineBanner: (visible) => set({ offlineBannerVisible: visible }),
   setWeather: (data) => set({ weatherByDate: data }),
   setAiProvider: (provider) => set({ aiProvider: provider }),
+  setSelectedProvider: (provider) => set({ selectedProvider: provider }),
 }));
