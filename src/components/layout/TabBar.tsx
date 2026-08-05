@@ -1,9 +1,10 @@
-import { useRef, KeyboardEvent } from 'react';
+import { useEffect, useRef, KeyboardEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
+import { useAppStore, type ActiveTab } from '../../store';
 
 interface Tab {
-  key: string;
+  key: ActiveTab;
   label: string;
   path: string;
   icon: React.ReactNode;
@@ -46,13 +47,22 @@ export default function TabBar({ planId }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
 
-  const activeTab = TABS.find((t) =>
+  const activeTab: ActiveTab = TABS.find((t) =>
     location.pathname.endsWith(`/${t.path}`),
   )?.key ?? 'itinerary';
 
+  // Keep the global session store in sync with the currently visible tab so the
+  // persistent AI agent panel header and the agent's system-prompt context both
+  // reflect the tab the user is actually on. Runs on every tab switch.
+  useEffect(() => {
+    setActiveTab(activeTab);
+  }, [activeTab, setActiveTab]);
+
   const goTo = (tab: Tab) => {
     localStorage.setItem(STORAGE_KEY(planId), tab.key);
+    setActiveTab(tab.key);
     navigate(`/plan/${planId}/${tab.path}`);
   };
 
