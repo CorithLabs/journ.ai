@@ -14,6 +14,8 @@ import { useAppStore } from '../store';
 
 export const SEEDED_FLAG = 'aitp_seeded';
 export const DEMO_BANNER_DISMISSED = 'aitp_demo_banner_dismissed';
+/** Records which plan is the demo, so the demo banner can target it. */
+export const DEMO_PLAN_ID = 'aitp_demo_plan_id';
 
 /** ISO date string N days from today (date portion only). */
 function isoDateOffset(days: number): string {
@@ -165,6 +167,7 @@ export async function seedDemoDataIfNeeded(): Promise<string | null> {
     await db.clipboard.bulkAdd(buildDemoClipboard(plan.id));
 
     localStorage.setItem(SEEDED_FLAG, 'true');
+    localStorage.setItem(DEMO_PLAN_ID, plan.id);
 
     // Highlight the demo plan in the sidebar immediately.
     useAppStore.getState().setActivePlan(plan.id);
