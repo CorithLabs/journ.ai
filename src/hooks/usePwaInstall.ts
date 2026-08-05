@@ -34,14 +34,20 @@ export function usePwaInstall() {
     };
   }, []);
 
-  const triggerInstall = async () => {
-    if (!installPrompt) return;
+  /**
+   * Fires the native browser install prompt.
+   * Returns the user's choice ('accepted' | 'dismissed'), or null if the
+   * prompt was unavailable (race condition on slow devices — no-op, no error).
+   */
+  const triggerInstall = async (): Promise<'accepted' | 'dismissed' | null> => {
+    if (!installPrompt) return null;
     await installPrompt.prompt();
     const { outcome } = await installPrompt.userChoice;
     if (outcome === 'accepted') {
       setIsInstalled(true);
       setInstallPrompt(null);
     }
+    return outcome;
   };
 
   return {
