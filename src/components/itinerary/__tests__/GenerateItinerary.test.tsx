@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import GenerateItinerary from '../GenerateItinerary';
-import type { Plan } from '../../../db';
+import { db, type Plan } from '../../../db';
+import { autoGenerateTodos } from '../generateTodos';
+
+// Spy on autoGenerateTodos so we can assert the plan it receives has a
+// populated itinerary (Bug 2 regression guard).
+vi.mock('../generateTodos', () => ({
+  autoGenerateTodos: vi.fn().mockResolvedValue(undefined),
+}));
 
 const mockPlan: Plan = {
   id: 'plan-1',
@@ -25,6 +32,50 @@ const mockPlan: Plan = {
     accommodationBooked: false,
   },
 };
+
+/**
+ * Build a mock streaming fetch Response whose SSE body emits `content` as a
+ * single delta chunk, matching the OpenAI chat.completions stream format.
+ */
+function mockStreamResponse(content: string): Response {
+  const frame = `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n` + 'data: [DONE]\n\n';
+  const bytes = new TextEncoder().encode(frame);
+  let sent = false;
+  const reader = {
+    read: () =>
+      sent
+        ? Promise.resolve({ done: true, value: undefined })
+        : ((sent = true), Promise.resolve({ done: false, value: bytes })),
+  };
+  return {
+    ok: true,
+    status: 200,
+    body: { getReader: () => reader },
+    json: () => Promise.resolve({}),
+  } as unknown as Response;
+}
+
+/** Seed localStorage so getApiKey() decrypts successfully (crypto is mocked). */
+function seedApiKey() {
+  localStorage.setItem('aitp_api_key', JSON.stringify({ ciphertext: btoa('x'), iv: btoa('y') }));
+  localStorage.setItem('aitp_device_salt', btoa('salt'));
+}
+
+const FENCED_JSON =
+  '```json\n' +
+  JSON.stringify({
+    days: [
+      {
+        dayIndex: 0,
+        label: 'Day 1 — Mon 14 Jul',
+        estimatedDailySpend: { min: 80, max: 150, currency: 'USD' },
+        activities: [
+          { id: 'a-1', name: 'Tsukiji Outer Market', time: '08:00', locationName: 'Tsukiji, Tokyo', notes: 'Sushi breakfast', budgetWarning: false },
+        ],
+      },
+    ],
+  }) +
+  '\n```\n';
 
 describe('GenerateItinerary', () => {
   const onGenerated = vi.fn();
@@ -65,5 +116,87 @@ describe('GenerateItinerary', () => {
     await waitFor(() => {
       expect(screen.getByText('Retry')).toBeInTheDocument();
     });
+  });
+
+  it('parses a markdown-fenced AI response and saves the itinerary to IndexedDB (Bug 1)', async () => {
+    seedApiKey();
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(mockStreamResponse(FENCED_JSON));
+    // db.plans.get resolves the freshly-written plan for autoGenerateTodos.
+    vi.mocked(db.plans.get).mockResolvedValue({
+      ...mockPlan,
+      itinerary: [{ dayIndex: 0, label: 'Day 1 — Mon 14 Jul', activities: [] }],
+    });
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => {
+      expect(db.plans.update).toHaveBeenCalledWith(
+        'plan-1',
+        expect.objectContaining({ itinerary: expect.arrayContaining([expect.objectContaining({ dayIndex: 0 })]) }),
+      );
+    });
+    // Only ONE stream call — the fenced JSON parsed on the first pass, so the
+    // repair prompt was never triggered.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(onGenerated).toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('passes a plan with a non-empty itinerary to autoGenerateTodos (Bug 2)', async () => {
+    seedApiKey();
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(mockStreamResponse(FENCED_JSON));
+    const freshPlan = {
+      ...mockPlan,
+      itinerary: [
+        { dayIndex: 0, label: 'Day 1 — Mon 14 Jul', activities: [{ id: 'a-1', name: 'Tsukiji Outer Market', time: '08:00', locationName: 'Tsukiji, Tokyo', notes: '', pinnedToTodo: false, budgetWarning: false }] },
+      ],
+    };
+    vi.mocked(db.plans.get).mockResolvedValue(freshPlan);
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => {
+      expect(autoGenerateTodos).toHaveBeenCalledTimes(1);
+    });
+    const received = vi.mocked(autoGenerateTodos).mock.calls[0][0];
+    expect(received.itinerary.length).toBeGreaterThan(0);
+    fetchSpy.mockRestore();
+  });
+
+  it('skips autoGenerateTodos silently when the plan is missing after update (edge case)', async () => {
+    seedApiKey();
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(mockStreamResponse(FENCED_JSON));
+    vi.mocked(db.plans.get).mockResolvedValue(undefined as unknown as Plan);
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => {
+      expect(db.plans.update).toHaveBeenCalled();
+    });
+    // Itinerary is still saved; autoGenerateTodos is not called on undefined plan.
+    expect(autoGenerateTodos).not.toHaveBeenCalled();
+    expect(onGenerated).toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('parses an un-fenced AI response unchanged (fence stripping is a no-op)', async () => {
+    seedApiKey();
+    const plain = JSON.stringify({
+      days: [{ dayIndex: 0, label: 'Day 1', estimatedDailySpend: { min: 50, max: 90, currency: 'USD' }, activities: [{ id: 'a-2', name: 'Ueno Park', time: '10:00', locationName: 'Ueno', notes: '', budgetWarning: false }] }],
+    });
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(mockStreamResponse(plain));
+    vi.mocked(db.plans.get).mockResolvedValue({ ...mockPlan, itinerary: [{ dayIndex: 0, label: 'Day 1', activities: [] }] });
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => {
+      expect(db.plans.update).toHaveBeenCalled();
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
   });
 });
