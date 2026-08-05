@@ -76,13 +76,18 @@ function validateAndParseDays(raw: unknown): Day[] | null {
 
 /**
  * Attempt to parse the AI's raw text into a validated Day[].
+ * 0. Strip any surrounding markdown code fences (```json ... ```) — gpt-4o-mini
+ *    frequently wraps its JSON response in fences despite the "no markdown"
+ *    instruction, and the repair prompt's response is often fenced too.
  * 1. Extract the first JSON object.
  * 2. Parse directly.
  * 3. On failure, apply a local trailing-comma repair and retry.
  * Returns null if the text cannot be coerced into a valid itinerary.
  */
 function tryParseItinerary(text: string): Day[] | null {
-  const m = text.match(/\{[\s\S]*\}/);
+  // Strip a leading ```lang fence and a trailing ``` fence before matching.
+  const stripped = text.replace(/^```[a-z]*\n?/m, '').replace(/```\s*$/m, '');
+  const m = stripped.match(/\{[\s\S]*\}/);
   if (!m) return null;
   let parsed: unknown;
   try {
@@ -197,7 +202,11 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       if (!days) throw new Error('The AI returned an itinerary we could not read. Your previous plan is unchanged — please retry.');
 
       await db.plans.update(plan.id, { itinerary: days, updatedAt: new Date().toISOString() });
-      await autoGenerateTodos(plan);
+      // Re-fetch the freshly-written plan so autoGenerateTodos sees the new
+      // itinerary — the `plan` prop is stale (still itinerary: []) until
+      // useLiveQuery propagates the IndexedDB write back through React.
+      const updatedPlan = await db.plans.get(plan.id);
+      if (updatedPlan) await autoGenerateTodos(updatedPlan);
       onGenerated();
     } catch (err) { setError(err instanceof Error ? err.message : 'Generation failed'); setStatus('error'); }
   };
