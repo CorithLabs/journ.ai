@@ -77,8 +77,8 @@ function validateAndParseDays(raw: unknown): Day[] | null {
 
 /**
  * Attempt to parse the AI's raw text into a validated Day[].
- * 0. Strip any surrounding markdown code fences (```json ... ```) — gpt-4o-mini
- *    frequently wraps its JSON response in fences despite the "no markdown"
+ * 0. Strip any surrounding markdown code fences (```json ... ```) — models
+ *    frequently wrap their JSON response in fences despite the "no markdown"
  *    instruction, and the repair prompt's response is often fenced too.
  * 1. Extract the first JSON object.
  * 2. Parse directly.
@@ -103,57 +103,6 @@ function tryParseItinerary(text: string): Day[] | null {
   return validateAndParseDays(parsed);
 }
 
-async function getApiKey(): Promise<string | null> {
-  try {
-    parsed = JSON.parse(m[0]);
-  } catch {
-    try {
-      parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
-    } catch {
-      return null;
-    }
-  }
-  return validateAndParseDays(parsed);
-}
-
-/**
- * Stream a chat completion, updating `onToken` with the accumulated text as
- * deltas arrive. Resolves with the full concatenated text.
- */
-async function streamCompletion(
-  apiKey: string,
-  messages: { role: string; content: string }[],
-  onToken: (full: string) => void,
-): Promise<string> {
-  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 4000 }),
-  });
-  if (!resp.ok) {
-    const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
-    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
-  }
-  const reader = resp.body?.getReader();
-  if (!reader) throw new Error('No response body');
-  let fullText = '';
-  const dec = new TextDecoder();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-      try {
-        const p2 = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
-        fullText += p2.choices?.[0]?.delta?.content ?? '';
-        onToken(fullText);
-      } catch { /* ignore partial SSE frames */ }
-    }
-  }
-  return fullText;
-}
-
 export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -162,11 +111,14 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const generate = async () => {
     setStatus('generating'); setError(null); setStreamText('');
     try {
-      const apiKey = await getApiKey();
-      if (!apiKey) { setError('No API key configured. Please add your OpenAI API key in Settings.'); setStatus('error'); return; }
-
       const prompt = buildPrompt(plan);
-      const fullText = await streamCompletion(apiKey, [{ role: 'user', content: prompt }], setStreamText);
+      // streamCompletion routes to the active provider (OpenAI or Anthropic)
+      // and yields the accumulated text through onToken. max_tokens defaults
+      // to 8000 in aiClient — enough for trips up to ~14 days.
+      const fullText = await streamCompletion(
+        [{ role: 'user', content: prompt }],
+        { onToken: setStreamText },
+      );
 
       // First attempt: extract + local repair.
       let days = tryParseItinerary(fullText);
@@ -175,7 +127,6 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       // follow-up prompt before giving up (per acceptance criteria).
       if (!days) {
         const repaired = await streamCompletion(
-          apiKey,
           [
             { role: 'user', content: prompt },
             { role: 'assistant', content: fullText },
@@ -186,7 +137,7 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
                 'Reply again with ONLY the corrected JSON object — no markdown, no prose, no code fences.',
             },
           ],
-          setStreamText,
+          { onToken: setStreamText },
         );
         days = tryParseItinerary(repaired);
       }
