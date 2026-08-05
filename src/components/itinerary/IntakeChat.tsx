@@ -64,7 +64,7 @@ export default function IntakeChat({ plan }: Props) {
     flightsBooked: null as boolean | null,
     accommodationBooked: null as boolean | null,
   });
-  const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function IntakeChat({ plan }: Props) {
   };
 
   const saveIntake = async (finalIntake: typeof intake) => {
-    setGenerating(true);
+    setSaving(true);
     try {
       await db.plans.update(plan.id, {
         intake: finalIntake,
@@ -223,18 +223,32 @@ export default function IntakeChat({ plan }: Props) {
       setStep('done');
       addMessage('assistant', STEP_MESSAGES.done);
     } finally {
-      setGenerating(false);
+      setSaving(false);
     }
   };
 
+  /**
+   * "Generate Itinerary →" CTA.
+   *
+   * This ONLY persists the completed intake to IndexedDB — it does NOT call
+   * OpenAI. Once `intake.budgetRange` is set on the plan record, the
+   * ItineraryTab state machine reactively routes to <GenerateItinerary>, which
+   * owns the actual AI generation. Keeping this handler side-effect-free avoids
+   * duplicate generation triggers and keeps the routing single-sourced in
+   * ItineraryTab.
+   */
   const handleGenerate = async () => {
-    // Trigger itinerary generation - handled by ItineraryView via updated plan
-    // For now, update plan with a flag to show the generation UI
-    await db.plans.update(plan.id, {
-      intake,
-      updatedAt: new Date().toISOString(),
-    });
-    // The ItineraryTab will now show ItineraryView (generation mode)
+    setSaving(true);
+    try {
+      await db.plans.update(plan.id, {
+        intake,
+        updatedAt: new Date().toISOString(),
+      });
+      // No navigation and no AI call here — ItineraryTab's useLiveQuery observes
+      // the completed intake and renders <GenerateItinerary> automatically.
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -283,7 +297,7 @@ export default function IntakeChat({ plan }: Props) {
           <div className="flex justify-center mt-4">
             <button
               onClick={handleGenerate}
-              disabled={generating}
+              disabled={saving}
               className="flex items-center gap-2 bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors"
               data-testid="generate-itinerary-btn"
             >
