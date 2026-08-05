@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import TabBar from '../TabBar';
+import { useAppStore } from '../../../store';
 
 describe('TabBar', () => {
   it('renders four tabs', () => {
@@ -37,5 +38,32 @@ describe('TabBar', () => {
     expect(screen.getByText('To-Do')).toBeInTheDocument();
     expect(screen.getByText('Map')).toBeInTheDocument();
     expect(screen.getByText('Clipboard')).toBeInTheDocument();
+  });
+
+  it('syncs the store activeTab from the current URL on mount', async () => {
+    // The global setup mocks useLocation to '/plan/test-plan-id/itinerary',
+    // so the mount effect must sync the store's activeTab to 'itinerary'.
+    useAppStore.setState({ activeTab: 'clipboard' });
+    render(
+      <MemoryRouter initialEntries={['/plan/test-plan-id/itinerary']}>
+        <TabBar planId="test-plan-id" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(useAppStore.getState().activeTab).toBe('itinerary');
+    });
+  });
+
+  it('updates the store activeTab when a different tab is clicked', async () => {
+    useAppStore.setState({ activeTab: 'itinerary' });
+    render(
+      <MemoryRouter initialEntries={['/plan/test-plan-id/itinerary']}>
+        <TabBar planId="test-plan-id" />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('tab-clipboard'));
+    await waitFor(() => {
+      expect(useAppStore.getState().activeTab).toBe('clipboard');
+    });
   });
 });
