@@ -4,6 +4,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db';
 import type { Plan } from '../../db';
 import { X } from 'lucide-react';
+import {
+  MAX_TRIP_DAYS,
+  MAX_TRIP_DAYS_ERROR,
+  exceedsMaxTripDays,
+} from '../../utils/tripDuration';
 
 interface Props {
   onClose: () => void;
@@ -17,13 +22,20 @@ export default function NewPlanModal({ onClose }: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  // Trip length must be <= MAX_TRIP_DAYS. Computed live so the Create button
+  // and inline error react immediately to any date change.
+  const tooLong = exceedsMaxTripDays(startDate, endDate);
+  const endBeforeStart = !!(startDate && endDate && endDate < startDate);
+
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!destination.trim()) {
       errs.destination = 'Destination is required';
     }
-    if (startDate && endDate && endDate < startDate) {
+    if (endBeforeStart) {
       errs.endDate = 'End date must be after start date';
+    } else if (tooLong) {
+      errs.endDate = MAX_TRIP_DAYS_ERROR;
     }
     return errs;
   };
@@ -55,6 +67,14 @@ export default function NewPlanModal({ onClose }: Props) {
       setSaving(false);
     }
   };
+
+  // The end-date error shown inline: prefer the "end before start" message,
+  // then the length cap, then any error set by submit-time validation.
+  const endDateError =
+    (endBeforeStart ? 'End date must be after start date' : '') ||
+    (tooLong ? MAX_TRIP_DAYS_ERROR : '') ||
+    errors.endDate ||
+    '';
 
   return (
     <div
@@ -124,7 +144,10 @@ export default function NewPlanModal({ onClose }: Props) {
             id="start-date"
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value);
+              if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
+            }}
             className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
             data-testid="start-date-input"
           />
@@ -146,24 +169,31 @@ export default function NewPlanModal({ onClose }: Props) {
               if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
             }}
             className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
-            aria-describedby={errors.endDate ? 'end-date-error' : undefined}
+            aria-describedby={
+              endDateError ? 'end-date-error' : 'end-date-help'
+            }
             data-testid="end-date-input"
           />
-          {errors.endDate && (
+          {endDateError ? (
             <p
               id="end-date-error"
               role="alert"
               className="mt-1 text-xs text-status-danger"
+              data-testid="end-date-error"
             >
-              {errors.endDate}
+              {endDateError}
+            </p>
+          ) : (
+            <p id="end-date-help" className="mt-1 text-xs text-ink-muted">
+              Up to {MAX_TRIP_DAYS} days supported.
             </p>
           )}
         </div>
 
         <button
           type="submit"
-          disabled={saving}
-          className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold px-4 py-2.5 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none text-sm"
+          disabled={saving || tooLong}
+          className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ink-inverse font-semibold px-4 py-2.5 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none text-sm"
           data-testid="create-plan-btn"
         >
           {saving ? 'Creating…' : 'Create Plan'}

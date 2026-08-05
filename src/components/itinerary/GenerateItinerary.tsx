@@ -3,6 +3,7 @@ import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
+import { streamCompletion, MissingKeyError } from '../../services/aiClient';
 
 interface Props {
   plan: Plan;
@@ -104,22 +105,15 @@ function tryParseItinerary(text: string): Day[] | null {
 
 async function getApiKey(): Promise<string | null> {
   try {
-    const stored = localStorage.getItem('aitp_api_key');
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
-    const deviceSalt = localStorage.getItem('aitp_device_salt');
-    if (!deviceSalt) return null;
-    const saltBytes = Uint8Array.from(atob(deviceSalt), c => c.charCodeAt(0));
-    const keyMaterial = await crypto.subtle.importKey('raw', saltBytes, { name: 'HKDF' }, false, ['deriveKey']);
-    const derivedKey = await crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(16), info: new TextEncoder().encode('journ-ai-key') },
-      keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
-    );
-    const ivBytes = Uint8Array.from(atob(parsed.iv), c => c.charCodeAt(0));
-    const cipherBytes = Uint8Array.from(atob(parsed.ciphertext), c => c.charCodeAt(0));
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, derivedKey, cipherBytes);
-    return new TextDecoder().decode(plaintext);
-  } catch { return null; }
+    parsed = JSON.parse(m[0]);
+  } catch {
+    try {
+      parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
+    } catch {
+      return null;
+    }
+  }
+  return validateAndParseDays(parsed);
 }
 
 /**
@@ -208,7 +202,17 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       const updatedPlan = await db.plans.get(plan.id);
       if (updatedPlan) await autoGenerateTodos(updatedPlan);
       onGenerated();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Generation failed'); setStatus('error'); }
+    } catch (err) {
+      if (err instanceof MissingKeyError) {
+        setError('No API key configured. Please add your API key in Settings.');
+      } else if (err instanceof Error && err.message.startsWith('The response was too long')) {
+        // Map the generic client message to an itinerary-specific one.
+        setError('The itinerary was too long to generate in one response. Try a shorter trip (fewer days) or retry.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Generation failed');
+      }
+      setStatus('error');
+    }
   };
 
   return (

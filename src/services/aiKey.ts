@@ -116,7 +116,9 @@ export function clearApiKey(): void {
  * (tampered storage), or crypto is unavailable. On corruption the stale
  * ciphertext is cleared so the user is prompted to re-enter their key.
  */
-export async function getApiKey(): Promise<string | null> {
+export async function getApiKey(
+  storageKey: string = OPENAI_KEY_STORAGE,
+): Promise<string | null> {
   try {
     const stored = localStorage.getItem(API_KEY_STORAGE);
     if (!stored) return null;
