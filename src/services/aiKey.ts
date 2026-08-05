@@ -1,14 +1,22 @@
 /**
  * AES-GCM encrypted BYOK key storage.
  *
- * Storage format: localStorage['aitp_api_key'] = JSON { ciphertext: "<base64>", iv: "<base64>" }
+ * Storage format: localStorage[<storageKey>] = JSON { ciphertext: "<base64>", iv: "<base64>" }
  * Salt: localStorage['aitp_device_salt'] = base64 string
  *
  * The raw key is NEVER written to localStorage in plaintext, and is held in
  * memory only for the duration of an AI call.
+ *
+ * Two providers share this module. Each stores its encrypted key under a
+ * distinct localStorage key:
+ *   - OpenAI:    'aitp_api_key'
+ *   - Anthropic: 'aitp_anthropic_key'
+ * The default `setApiKey`/`getApiKey`/`clearApiKey` operate on the OpenAI key
+ * for backward compatibility; pass an explicit storageKey for Anthropic.
  */
 
-const KEY_STORAGE = 'aitp_api_key';
+export const OPENAI_KEY_STORAGE = 'aitp_api_key';
+export const ANTHROPIC_KEY_STORAGE = 'aitp_anthropic_key';
 const SALT_STORAGE = 'aitp_device_salt';
 
 function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
@@ -70,14 +78,18 @@ async function deriveKey(usage: KeyUsage[]): Promise<CryptoKey> {
 }
 
 /**
- * Encrypt and store the API key.
+ * Encrypt and store an API key under the given localStorage key (defaults to
+ * the OpenAI key).
  *
- * The raw key is trimmed before encoding — users copy-pasting from the OpenAI
+ * The raw key is trimmed before encoding — users copy-pasting from a provider
  * dashboard frequently include a trailing newline or leading space, which
  * would otherwise be encrypted, stored, and sent verbatim, causing a 401.
  * An empty (or whitespace-only) key is rejected so we never store a blank key.
  */
-export async function setApiKey(rawKey: string): Promise<void> {
+export async function setApiKey(
+  rawKey: string,
+  storageKey: string = OPENAI_KEY_STORAGE,
+): Promise<void> {
   const trimmed = rawKey.trim();
   if (!trimmed) {
     throw new Error('API key cannot be empty.');
@@ -92,7 +104,7 @@ export async function setApiKey(rawKey: string): Promise<void> {
     plaintext,
   );
   localStorage.setItem(
-    KEY_STORAGE,
+    storageKey,
     JSON.stringify({
       ciphertext: bytesToBase64(ciphertext),
       iv: bytesToBase64(iv),
@@ -100,18 +112,21 @@ export async function setApiKey(rawKey: string): Promise<void> {
   );
 }
 
-/** Remove the stored key. AI features revert to degraded mode. */
-export function clearApiKey(): void {
-  localStorage.removeItem(KEY_STORAGE);
+/** Remove the stored key (defaults to the OpenAI key). */
+export function clearApiKey(storageKey: string = OPENAI_KEY_STORAGE): void {
+  localStorage.removeItem(storageKey);
 }
 
 /**
- * Shared utility: decrypt and return the stored API key from localStorage.
- * Returns null if no key is stored, decryption fails, or crypto is unavailable.
+ * Decrypt and return the stored API key from the given localStorage key
+ * (defaults to the OpenAI key). Returns null if no key is stored, decryption
+ * fails, or crypto is unavailable.
  */
-export async function getApiKey(): Promise<string | null> {
+export async function getApiKey(
+  storageKey: string = OPENAI_KEY_STORAGE,
+): Promise<string | null> {
   try {
-    const stored = localStorage.getItem(KEY_STORAGE);
+    const stored = localStorage.getItem(storageKey);
     if (!stored) return null;
     const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
     const deviceSalt = localStorage.getItem(SALT_STORAGE);
