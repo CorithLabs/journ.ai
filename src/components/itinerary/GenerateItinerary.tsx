@@ -3,6 +3,7 @@ import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
+import { getApiKey } from '../../services/aiKey';
 
 interface Props {
   plan: Plan;
@@ -76,13 +77,16 @@ function validateAndParseDays(raw: unknown): Day[] | null {
 
 /**
  * Attempt to parse the AI's raw text into a validated Day[].
- * 1. Extract the first JSON object.
- * 2. Parse directly.
- * 3. On failure, apply a local trailing-comma repair and retry.
+ * 1. Strip markdown code fences (```json ... ```) if present.
+ * 2. Extract the first JSON object.
+ * 3. Parse directly.
+ * 4. On failure, apply a local trailing-comma repair and retry.
  * Returns null if the text cannot be coerced into a valid itinerary.
  */
 function tryParseItinerary(text: string): Day[] | null {
-  const m = text.match(/\{[\s\S]*\}/);
+  // gpt-4o-mini frequently wraps JSON in markdown fences; strip them first.
+  const stripped = text.replace(/^```[a-z]*\n?/m, '').replace(/```\s*$/m, '');
+  const m = stripped.match(/\{[\s\S]*\}/);
   if (!m) return null;
   let parsed: unknown;
   try {
@@ -97,29 +101,14 @@ function tryParseItinerary(text: string): Day[] | null {
   return validateAndParseDays(parsed);
 }
 
-async function getApiKey(): Promise<string | null> {
-  try {
-    const stored = localStorage.getItem('aitp_api_key');
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { ciphertext: string; iv: string };
-    const deviceSalt = localStorage.getItem('aitp_device_salt');
-    if (!deviceSalt) return null;
-    const saltBytes = Uint8Array.from(atob(deviceSalt), c => c.charCodeAt(0));
-    const keyMaterial = await crypto.subtle.importKey('raw', saltBytes, { name: 'HKDF' }, false, ['deriveKey']);
-    const derivedKey = await crypto.subtle.deriveKey(
-      { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(16), info: new TextEncoder().encode('journ-ai-key') },
-      keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
-    );
-    const ivBytes = Uint8Array.from(atob(parsed.iv), c => c.charCodeAt(0));
-    const cipherBytes = Uint8Array.from(atob(parsed.ciphertext), c => c.charCodeAt(0));
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivBytes }, derivedKey, cipherBytes);
-    return new TextDecoder().decode(plaintext);
-  } catch { return null; }
-}
-
 /**
  * Stream a chat completion, updating `onToken` with the accumulated text as
  * deltas arrive. Resolves with the full concatenated text.
+ *
+ * `max_tokens` is 8000 (well within gpt-4o-mini's 16k output limit) so that
+ * itineraries up to ~21 days are not truncated mid-JSON. If the stream still
+ * ends with finish_reason 'length' the response was cut off and cannot be
+ * repaired — we throw an actionable error immediately.
  */
 async function streamCompletion(
   apiKey: string,
@@ -129,7 +118,7 @@ async function streamCompletion(
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 4000 }),
+    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 8000 }),
   });
   if (!resp.ok) {
     const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
@@ -146,10 +135,27 @@ async function streamCompletion(
       const data = line.slice(6);
       if (data === '[DONE]') continue;
       try {
-        const p2 = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
-        fullText += p2.choices?.[0]?.delta?.content ?? '';
+        const p2 = JSON.parse(data) as {
+          choices?: { delta?: { content?: string }; finish_reason?: string | null }[];
+        };
+        const choice = p2.choices?.[0];
+        fullText += choice?.delta?.content ?? '';
         onToken(fullText);
-      } catch { /* ignore partial SSE frames */ }
+        // Truncated response — the model hit the token cap mid-JSON. A
+        // truncated response cannot be repaired, so surface a clear,
+        // actionable error rather than the generic "could not read" one.
+        if (choice?.finish_reason === 'length') {
+          throw new Error(
+            'The itinerary was too long to generate in one response. Try a shorter trip (fewer days) or retry.',
+          );
+        }
+      } catch (e) {
+        // Re-throw our own token-limit error; swallow partial-SSE parse errors.
+        if (e instanceof Error && e.message.startsWith('The itinerary was too long')) {
+          throw e;
+        }
+        /* ignore partial SSE frames */
+      }
     }
   }
   return fullText;
@@ -197,7 +203,10 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       if (!days) throw new Error('The AI returned an itinerary we could not read. Your previous plan is unchanged — please retry.');
 
       await db.plans.update(plan.id, { itinerary: days, updatedAt: new Date().toISOString() });
-      await autoGenerateTodos(plan);
+      // Re-fetch the plan so autoGenerateTodos sees the freshly-written
+      // itinerary (the `plan` prop still has the stale empty itinerary).
+      const updatedPlan = await db.plans.get(plan.id);
+      if (updatedPlan) await autoGenerateTodos(updatedPlan);
       onGenerated();
     } catch (err) { setError(err instanceof Error ? err.message : 'Generation failed'); setStatus('error'); }
   };
