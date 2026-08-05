@@ -65,6 +65,11 @@ export function useAgentChat(plan: Plan | undefined): AgentChat {
       }
 
       for (const tc of toolCalls) {
+        if (tc.malformed) {
+          // The model returned unparseable arguments.
+          reply("I couldn't complete that action — try rephrasing.");
+          continue;
+        }
         const result = await executeAgentAction(plan, { name: tc.name, args: tc.args });
         reply(result.message);
       }
