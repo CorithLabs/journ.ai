@@ -15,7 +15,8 @@ export interface ToolDefinition {
   function: {
     name: string;
     description?: string;
-    parameters: { type: 'object'; properties: Record<string, unknown>; required?: string[]; };
+    // Use readonly string[] so as-const tool arrays are compatible
+    parameters: { type: 'object'; properties: Record<string, unknown>; required?: readonly string[]; };
   };
 }
 export interface ParsedToolCall { name: string; args: Record<string, unknown>; malformed?: boolean; }
