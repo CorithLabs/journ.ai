@@ -251,3 +251,155 @@ async function streamAnthropic(
   }
   return fullText;
 }
+
+// ─── Tool-calling (agent) ─────────────────────────────────────────────────────
+
+/** OpenAI-style tool schema (the shape `AGENT_TOOLS` provides). */
+export interface ToolSchema {
+  type: 'function';
+  function: { name: string; description: string; parameters: unknown };
+}
+
+/** A tool the model asked to run. `malformed` = arguments weren't valid JSON. */
+export interface ToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  malformed?: boolean;
+}
+
+export interface ChatWithToolsResult {
+  text: string;
+  toolCalls: ToolCall[];
+}
+
+/**
+ * Non-streaming chat that lets the model call the given tools, routed to the
+ * active provider (OpenAI function-calling or Anthropic tool-use). Returns the
+ * assistant text plus any tool calls. Throws MissingKeyError when no key is
+ * stored, or an Error with a user-facing message on provider/transport failure.
+ * The agent (useAgentChat) is the only caller; routing lives here so the agent
+ * never talks to a provider endpoint directly.
+ */
+export async function chatWithTools(
+  messages: ChatMessage[],
+  tools: readonly ToolSchema[],
+  options: { temperature?: number; maxTokens?: number } = {},
+): Promise<ChatWithToolsResult> {
+  const provider = getActiveProvider();
+  const apiKey = await getApiKey(keyStorageFor(provider));
+  if (!apiKey) throw new MissingKeyError();
+  const maxTokens = options.maxTokens ?? MAX_TOKENS;
+  const temperature = options.temperature ?? 0.7;
+  return provider === 'anthropic'
+    ? chatWithToolsAnthropic(apiKey, messages, tools, maxTokens, temperature)
+    : chatWithToolsOpenAI(apiKey, messages, tools, maxTokens, temperature);
+}
+
+async function chatWithToolsOpenAI(
+  apiKey: string,
+  messages: ChatMessage[],
+  tools: readonly ToolSchema[],
+  maxTokens: number,
+  temperature: number,
+): Promise<ChatWithToolsResult> {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      messages,
+      tools,
+      tool_choice: 'auto',
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+  if (!resp.ok) {
+    const ed = (await resp.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
+  }
+  const data = (await resp.json()) as {
+    choices?: {
+      message?: {
+        content?: string | null;
+        tool_calls?: { function?: { name?: string; arguments?: string } }[];
+      };
+    }[];
+  };
+  const msg = data.choices?.[0]?.message;
+  const toolCalls: ToolCall[] = (msg?.tool_calls ?? []).map((tc) => {
+    const name = tc.function?.name ?? '';
+    try {
+      return {
+        name,
+        args: JSON.parse(tc.function?.arguments ?? '{}') as Record<string, unknown>,
+      };
+    } catch {
+      return { name, args: {}, malformed: true };
+    }
+  });
+  return { text: msg?.content ?? '', toolCalls };
+}
+
+async function chatWithToolsAnthropic(
+  apiKey: string,
+  messages: ChatMessage[],
+  tools: readonly ToolSchema[],
+  maxTokens: number,
+  temperature: number,
+): Promise<ChatWithToolsResult> {
+  const { system, rest } = splitSystem(messages);
+  // OpenAI {type:'function', function:{name,description,parameters}} →
+  // Anthropic {name, description, input_schema}.
+  const anthropicTools = tools.map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    input_schema: t.function.parameters,
+  }));
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: maxTokens,
+      temperature,
+      ...(system ? { system } : {}),
+      messages: rest,
+      tools: anthropicTools,
+    }),
+  });
+  if (!resp.ok) {
+    const ed = (await resp.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    if (resp.status === 503) {
+      throw new Error('AI provider unavailable — try again shortly.');
+    }
+    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
+  }
+  const data = (await resp.json()) as {
+    content?: (
+      | { type: 'text'; text: string }
+      | { type: 'tool_use'; name: string; input: Record<string, unknown> }
+    )[];
+  };
+  let text = '';
+  const toolCalls: ToolCall[] = [];
+  for (const block of data.content ?? []) {
+    if (block.type === 'text') text += block.text;
+    else if (block.type === 'tool_use') {
+      toolCalls.push({ name: block.name, args: block.input ?? {} });
+    }
+  }
+  return { text, toolCalls };
+}
