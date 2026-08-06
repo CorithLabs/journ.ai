@@ -14,6 +14,12 @@ import {
   hasStoredKey,
   isCryptoAvailable,
 } from '../services/aiKey';
+import {
+  getActiveProvider,
+  setActiveProvider,
+  keyStorageFor,
+  type AiProvider,
+} from '../services/aiClient';
 import { useAppStore } from '../store';
 
 type TestState =
@@ -24,7 +30,18 @@ type TestState =
 
 const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
 
+const PROVIDER_LABEL: Record<AiProvider, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic (Claude)',
+};
+// Expected key prefix per provider — OpenAI keys start `sk-`, Anthropic `sk-ant-`.
+const KEY_PREFIX: Record<AiProvider, string> = {
+  openai: 'sk-',
+  anthropic: 'sk-ant-',
+};
+
 export default function SettingsPage() {
+  const [provider, setProvider] = useState<AiProvider>('openai');
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -41,10 +58,23 @@ export default function SettingsPage() {
   const cryptoOk = isCryptoAvailable();
 
   useEffect(() => {
-    setHasKey(hasStoredKey());
+    const active = getActiveProvider();
+    setProvider(active);
+    setHasKey(hasStoredKey(keyStorageFor(active)));
     const stored = localStorage.getItem(MAPBOX_TOKEN_KEY);
     if (stored) setMapboxToken(stored);
   }, []);
+
+  // Switching provider re-reads that provider's saved-key state and clears any
+  // transient save/test messages so the panel reflects the newly-selected one.
+  const onProviderChange = (next: AiProvider) => {
+    setProvider(next);
+    setKey('');
+    setFormatWarning(false);
+    setSaveMsg(null);
+    setTest({ kind: 'idle' });
+    setHasKey(hasStoredKey(keyStorageFor(next)));
+  };
 
   useEffect(() => {
     return () => {
@@ -56,27 +86,32 @@ export default function SettingsPage() {
     setSaveMsg(null);
     setTest({ kind: 'idle' });
     const trimmed = key.trim();
+    const slot = keyStorageFor(provider);
 
     if (!trimmed) {
-      clearApiKey();
-      setAiProvider(null);
+      clearApiKey(slot);
+      // Only fully disable BYOK when NO provider has a key left.
+      if (!hasStoredKey(keyStorageFor('openai')) && !hasStoredKey(keyStorageFor('anthropic'))) {
+        setAiProvider(null);
+      }
       setHasKey(false);
-      setSaveMsg({ ok: true, text: 'API key removed. AI features are now disabled.' });
+      setSaveMsg({ ok: true, text: `${PROVIDER_LABEL[provider]} key removed.` });
       return;
     }
 
-    if (!trimmed.startsWith('sk-')) {
+    if (!trimmed.startsWith(KEY_PREFIX[provider])) {
       setFormatWarning(true);
       return;
     }
     setFormatWarning(false);
 
     try {
-      await setApiKey(trimmed);
+      await setApiKey(trimmed, slot);
+      setActiveProvider(provider); // route AI calls to the provider we just saved
       setAiProvider('byok');
       setHasKey(true);
       setKey('');
-      setSaveMsg({ ok: true, text: 'API key saved securely in your browser.' });
+      setSaveMsg({ ok: true, text: `${PROVIDER_LABEL[provider]} key saved securely in your browser.` });
     } catch (err) {
       const reason = err instanceof Error ? err.message : '';
       if (reason === 'crypto-unavailable') {
@@ -92,26 +127,39 @@ export default function SettingsPage() {
 
   const onTest = async () => {
     setTest({ kind: 'testing' });
-    const activeKey = key.trim() || (await getApiKey());
+    const label = PROVIDER_LABEL[provider];
+    const activeKey = key.trim() || (await getApiKey(keyStorageFor(provider)));
     if (!activeKey) {
       setTest({ kind: 'invalid', message: 'No API key to test.' });
       return;
     }
-    if (!activeKey.startsWith('sk-')) {
-      setTest({ kind: 'invalid', message: 'Key format looks wrong (should start with "sk-").' });
+    if (!activeKey.startsWith(KEY_PREFIX[provider])) {
+      setTest({
+        kind: 'invalid',
+        message: `Key format looks wrong (should start with "${KEY_PREFIX[provider]}").`,
+      });
       return;
     }
     try {
-      const resp = await fetch('https://api.openai.com/v1/models', {
-        headers: { Authorization: `Bearer ${activeKey}` },
-      });
+      const resp =
+        provider === 'anthropic'
+          ? await fetch('https://api.anthropic.com/v1/models', {
+              headers: {
+                'x-api-key': activeKey,
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+              },
+            })
+          : await fetch('https://api.openai.com/v1/models', {
+              headers: { Authorization: `Bearer ${activeKey}` },
+            });
       if (resp.ok) {
         setTest({ kind: 'valid' });
       } else {
-        setTest({ kind: 'invalid', message: 'Invalid key — OpenAI rejected the request.' });
+        setTest({ kind: 'invalid', message: `Invalid key — ${label} rejected the request.` });
       }
     } catch {
-      setTest({ kind: 'invalid', message: 'Could not reach OpenAI — check your connection.' });
+      setTest({ kind: 'invalid', message: `Could not reach ${label} — check your connection.` });
     }
   };
 
@@ -165,8 +213,8 @@ export default function SettingsPage() {
       >
         <h2 className="text-lg font-semibold text-ink-primary mb-1">AI Provider</h2>
         <p className="text-sm text-ink-secondary mb-4">
-          Bring your own OpenAI API key to enable AI itinerary generation, route
-          optimisation, and the AI agent.
+          Bring your own OpenAI or Anthropic (Claude) API key to enable AI
+          itinerary generation, route optimisation, and the AI agent.
         </p>
 
         {!cryptoOk && (
@@ -181,8 +229,22 @@ export default function SettingsPage() {
           </div>
         )}
 
+        <label htmlFor="ai-provider" className="block text-sm text-ink-secondary mb-1.5">
+          Provider
+        </label>
+        <select
+          id="ai-provider"
+          value={provider}
+          onChange={(e) => onProviderChange(e.target.value as AiProvider)}
+          data-testid="provider-select"
+          className="w-full mb-4 bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+        >
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+        </select>
+
         <label htmlFor="api-key" className="block text-sm text-ink-secondary mb-1.5">
-          OpenAI API key
+          {PROVIDER_LABEL[provider]} API key
         </label>
         <input
           id="api-key"
@@ -192,7 +254,7 @@ export default function SettingsPage() {
             setKey(e.target.value);
             setFormatWarning(false);
           }}
-          placeholder={hasKey ? '•••••••• (saved — enter a new key to replace)' : 'sk-…'}
+          placeholder={hasKey ? '•••••••• (saved — enter a new key to replace)' : `${KEY_PREFIX[provider]}…`}
           autoComplete="off"
           data-testid="api-key-input"
           className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -200,7 +262,7 @@ export default function SettingsPage() {
 
         {formatWarning && (
           <p role="alert" className="mt-1.5 text-xs text-status-warning" data-testid="format-warning">
-            API keys usually start with &quot;sk-&quot;. Double-check before saving.
+            {PROVIDER_LABEL[provider]} keys usually start with &quot;{KEY_PREFIX[provider]}&quot;. Double-check before saving.
           </p>
         )}
 

@@ -15,11 +15,16 @@ import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
 
 function formatDateRange(start: string, end: string): string {
-  const fmt = (d: string) =>
-    new Date(d).toLocaleDateString('en-US', {
+  // Parse YYYY-MM-DD as a LOCAL date. `new Date('2025-03-14')` is parsed as UTC
+  // midnight and then formatted in local time, which shifts the day back by one
+  // for anyone in a timezone behind UTC (all of the Americas). Build from parts.
+  const fmt = (d: string) => {
+    const [y, m, day] = d.split('-').map(Number);
+    return new Date(y, m - 1, day).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
     });
+  };
   return `${fmt(start)} — ${fmt(end)}`;
 }
 
