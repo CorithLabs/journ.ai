@@ -6,12 +6,26 @@ import AgentPanel from '../AgentPanel';
 import { useAppStore } from '../../../store';
 import { db } from '../../../db';
 import * as aiKey from '../../../services/aiKey';
+import * as aiClient from '../../../services/aiClient';
 
 vi.mock('dexie-react-hooks');
 vi.mock('../../../services/aiKey', () => ({
   hasStoredKey: vi.fn().mockReturnValue(true),
   getApiKey: vi.fn().mockResolvedValue('sk-test'),
+  OPENAI_KEY_STORAGE: 'aitp_api_key',
+  ANTHROPIC_KEY_STORAGE: 'aitp_anthropic_key',
 }));
+
+// Mock chatWithTools at the aiClient level — this is the canonical boundary
+// for the agent. Each test overrides the resolved value.
+vi.mock('../../../services/aiClient', async (importActual) => {
+  const actual = await importActual<typeof import('../../../services/aiClient')>();
+  return {
+    ...actual,
+    chatWithTools: vi.fn(),
+    MissingKeyError: actual.MissingKeyError,
+  };
+});
 
 const plan = {
   id: 'plan-1',
@@ -24,13 +38,6 @@ const plan = {
   deleted: false,
   itinerary: [{ dayIndex: 2, label: 'Day 3', activities: [] }],
 };
-
-function mockChat(body: unknown) {
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => body,
-  }) as unknown as typeof fetch;
-}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,22 +63,9 @@ function renderPanel() {
 
 describe('AI agent chat — actions', () => {
   it('executes an add_activity tool call and confirms', async () => {
-    mockChat({
-      choices: [
-        {
-          message: {
-            content: null,
-            tool_calls: [
-              {
-                function: {
-                  name: 'add_activity',
-                  arguments: JSON.stringify({ dayIndex: 2, name: 'Tsukiji Fish Market', time: '08:00' }),
-                },
-              },
-            ],
-          },
-        },
-      ],
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({
+      text: '',
+      toolCalls: [{ name: 'add_activity', args: { dayIndex: 2, name: 'Tsukiji Fish Market', time: '08:00' } }],
     });
     vi.mocked(db.plans.update).mockResolvedValue(1);
     renderPanel();
@@ -88,8 +82,9 @@ describe('AI agent chat — actions', () => {
   });
 
   it('shows a clarifying question when the model returns no tool call', async () => {
-    mockChat({
-      choices: [{ message: { content: 'Which evening did you mean — Day 1 or Day 2?' } }],
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({
+      text: 'Which evening did you mean — Day 1 or Day 2?',
+      toolCalls: [],
     });
     renderPanel();
     fireEvent.change(screen.getByTestId('agent-input'), {
@@ -103,15 +98,9 @@ describe('AI agent chat — actions', () => {
   });
 
   it('handles malformed tool arguments gracefully', async () => {
-    mockChat({
-      choices: [
-        {
-          message: {
-            content: null,
-            tool_calls: [{ function: { name: 'add_activity', arguments: '{not json' } }],
-          },
-        },
-      ],
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({
+      text: '',
+      toolCalls: [{ name: 'add_activity', args: {}, malformed: true }],
     });
     renderPanel();
     fireEvent.change(screen.getByTestId('agent-input'), { target: { value: 'do a thing' } });
@@ -122,7 +111,7 @@ describe('AI agent chat — actions', () => {
   });
 
   it('logs the user message to the session conversation', async () => {
-    mockChat({ choices: [{ message: { content: 'ok' } }] });
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({ text: 'ok', toolCalls: [] });
     renderPanel();
     fireEvent.change(screen.getByTestId('agent-input'), { target: { value: 'Hello there' } });
     fireEvent.click(screen.getByTestId('agent-send'));
