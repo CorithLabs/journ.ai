@@ -103,6 +103,57 @@ function tryParseItinerary(text: string): Day[] | null {
   return validateAndParseDays(parsed);
 }
 
+async function getApiKey(): Promise<string | null> {
+  try {
+    parsed = JSON.parse(m[0]);
+  } catch {
+    try {
+      parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
+    } catch {
+      return null;
+    }
+  }
+  return validateAndParseDays(parsed);
+}
+
+/**
+ * Stream a chat completion, updating `onToken` with the accumulated text as
+ * deltas arrive. Resolves with the full concatenated text.
+ */
+async function streamCompletion(
+  apiKey: string,
+  messages: { role: string; content: string }[],
+  onToken: (full: string) => void,
+): Promise<string> {
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: 'gpt-4o-mini', messages, stream: true, temperature: 0.7, max_tokens: 4000 }),
+  });
+  if (!resp.ok) {
+    const ed = (await resp.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(ed.error?.message ?? `API error ${resp.status}`);
+  }
+  const reader = resp.body?.getReader();
+  if (!reader) throw new Error('No response body');
+  let fullText = '';
+  const dec = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (const line of dec.decode(value, { stream: true }).split('\n').filter(l => l.startsWith('data: '))) {
+      const data = line.slice(6);
+      if (data === '[DONE]') continue;
+      try {
+        const p2 = JSON.parse(data) as { choices?: { delta?: { content?: string } }[] };
+        fullText += p2.choices?.[0]?.delta?.content ?? '';
+        onToken(fullText);
+      } catch { /* ignore partial SSE frames */ }
+    }
+  }
+  return fullText;
+}
+
 export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
