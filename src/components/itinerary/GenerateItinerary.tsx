@@ -4,38 +4,13 @@ import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
 import { streamCompletion, MissingKeyError } from '../../services/aiClient';
+import { buildItineraryPrompt, BUDGET_RANGES } from './itineraryPrompt';
 
 interface Props {
   plan: Plan;
   onGenerated: () => void;
 }
 
-const BUDGET_RANGES: Record<string, string> = {
-  budget: 'budget (< $100/person/day)',
-  mid: 'mid ($100\u2013$300/person/day)',
-  premium: 'premium ($300\u2013$600/person/day)',
-  luxury: 'luxury ($600+/person/day)',
-};
-
-function buildPrompt(plan: Plan): string {
-  const intake = plan.intake;
-  const budgetLabel = intake?.budgetRange ? BUDGET_RANGES[intake.budgetRange] : 'mid ($100\u2013$300/person/day)';
-  return [
-    'You are a travel planner. Generate a detailed day-by-day itinerary.',
-    'Return ONLY valid JSON matching the schema. No markdown, no extra text.',
-    `Destination: ${plan.destination}`,
-    `Dates: ${plan.startDate} to ${plan.endDate}`,
-    `Travellers: ${intake?.numTravellers ?? 1}`,
-    `Kids: ${intake?.kids ? 'yes, ages: ' + (intake.kidAges?.join(', ') ?? 'unknown (generate general family-friendly, age-appropriate activities)') : 'no'}`,
-    `Likes: ${intake?.likes?.join(', ') || 'general sightseeing'}`,
-    `Dislikes: ${intake?.dislikes?.join(', ') || 'none'}`,
-    `Budget: ${budgetLabel}`,
-    'Rules: keep activities within the stated budget tier. Set budgetWarning:true on any activity that may borderline or exceed the budget (err on the side of warning, not silence).',
-    'If kids are present, all activities must be age-appropriate.',
-    'Return estimatedDailySpend {min,max,currency:"USD"} per day using world-knowledge cost estimates.',
-    'Schema: {"days":[{"dayIndex":0,"label":"Day 1","estimatedDailySpend":{"min":80,"max":150,"currency":"USD"},"activities":[{"id":"uuid","name":"...","time":"09:00","locationName":"...","notes":"...","budgetWarning":false}]}]}',
-  ].join('\n');
-}
 
 function parseDaySpend(raw: unknown): { min: number; max: number; currency: 'USD' } | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -47,11 +22,23 @@ function parseDaySpend(raw: unknown): { min: number; max: number; currency: 'USD
   return { min: Math.min(a, b), max: Math.max(a, b), currency: 'USD' };
 }
 
+/** Find the days array across the shapes models actually return: {days:[…]},
+ *  {itinerary:[…]}, {itinerary:{days:[…]}}, or a bare […] top-level array. */
+function extractDaysArray(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw;
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  if (Array.isArray(o.days)) return o.days;
+  if (Array.isArray(o.itinerary)) return o.itinerary;
+  const it = o.itinerary as Record<string, unknown> | undefined;
+  if (it && Array.isArray(it.days)) return it.days;
+  return null;
+}
+
 function validateAndParseDays(raw: unknown): Day[] | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const obj = raw as Record<string, unknown>;
-  if (!Array.isArray(obj.days) || obj.days.length === 0) return null;
-  return obj.days.map((d: unknown, i: number) => {
+  const daysRaw = extractDaysArray(raw);
+  if (!daysRaw || daysRaw.length === 0) return null;
+  return daysRaw.map((d: unknown, i: number) => {
     const day = d as Record<string, unknown>;
     return {
       dayIndex: typeof day.dayIndex === 'number' ? day.dayIndex : i,
@@ -86,35 +73,43 @@ function validateAndParseDays(raw: unknown): Day[] | null {
  * Returns null if the text cannot be coerced into a valid itinerary.
  */
 function tryParseItinerary(text: string): Day[] | null {
-  // Strip a leading ```lang fence and a trailing ``` fence before matching.
-  const stripped = text.replace(/^```[a-z]*\n?/m, '').replace(/```\s*$/m, '');
-  const m = stripped.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(m[0]);
-  } catch {
-    try {
-      parsed = JSON.parse(m[0].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']'));
-    } catch {
-      return null;
+  // Strip ALL code-fence markers anywhere (```json / ```), not just anchored ones —
+  // models wrap JSON in fences and sometimes add prose around it.
+  const cleaned = text.replace(/```(?:json)?/gi, '').trim();
+  // Candidate JSON slices, widest first: the outermost object, the outermost
+  // array (model may return a bare [...] of days), then the whole cleaned text.
+  const candidates: string[] = [];
+  const obj = cleaned.match(/\{[\s\S]*\}/);
+  if (obj) candidates.push(obj[0]);
+  const arr = cleaned.match(/\[[\s\S]*\]/);
+  if (arr) candidates.push(arr[0]);
+  candidates.push(cleaned);
+  for (const cand of candidates) {
+    // Try as-is, then with a trailing-comma repair (a common model slip).
+    for (const attempt of [cand, cand.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')]) {
+      try {
+        const days = validateAndParseDays(JSON.parse(attempt));
+        if (days) return days;
+      } catch {
+        /* try the next candidate/repair */
+      }
     }
   }
-  return validateAndParseDays(parsed);
+  return null;
 }
 
 export default function GenerateItinerary({ plan, onGenerated }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [streamText, setStreamText] = useState('');
+  // The raw AI text kept when parsing fails — surfaced in a details expander so a
+  // parse failure is diagnosable instead of a dead-end "couldn't read".
+  const [rawResponse, setRawResponse] = useState<string | null>(null);
 
   const generate = async () => {
-    setStatus('generating'); setError(null); setStreamText('');
+    setStatus('generating'); setError(null); setStreamText(''); setRawResponse(null);
     try {
-      const prompt = buildPrompt(plan);
-      // streamCompletion routes to the active provider (OpenAI or Anthropic)
-      // and yields the accumulated text through onToken. max_tokens defaults
-      // to 8000 in aiClient — enough for trips up to ~14 days.
+      const prompt = buildItineraryPrompt(plan);
       const fullText = await streamCompletion(
         [{ role: 'user', content: prompt }],
         { onToken: setStreamText },
@@ -122,9 +117,10 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
 
       // First attempt: extract + local repair.
       let days = tryParseItinerary(fullText);
+      let lastRaw = fullText;
 
       // Second attempt: ask the AI to repair its own malformed output with a
-      // follow-up prompt before giving up (per acceptance criteria).
+      // follow-up prompt before giving up.
       if (!days) {
         const repaired = await streamCompletion(
           [
@@ -139,12 +135,24 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
           ],
           { onToken: setStreamText },
         );
+        lastRaw = repaired;
         days = tryParseItinerary(repaired);
       }
 
-      // Still malformed → show error and keep the previous itinerary intact
-      // (no write has happened, so nothing is lost).
-      if (!days) throw new Error('The AI returned an itinerary we could not read. Your previous plan is unchanged — please retry.');
+      // Still malformed → keep the raw text for diagnosis and keep the previous
+      // itinerary intact (no write has happened, so nothing is lost).
+      if (!days) {
+        setRawResponse(lastRaw);
+        // A complete itinerary ends with a closing } or ]. If it doesn't, the
+        // model almost certainly hit its output-token cap mid-JSON.
+        const tail = lastRaw.replace(/```/g, '').trim();
+        const looksTruncated = tail.length > 0 && !/[}\]]$/.test(tail);
+        throw new Error(
+          looksTruncated
+            ? 'The itinerary was cut off before it finished — the trip is likely too long for one response. Try fewer days, then retry.'
+            : 'The AI returned an itinerary we could not read. Your previous plan is unchanged — please retry.',
+        );
+      }
 
       await db.plans.update(plan.id, { itinerary: days, updatedAt: new Date().toISOString() });
       // Re-fetch the freshly-written plan so autoGenerateTodos sees the new
@@ -190,7 +198,16 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       {error && (
         <div className="flex items-start gap-2 mb-4 p-3 bg-status-danger/10 border border-status-danger/20 rounded-xl max-w-sm">
           <AlertTriangle size={16} className="text-status-danger shrink-0 mt-0.5" />
-          <div><p className="text-sm text-status-danger">{error}</p><button className="text-xs text-accent hover:underline mt-1" onClick={generate}>Retry</button></div>
+          <div className="min-w-0">
+            <p className="text-sm text-status-danger">{error}</p>
+            <button className="text-xs text-accent hover:underline mt-1" onClick={generate}>Retry</button>
+            {rawResponse && (
+              <details className="mt-2">
+                <summary className="text-xs text-ink-muted cursor-pointer hover:text-ink-secondary">Show what the AI returned</summary>
+                <pre className="mt-1 bg-surface-overlay rounded-lg p-2 text-[11px] text-ink-muted font-mono max-h-40 overflow-auto whitespace-pre-wrap break-words">{rawResponse.slice(-2000)}</pre>
+              </details>
+            )}
+          </div>
         </div>
       )}
       {status !== 'generating' && (
