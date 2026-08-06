@@ -3,13 +3,20 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SettingsPage from '../SettingsPage';
 import * as aiKey from '../../services/aiKey';
 
-vi.mock('../../services/aiKey', () => ({
-  setApiKey: vi.fn().mockResolvedValue(undefined),
-  getApiKey: vi.fn().mockResolvedValue(null),
-  clearApiKey: vi.fn(),
-  hasStoredKey: vi.fn().mockReturnValue(false),
-  isCryptoAvailable: vi.fn().mockReturnValue(true),
-}));
+// Keep the real storage-key constants (aiClient.keyStorageFor reads them) and
+// mock only the functions — a full mock without the constants makes the
+// provider-aware SettingsPage throw on render.
+vi.mock('../../services/aiKey', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/aiKey')>();
+  return {
+    ...actual,
+    setApiKey: vi.fn().mockResolvedValue(undefined),
+    getApiKey: vi.fn().mockResolvedValue(null),
+    clearApiKey: vi.fn(),
+    hasStoredKey: vi.fn().mockReturnValue(false),
+    isCryptoAvailable: vi.fn().mockReturnValue(true),
+  };
+});
 
 const MAPBOX_KEY = 'aitp_mapbox_token';
 
@@ -49,7 +56,8 @@ describe('SettingsPage — BYOK', () => {
     });
     fireEvent.click(screen.getByTestId('save-key-btn'));
     await waitFor(() => {
-      expect(aiKey.setApiKey).toHaveBeenCalledWith('sk-valid-key-123');
+      // Now provider-aware: (key, storageSlot). Default provider is OpenAI.
+      expect(aiKey.setApiKey).toHaveBeenCalledWith('sk-valid-key-123', 'aitp_api_key');
       expect(screen.getByTestId('save-result')).toHaveTextContent(/saved securely/i);
     });
   });
