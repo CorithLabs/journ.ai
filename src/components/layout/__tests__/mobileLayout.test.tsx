@@ -20,28 +20,39 @@ const activity: Activity = {
   locationName: 'Ueno', notes: '', pinnedToTodo: false,
 };
 
-describe('ActivityCard controls on touch', () => {
-  // These were opacity-0 until hover. Touch has no hover, so pin, edit and
-  // delete were invisible and unreachable on a phone.
-  it('shows its actions without needing hover', () => {
+describe('ActivityCard actions', () => {
+  const plan = { destination: 'Ottawa, Canada', country: 'Canada' };
+
+  // These used to be revealed on hover, which meant they did not exist on
+  // touch at all. They now live permanently on the card's edge rail.
+  it('exposes every action without needing hover', () => {
     render(
-      <ActivityCard act={activity} onDel={vi.fn()} onUpd={vi.fn()} onPin={vi.fn()} />,
+      <ActivityCard act={activity} plan={plan} onDel={vi.fn()} onUpd={vi.fn()} onPin={vi.fn()} />,
     );
-    for (const label of ['Pin to to-do', 'Edit activity', 'Delete activity']) {
-      const btn = screen.getByLabelText(label);
-      expect(btn).toBeVisible();
-      // Reveal-on-hover is kept for pointers only.
-      expect(btn.parentElement!.className).toContain('opacity-100');
-      expect(btn.parentElement!.className).toContain('md:opacity-0');
+    expect(screen.getByTestId('activity-actions')).toBeInTheDocument();
+    for (const label of [/Pin to to-do/, /Edit activity/, /Delete activity/]) {
+      expect(screen.getByLabelText(label)).toBeVisible();
     }
   });
 
-  it('gives each action a comfortable target on touch', () => {
+  it('offers a Google Maps link for a located activity', () => {
     render(
-      <ActivityCard act={activity} onDel={vi.fn()} onUpd={vi.fn()} onPin={vi.fn()} />,
+      <ActivityCard act={activity} plan={plan} onDel={vi.fn()} onUpd={vi.fn()} onPin={vi.fn()} />,
     );
-    const btn = screen.getByLabelText('Edit activity');
-    expect(btn.className).toContain('p-2.5');
-    expect(btn.className).toContain('md:p-1');
+    const link = screen.getByTestId('activity-maps');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('href')).toContain('google.com/maps');
+  });
+
+  // The name is what the user scans for; it used to truncate behind the
+  // buttons ("Visit to Royal Mu...").
+  it('does not truncate the activity name', () => {
+    const long = { ...activity, name: 'Visit to Royal Ontario Museum and Gardens' };
+    render(
+      <ActivityCard act={long} plan={plan} onDel={vi.fn()} onUpd={vi.fn()} onPin={vi.fn()} />,
+    );
+    const el = screen.getByText('Visit to Royal Ontario Museum and Gardens');
+    expect(el.className).not.toContain('truncate');
+    expect(el.className).toContain('break-words');
   });
 });

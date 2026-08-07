@@ -7,6 +7,8 @@ import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
 import ActivityCard from './ActivityCard';
 import { scrollBehavior } from '../../utils/motion';
+import { sortByTime, swapTimes } from '../../utils/activityTime';
+import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 
 interface Props { plan: Plan; }
 
@@ -44,8 +46,6 @@ function AddInline({ onAdd }: { onAdd: (n: string, t: string) => Promise<void> }
 export default function ItineraryView({ plan }: Props) {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
-  const [drag, setDrag] = useState<{ id: string; day: number } | null>(null);
-  const [drop, setDrop] = useState<{ day: number; before: string | null } | null>(null);
   const [showGen, setShowGen] = useState(false);
 
   const persist = (it: typeof plan.itinerary) =>
@@ -61,8 +61,15 @@ export default function ItineraryView({ plan }: Props) {
     }});
   };
 
-  const updAct = (di: number, id: string, u: Partial<Activity>) =>
-    persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: d.activities.map(a => a.id === id ? { ...a, ...u } : a) } : d));
+  const updAct = async (di: number, id: string, u: Partial<Activity>) => {
+    // Editing is the other route to a time change, so it needs the same guard
+    // as move up/down — otherwise the warning is trivially bypassed.
+    const current = plan.itinerary[di]?.activities.find(a => a.id === id);
+    if (current && u.time !== undefined && u.time !== current.time) {
+      if (!(await confirmTimeChange(current))) return;
+    }
+    return persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: d.activities.map(a => a.id === id ? { ...a, ...u } : a) } : d));
+  };
 
   const pinAct = async (di: number, act: Activity) => {
     if (act.pinnedToTodo) {
@@ -77,30 +84,38 @@ export default function ItineraryView({ plan }: Props) {
     }
   };
 
+  /**
+   * Move up / down trades times with the neighbour.
+   *
+   * Splicing the array would achieve nothing: the day is sorted by time on
+   * render, so the sort would immediately put the card back. Swapping keeps
+   * the exact times the user typed rather than inventing one between two
+   * neighbours, which is what dropping a dragged card into a gap would need.
+   */
   const moveAct = async (di: number, idx: number, dir: 'up' | 'down') => {
-    const acts = [...plan.itinerary[di].activities];
+    const acts = sortByTime(plan.itinerary[di].activities);
     const ni = dir === 'up' ? idx - 1 : idx + 1;
     if (ni < 0 || ni >= acts.length) return;
-    [acts[idx], acts[ni]] = [acts[ni], acts[idx]];
-    await persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: acts } : d));
+
+    const moving = acts[idx];
+    const other = acts[ni];
+    if (!(await confirmTimeChange(moving))) return;
+
+    const swapped = swapTimes(plan.itinerary[di].activities, moving.id, other.id);
+    await persist(plan.itinerary.map((d, i) => (i === di ? { ...d, activities: swapped } : d)));
   };
 
-  const onDrop = async (e: React.DragEvent, toDi: number, beforeId: string | null) => {
-    e.preventDefault();
-    if (!drag) return;
-    const act = plan.itinerary[drag.day]?.activities.find(a => a.id === drag.id);
-    if (!act) return;
-    let it = plan.itinerary.map((d, i) => i === drag.day ? { ...d, activities: d.activities.filter(a => a.id !== drag.id) } : d);
-    it = it.map((d, i) => {
-      if (i !== toDi) return d;
-      const as = [...d.activities];
-      const bi = beforeId ? as.findIndex(a => a.id === beforeId) : as.length;
-      as.splice(bi < 0 ? as.length : bi, 0, act);
-      return { ...d, activities: as };
-    });
-    if (collapsed[toDi]) setCollapsed(p => ({ ...p, [toDi]: false }));
-    await persist(it);
-    setDrag(null); setDrop(null);
+  /**
+   * A booked activity is one the user has already committed to — a linked
+   * clipboard confirmation, or a to-do they ticked off. Changing its time may
+   * not match what was booked, so name what is at stake and let them decide.
+   */
+  const confirmTimeChange = async (act: Activity): Promise<boolean> => {
+    const bookings = await findActivityBookings(plan.id, act.id);
+    if (!bookings.length) return true;
+    return window.confirm(`${bookingWarning(bookings)}
+
+Change it anyway?`);
   };
 
   if (showGen || !plan.itinerary?.length)
@@ -125,12 +140,9 @@ export default function ItineraryView({ plan }: Props) {
         {plan.itinerary.map(day => {
           const isCol = collapsed[day.dayIndex];
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
-          const isDrop = drop?.day === day.dayIndex;
 
           return (
             <section key={day.dayIndex} id={`day-${day.dayIndex}`}
-              onDragOver={e => { e.preventDefault(); setDrop({ day: day.dayIndex, before: null }); }}
-              onDrop={e => onDrop(e, day.dayIndex, null)}
               aria-label={day.label}>
               <button
                 className="w-full flex items-center gap-2 py-2 text-left"
@@ -143,16 +155,11 @@ export default function ItineraryView({ plan }: Props) {
               </button>
 
               {!isCol && (
-                <div className={`space-y-2 ml-4 border-l-2 pl-3 pb-2 ${isDrop ? 'border-dashed border-accent' : 'border-white/5'}`}>
+                <div className={`space-y-2 ml-4 border-l-2 pl-3 pb-2 border-white/5`}>
                   {day.activities.length === 0 && <p className="text-xs text-ink-muted py-2">No activities yet.</p>}
-                  {day.activities.map((act, ai) => (
-                    <div key={act.id} draggable
-                      onDragStart={() => setDrag({ id: act.id, day: day.dayIndex })}
-                      onDragEnd={() => { setDrag(null); setDrop(null); }}
-                      onDragOver={e => { e.stopPropagation(); setDrop({ day: day.dayIndex, before: act.id }); }}
-                      onDrop={e => { e.stopPropagation(); onDrop(e, day.dayIndex, act.id); }}
-                      className={drop?.day === day.dayIndex && drop?.before === act.id ? 'border-2 border-dashed border-accent rounded-xl' : ''}>
-                      <ActivityCard act={act}
+                  {sortByTime(day.activities).map((act, ai) => (
+                    <div key={act.id}>
+                      <ActivityCard act={act} plan={plan}
                         onDel={() => delAct(day.dayIndex, act.id)}
                         onUpd={u => updAct(day.dayIndex, act.id, u)}
                         onPin={() => pinAct(day.dayIndex, act)} />

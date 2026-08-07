@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { AlertTriangle, Pin, Pencil, Trash2, GripVertical } from 'lucide-react';
-import { type Activity } from '../../db';
+import { AlertTriangle, Pin, Pencil, Trash2, MapPin } from 'lucide-react';
+import { type Activity, type Plan } from '../../db';
+import { formatTime } from '../../utils/activityTime';
+import { mapsUrlFor } from '../../utils/mapsLink';
 
 interface Props {
   act: Activity;
+  plan: Pick<Plan, 'destination' | 'country'>;
   onDel: () => void;
   onUpd: (u: Partial<Activity>) => void;
   onPin: () => void;
 }
 
-export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
+export default function ActivityCard({ act, plan, onDel, onUpd, onPin }: Props) {
+  const mapsUrl = act.locationName?.trim() || act.coordinates ? mapsUrlFor(act, plan) : null;
   const [ed, setEd] = useState(false);
   const [nm, setNm] = useState(act.name);
   const [tm, setTm] = useState(act.time);
@@ -49,36 +53,85 @@ export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
   }
 
   return (
-    <div className="group card-surface flex items-start gap-2 rounded-card p-3" data-testid="activity-card">
-      <GripVertical size={14} className="mt-1 text-ink-muted cursor-grab shrink-0" aria-label="Drag handle" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs text-ink-muted font-mono">{act.time}</span>
-              <span className="text-sm font-medium text-ink-primary truncate">{act.name}</span>
-              {act.budgetWarning && <AlertTriangle size={12} className="text-status-warning" aria-label="Budget warning" />}
-            </div>
-            <div className="text-xs text-ink-muted mt-0.5">{act.locationName}</div>
-            {act.notes && <div className="text-xs text-ink-secondary mt-1 line-clamp-2">{act.notes}</div>}
-          </div>
-          {/* Always visible on touch. Revealing these on hover hid them
-              completely on a phone, where there is no hover — pin, edit and
-              delete were unreachable. Desktop keeps the reveal so the card
-              stays quiet until pointed at. Targets are 44px on touch, the
-              minimum comfortable size, tightening to the icon on desktop. */}
-          <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
-            <button onClick={onPin} className={`p-2.5 md:p-1 rounded-lg ${act.pinnedToTodo ? 'text-accent' : 'text-ink-muted hover:text-ink-primary'}`} aria-label={act.pinnedToTodo ? 'Unpin' : 'Pin to to-do'}>
-              <Pin size={16} className="md:w-3.5 md:h-3.5" />
-            </button>
-            <button onClick={() => setEd(true)} className="p-2.5 md:p-1 rounded-lg text-ink-muted hover:text-ink-primary" aria-label="Edit activity">
-              <Pencil size={16} className="md:w-3.5 md:h-3.5" />
-            </button>
-            <button onClick={onDel} className="p-2.5 md:p-1 rounded-lg text-ink-muted hover:text-status-danger" aria-label="Delete activity">
-              <Trash2 size={16} className="md:w-3.5 md:h-3.5" />
-            </button>
-          </div>
+    <div
+      className="group card-surface flex items-stretch rounded-card overflow-hidden"
+      data-testid="activity-card"
+    >
+      {/* Details take the full width of the card body. Actions live on the
+          edge rail, so the name no longer competes with three buttons for
+          room — "Visit to Royal Museum" was truncating to "Visit to Royal Mu". */}
+      <div className="flex-1 min-w-0 p-3">
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="shrink-0 text-[11px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full tabular-nums"
+            data-testid="activity-time"
+          >
+            {formatTime(act.time)}
+          </span>
+          {act.budgetWarning && (
+            <AlertTriangle size={12} className="text-status-warning shrink-0" aria-label="Budget warning" />
+          )}
+          {act.pinnedToTodo && (
+            <span className="text-[10px] text-accent" data-testid="pinned-flag">Pinned</span>
+          )}
         </div>
+
+        {/* Wraps rather than truncating: the name is the one thing the user
+            is scanning for. */}
+        <p className="text-sm font-medium text-ink-primary leading-snug break-words">
+          {act.name}
+        </p>
+
+        {act.locationName && (
+          <p className="text-xs text-ink-muted mt-0.5 break-words">{act.locationName}</p>
+        )}
+        {act.notes && (
+          <p className="text-xs text-ink-secondary mt-1 line-clamp-3 break-words">{act.notes}</p>
+        )}
+      </div>
+
+      {/* Binder edge: a rail of actions down the card's right side. */}
+      <div
+        className="shrink-0 flex flex-col justify-center gap-0.5 px-1 py-1 border-l border-white/10 bg-surface-base/30"
+        data-testid="activity-actions"
+      >
+        {mapsUrl && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-lg text-ink-muted hover:text-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label={`Open ${act.name} in Google Maps`}
+            title="Open in Google Maps"
+            data-testid="activity-maps"
+          >
+            <MapPin size={16} />
+          </a>
+        )}
+        <button
+          onClick={onPin}
+          className={`p-2 rounded-lg hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${act.pinnedToTodo ? 'text-accent' : 'text-ink-muted hover:text-ink-primary'}`}
+          aria-label={act.pinnedToTodo ? 'Unpin from to-do' : 'Pin to to-do'}
+          title={act.pinnedToTodo ? 'Unpin' : 'Pin to to-do'}
+        >
+          <Pin size={16} />
+        </button>
+        <button
+          onClick={() => setEd(true)}
+          className="p-2 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          aria-label="Edit activity"
+          title="Edit"
+        >
+          <Pencil size={16} />
+        </button>
+        <button
+          onClick={onDel}
+          className="p-2 rounded-lg text-ink-muted hover:text-status-danger hover:bg-status-danger/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          aria-label="Delete activity"
+          title="Delete"
+        >
+          <Trash2 size={16} />
+        </button>
       </div>
     </div>
   );

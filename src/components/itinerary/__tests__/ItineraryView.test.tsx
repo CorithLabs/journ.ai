@@ -145,7 +145,7 @@ describe('ItineraryView', () => {
 
   it('already-pinned activity shows Unpin label', () => {
     render(<MemoryRouter><ItineraryView plan={mockPlanWithPinned} /></MemoryRouter>);
-    expect(screen.getByLabelText('Unpin')).toBeInTheDocument();
+    expect(screen.getByLabelText('Unpin from to-do')).toBeInTheDocument();
   });
 
   it('unpinning a pinned activity removes its todo items', async () => {
@@ -157,7 +157,7 @@ describe('ItineraryView', () => {
     } as any);
     vi.mocked(db.todos.bulkDelete).mockResolvedValue(undefined);
     render(<MemoryRouter><ItineraryView plan={mockPlanWithPinned} /></MemoryRouter>);
-    const unpinBtn = screen.getByLabelText('Unpin');
+    const unpinBtn = screen.getByLabelText('Unpin from to-do');
     fireEvent.click(unpinBtn);
     await waitFor(() => {
       expect(db.todos.bulkDelete).toHaveBeenCalledWith(['todo-pinned']);
