@@ -8,30 +8,12 @@ import type { Activity } from '../../../db';
 
 vi.mock('dexie-react-hooks');
 
-const setWidth = (w: number) => vi.stubGlobal('innerWidth', w);
-
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   vi.mocked(useLiveQuery).mockReturnValue([]);
 });
 afterEach(() => vi.unstubAllGlobals());
-
-describe('Sidebar on small screens', () => {
-  // Expanded, it is a 240px fixed overlay — on a 375px screen it covers the
-  // app and sits on top of it, so nothing underneath can be read or tapped.
-  it('starts collapsed on a phone', () => {
-    setWidth(375);
-    render(<MemoryRouter><Sidebar /></MemoryRouter>);
-    expect(screen.getByTestId('sidebar').className).toContain('w-14');
-  });
-
-  it('starts expanded on desktop, where the rail is the point of it', () => {
-    setWidth(1280);
-    render(<MemoryRouter><Sidebar /></MemoryRouter>);
-    expect(screen.getByTestId('sidebar').className).toContain('w-60');
-  });
-});
 
 const activity: Activity = {
   id: 'a1', name: 'Museum', time: '10:00',

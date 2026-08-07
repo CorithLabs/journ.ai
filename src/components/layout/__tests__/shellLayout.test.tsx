@@ -35,19 +35,3 @@ describe('shell scroll containment', () => {
     expect(screen.getByTestId('sidebar-settings-btn')).toBeInTheDocument();
   });
 });
-
-describe('TabBar placement', () => {
-  it('sits below the content on phones and above it on desktop', () => {
-    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
-    const nav = screen.getByTestId('tab-bar');
-    expect(nav.className).toContain('order-last');
-    expect(nav.className).toContain('md:order-first');
-  });
-
-  it('moves its divider to the top edge when bottom-anchored', () => {
-    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
-    const nav = screen.getByTestId('tab-bar');
-    expect(nav.className).toContain('border-t');
-    expect(nav.className).toContain('md:border-b');
-  });
-});

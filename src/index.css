@@ -28,6 +28,19 @@ html,
 body,
 #root {
   height: 100%;
+  /*
+   * Dynamic viewport height, tracking the area actually visible.
+   *
+   * On mobile 100vh is the LARGE viewport — it includes the space behind the
+   * browser's retractable URL bar and toolbar — so a 100vh shell is taller
+   * than the screen. Combined with the overflow: hidden below, everything at
+   * the bottom of the shell (the tab bar, the sidebar's Settings button) was
+   * clipped off-screen with no way to scroll to it. Desktop never showed this
+   * because it has no retractable chrome.
+   *
+   * The 100% above is the fallback for browsers without dvh.
+   */
+  height: 100dvh;
   margin: 0;
   padding: 0;
   background-color: var(--color-surface-base);

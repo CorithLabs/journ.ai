@@ -8,7 +8,10 @@ export default function AppShell() {
       // Transparent rather than bg-surface-base: the ground colour is painted
       // on <body>, so the ambient light sits between it and the app instead of
       // being covered by an opaque shell.
-      className="relative flex h-screen overflow-hidden"
+      // h-full, not h-screen: #root is already sized to the dynamic viewport,
+      // and h-screen would re-assert 100vh and reintroduce the overflow that
+      // pushed the tab bar and Settings button off a phone screen.
+      className="relative flex h-full overflow-hidden"
       data-testid="app-shell"
     >
       <AmbientBackdrop />

@@ -1,4 +1,5 @@
 import { useRef, KeyboardEvent } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
 
@@ -43,6 +44,7 @@ interface Props {
 const STORAGE_KEY = (planId: string) => `journ_active_tab_${planId}`;
 
 export default function TabBar({ planId }: Props) {
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const location = useLocation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -77,21 +79,19 @@ export default function TabBar({ planId }: Props) {
   return (
     <nav
       /*
-       * Bottom on phones, top on desktop.
-       *
-       * `order-last` moves it below the content on small screens, where the
-       * tabs are the primary navigation and need to sit in thumb reach; on a
-       * desktop pointer that is unnecessary and bottom-anchored tabs read as
-       * unconventional, so it returns to the top at md.
-       *
-       * The active indicator and divider swap edges to match: a top-border
-       * indicator under a bottom bar would point away from the content it
-       * belongs to. Padding accounts for the home-indicator inset on phones.
+       * Phone: a floating pill fixed above the home indicator and inset from
+       * both edges, so nothing is clipped by rounded screen corners or the
+       * gesture area. A full-width in-flow bar was being cut at the edges.
+       * Desktop: the ordinary top tab strip.
        */
-      className="order-last md:order-first flex items-end
-        border-t md:border-t-0 md:border-b border-white/5
-        bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0
-        pb-[env(safe-area-inset-bottom)] md:pb-0"
+      className={
+        isMobile
+          ? `fixed z-30 left-3 right-3 flex items-stretch gap-0.5
+             bottom-[calc(0.75rem+env(safe-area-inset-bottom))]
+             rounded-modal border border-white/10 shadow-glass
+             bg-surface-raised/85 backdrop-blur-glass px-1.5 py-1.5`
+          : 'flex items-end border-b border-white/5 bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0'
+      }
       aria-label="Plan tabs"
       role="tablist"
       data-testid="tab-bar"
@@ -110,19 +110,23 @@ export default function TabBar({ planId }: Props) {
             onKeyDown={(e) => handleKeyDown(e, i)}
             tabIndex={isActive ? 0 : -1}
             className={`
-              flex flex-1 md:flex-none items-center justify-center gap-1.5
-              px-4 py-3 text-sm font-medium transition-colors
+              flex items-center justify-center transition-colors
               focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
-              border-t-2 border-b-0 md:border-t-0 md:border-b-2
-              ${isActive
-                ? 'border-accent text-ink-primary'
-                : 'border-transparent text-ink-secondary hover:text-ink-primary'
+              ${isMobile
+                /* Icon over label so four tabs fit a narrow screen without
+                   truncating, with the whole cell as the tap target. */
+                ? `flex-1 flex-col gap-0.5 py-1.5 rounded-xl min-w-0
+                   ${isActive ? 'bg-accent/15 text-ink-primary' : 'text-ink-secondary'}`
+                : `gap-1.5 px-4 py-3 text-sm font-medium border-b-2
+                   ${isActive ? 'border-accent text-ink-primary' : 'border-transparent text-ink-secondary hover:text-ink-primary'}`
               }
             `}
             data-testid={`tab-${tab.key}`}
           >
             {tab.icon}
-            <span>{tab.label}</span>
+            <span className={isMobile ? 'text-[10px] leading-none truncate max-w-full' : ''}>
+              {tab.label}
+            </span>
           </button>
         );
       })}
