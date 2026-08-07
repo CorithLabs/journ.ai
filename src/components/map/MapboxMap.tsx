@@ -228,11 +228,16 @@ export default function MapboxMap({
 
       const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, offset: 16, maxWidth: '220px' })
         .setHTML(`
-          <div style="font-family: system-ui; color: #f1f5f9; background: #1a2235; padding: 8px; border-radius: 8px; min-width: 160px;">
-            <div style="font-size: 12px; color: #94a3b8; margin-bottom: 2px;">${pin.dayLabel}</div>
+          <!-- Colours come from the palette custom properties in index.css.
+               The popup is injected as raw HTML so Tailwind classes are not
+               available, but CSS variables resolve normally in the document —
+               so this stays in step with the theme instead of drifting from
+               copied hex values. -->
+          <div style="font-family: system-ui; color: var(--color-ink-primary); background: var(--color-surface-overlay); padding: 8px; border-radius: 8px; min-width: 160px;">
+            <div style="font-size: 12px; color: var(--color-ink-secondary); margin-bottom: 2px;">${pin.dayLabel}</div>
             <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">${pin.activity.name}</div>
-            <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px;">${pin.activity.time} · ${pin.activity.locationName}</div>
-            ${pin.activity.notes ? `<div style="font-size: 11px; color: #94a3b8;">${pin.activity.notes}</div>` : ''}
+            <div style="font-size: 11px; color: var(--color-ink-secondary); margin-bottom: 4px;">${pin.activity.time} · ${pin.activity.locationName}</div>
+            ${pin.activity.notes ? `<div style="font-size: 11px; color: var(--color-ink-secondary);">${pin.activity.notes}</div>` : ''}
           </div>
         `);
 

@@ -92,7 +92,8 @@ export default function Sidebar() {
       <aside
         data-testid="sidebar"
         className={`
-          flex flex-col bg-surface-raised border-r border-white/5
+          relative flex flex-col border-r border-white/5
+          bg-surface-raised/75 backdrop-blur-glass
           transition-all duration-200 ease-in-out z-30
           ${collapsed
             ? 'w-14 md:w-14'

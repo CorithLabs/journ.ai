@@ -71,7 +71,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
   const sourceRemoved =
     item.linkedActivityId !== undefined && linkedDay !== undefined && !linkedActivity;
 
-  const border = TYPE_BORDER[item.type] ?? 'border-slate-500';
+  const border = TYPE_BORDER[item.type] ?? 'border-category-slate';
 
   const link = async (dayIndex: number, activityId?: string) => {
     await db.clipboard.update(item.id, {

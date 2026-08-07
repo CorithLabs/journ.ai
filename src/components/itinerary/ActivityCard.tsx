@@ -25,7 +25,7 @@ export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
 
   if (ed) {
     return (
-      <div className="bg-surface-overlay border border-accent/30 rounded-xl p-3 space-y-2">
+      <div className="bg-surface-overlay border border-accent/30 rounded-card p-3 space-y-2">
         <div>
           <input value={nm} onChange={e => setNm(e.target.value)} onBlur={save}
             className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -49,7 +49,7 @@ export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
   }
 
   return (
-    <div className="group flex items-start gap-2 bg-surface-raised hover:bg-surface-overlay border border-white/5 rounded-xl p-3 transition-colors" data-testid="activity-card">
+    <div className="group flex items-start gap-2 bg-surface-raised hover:bg-surface-overlay border border-white/5 rounded-card p-3 transition-colors" data-testid="activity-card">
       <GripVertical size={14} className="mt-1 text-ink-muted cursor-grab shrink-0" aria-label="Drag handle" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">

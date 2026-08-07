@@ -6,6 +6,7 @@ import { getDayColor } from '../../constants/colors';
 import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
 import ActivityCard from './ActivityCard';
+import { scrollBehavior } from '../../utils/motion';
 
 interface Props { plan: Plan; }
 
@@ -110,7 +111,7 @@ export default function ItineraryView({ plan }: Props) {
       <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto shrink-0">
         {plan.itinerary.map(d => (
           <button key={d.dayIndex}
-            onClick={() => document.getElementById(`day-${d.dayIndex}`)?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => document.getElementById(`day-${d.dayIndex}`)?.scrollIntoView({ behavior: scrollBehavior() })}
             className="shrink-0 text-xs px-3 py-1 rounded-full border border-white/10 text-ink-secondary hover:text-ink-primary transition-colors">
             {d.label.split(' \u2014 ')[0]}
           </button>

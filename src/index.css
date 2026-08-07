@@ -59,6 +59,34 @@ body,
   border-radius: 4px;
 }
 
+/*
+ * Reduced motion (E7-NFR-02).
+ *
+ * Collapses transitions and decorative animation to effectively instant rather
+ * than removing them, so state changes still land in the right place. Applied
+ * globally because it must hold for anything added later, not only for the
+ * components that happened to remember a motion-reduce variant.
+ *
+ * Loading spinners keep turning, slowly: they report that work is ongoing, and
+ * a frozen one reads as a hung app. A small rotating ring is not a vestibular
+ * trigger, unlike parallax or large-area movement, which this does stop.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 1.8s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
 /* Glassmorphism utility */
 .glass {
   background: rgba(17, 24, 39, 0.6);
@@ -67,4 +95,103 @@ body,
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   border-radius: 1rem;
+}
+
+/*
+ * Ambient backdrop — slow blue light rising from the bottom of the viewport.
+ *
+ * This is what gives the glass surfaces something to be glass ABOUT. Over a
+ * flat #0a0f1a ground, `backdrop-filter: blur()` has nothing to sample and the
+ * effect is invisible; blurring a drifting gradient is what makes a panel read
+ * as a pane rather than a grey box.
+ *
+ * Three forms, each a soft radial anchored below the fold so the light rises
+ * rather than washing the whole screen. Sizes are in vmax so the composition
+ * holds its proportions from phone to desktop.
+ *
+ * Animates transform and opacity ONLY (E7-NFR-01) — no width/height/top/left,
+ * nothing that triggers layout. `will-change` promotes each form to its own
+ * layer so the compositor animates them without repainting the page. The
+ * container is inert: fixed, behind everything, and pointer-events: none, so
+ * it can never intercept a click.
+ */
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Its own stacking context, so app z-indexes stay unaffected. */
+  isolation: isolate;
+}
+
+.ambient__form {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform, opacity;
+}
+
+/* Cyan — the brand accent, largest and slowest, centred low. */
+.ambient__form--1 {
+  width: 90vmax;
+  height: 90vmax;
+  left: 50%;
+  bottom: -55vmax;
+  margin-left: -45vmax;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.28), rgba(6, 182, 212, 0) 68%);
+  animation: ambient-rise-1 34s ease-in-out infinite;
+}
+
+/* Sky — the secondary accent, drifting against the first so they part and meet. */
+.ambient__form--2 {
+  width: 65vmax;
+  height: 65vmax;
+  left: 8%;
+  bottom: -38vmax;
+  background: radial-gradient(circle, rgba(14, 165, 233, 0.24), rgba(14, 165, 233, 0) 66%);
+  animation: ambient-rise-2 43s ease-in-out infinite;
+}
+
+/* Deep indigo — cools the right edge and keeps the pair from reading as one blob. */
+.ambient__form--3 {
+  width: 55vmax;
+  height: 55vmax;
+  right: 4%;
+  bottom: -32vmax;
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.2), rgba(79, 70, 229, 0) 64%);
+  animation: ambient-rise-3 52s ease-in-out infinite;
+}
+
+/* Offset durations and paths so the three never sync into a visible pulse. */
+@keyframes ambient-rise-1 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
+  50%      { transform: translate3d(0, -7vmax, 0) scale(1.09); opacity: 1; }
+}
+
+@keyframes ambient-rise-2 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.7; }
+  50%      { transform: translate3d(6vmax, -10vmax, 0) scale(1.14); opacity: 0.95; }
+}
+
+@keyframes ambient-rise-3 {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); opacity: 0.6; }
+  50%      { transform: translate3d(-7vmax, -6vmax, 0) scale(1); opacity: 0.85; }
+}
+
+/*
+ * Reduced motion: keep the light, drop the movement. The colour is part of the
+ * design and the glass depends on it, so removing it entirely would flatten the
+ * whole interface — it is the drifting that can be a vestibular trigger, not
+ * the gradient. The global rule above already truncates the animation; this
+ * pins each form at a composed resting position rather than wherever frame one
+ * happened to leave it.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .ambient__form {
+    animation: none !important;
+  }
+  .ambient__form--1 { transform: translate3d(0, -4vmax, 0) scale(1.05); opacity: 0.9; }
+  .ambient__form--2 { transform: translate3d(3vmax, -5vmax, 0) scale(1.07); opacity: 0.8; }
+  .ambient__form--3 { transform: translate3d(-3vmax, -3vmax, 0) scale(1.02); opacity: 0.7; }
 }

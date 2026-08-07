@@ -231,7 +231,7 @@ export default function WeatherSuggestionsPanel({
         {activeSuggestions.map(suggestion => (
           <div
             key={suggestion.id}
-            className="bg-surface-raised border border-white/5 rounded-xl p-3"
+            className="bg-surface-raised border border-white/5 rounded-card p-3"
             data-testid="suggestion-card"
           >
             {/* Type badge */}

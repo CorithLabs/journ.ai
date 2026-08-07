@@ -4,6 +4,7 @@ import { db, type Plan } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import StartManualButton from './StartManualButton';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
+import { scrollBehavior } from '../../utils/motion';
 
 interface Props {
   plan: Plan;
@@ -113,7 +114,7 @@ export default function IntakeChat({ plan }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: scrollBehavior() });
   }, [messages]);
 
   const addMessage = (role: 'assistant' | 'user', content: string) => {

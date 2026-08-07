@@ -65,7 +65,7 @@ export default function FileDropzone({ file, onFile }: Props) {
   if (file) {
     return (
       <div
-        className="flex items-center gap-3 bg-surface-overlay border border-white/10 rounded-xl p-3"
+        className="flex items-center gap-3 bg-surface-overlay border border-white/10 rounded-card p-3"
         data-testid="file-preview"
       >
         {isImageMime(file.mime) && file.previewUrl ? (

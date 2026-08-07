@@ -246,7 +246,7 @@ export default function NewPlanModal({ onClose }: Props) {
               <ul
                 id="destination-suggestions"
                 role="listbox"
-                className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-xl shadow-glass overflow-hidden max-h-56 overflow-y-auto"
+                className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass overflow-hidden max-h-56 overflow-y-auto"
                 data-testid="destination-suggestions"
               >
                 {suggestions.map((s, n) => (
