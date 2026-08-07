@@ -18,6 +18,9 @@ import {
   getActiveProvider,
   setActiveProvider,
   keyStorageFor,
+  getAnthropicModel,
+  setAnthropicModel,
+  ANTHROPIC_MODELS,
   type AiProvider,
 } from '../services/aiClient';
 import { useAppStore } from '../store';
@@ -47,6 +50,7 @@ export default function SettingsPage() {
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [formatWarning, setFormatWarning] = useState(false);
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  const [anthropicModel, setAnthropicModelState] = useState<string>(ANTHROPIC_MODELS[0].id);
   const setAiProvider = useAppStore((s) => s.setAiProvider);
 
   const [mapboxToken, setMapboxToken] = useState('');
@@ -61,9 +65,17 @@ export default function SettingsPage() {
     const active = getActiveProvider();
     setProvider(active);
     setHasKey(hasStoredKey(keyStorageFor(active)));
+    setAnthropicModelState(getAnthropicModel());
     const stored = localStorage.getItem(MAPBOX_TOKEN_KEY);
     if (stored) setMapboxToken(stored);
   }, []);
+
+  // Model choice applies immediately — the next AI call reads it from
+  // localStorage, so there's no separate save step.
+  const onModelChange = (next: string) => {
+    setAnthropicModelState(next);
+    setAnthropicModel(next);
+  };
 
   // Switching provider re-reads that provider's saved-key state and clears any
   // transient save/test messages so the panel reflects the newly-selected one.
@@ -242,6 +254,35 @@ export default function SettingsPage() {
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic (Claude)</option>
         </select>
+
+        {provider === 'anthropic' && (
+          <>
+            <label htmlFor="anthropic-model" className="block text-sm text-ink-secondary mb-1.5">
+              Model
+            </label>
+            <select
+              id="anthropic-model"
+              value={anthropicModel}
+              onChange={(e) => onModelChange(e.target.value)}
+              data-testid="anthropic-model-select"
+              className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+            >
+              {ANTHROPIC_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+              {/* A model saved before this list existed still shows as selected. */}
+              {!ANTHROPIC_MODELS.some((m) => m.id === anthropicModel) && (
+                <option value={anthropicModel}>{anthropicModel}</option>
+              )}
+            </select>
+            <p className="mt-1.5 mb-4 text-xs text-ink-muted">
+              Haiku is fastest and cheapest; Sonnet and Opus produce better
+              itineraries for complex multi-day trips.
+            </p>
+          </>
+        )}
 
         <label htmlFor="api-key" className="block text-sm text-ink-secondary mb-1.5">
           {PROVIDER_LABEL[provider]} API key

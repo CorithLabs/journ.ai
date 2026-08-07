@@ -4,8 +4,13 @@ import {
   setActiveProvider,
   keyStorageFor,
   streamCompletion,
+  chatWithTools,
   MissingKeyError,
   PROVIDER_STORAGE,
+  ANTHROPIC_MODEL,
+  ANTHROPIC_MODEL_STORAGE,
+  getAnthropicModel,
+  setAnthropicModel,
 } from '../aiClient';
 import { setApiKey, OPENAI_KEY_STORAGE, ANTHROPIC_KEY_STORAGE } from '../aiKey';
 
@@ -148,7 +153,62 @@ describe('streamCompletion routing', () => {
     expect(body.system).toBe('be terse');
     expect(body.messages).toEqual([{ role: 'user', content: 'hi' }]);
     expect(body.max_tokens).toBe(8000);
-    expect(body.model).toBe('claude-haiku-3-5');
+    expect(body.model).toBe('claude-haiku-4-5');
+  });
+
+  it('sends the model chosen in Settings instead of the default', async () => {
+    setActiveProvider('anthropic');
+    setAnthropicModel('claude-sonnet-5');
+    await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(sseResponse(['data: {"type":"message_stop"}']));
+    await streamCompletion([{ role: 'user', content: 'hi' }]);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body.model).toBe('claude-sonnet-5');
+  });
+
+  it('falls back to the default model when the stored choice is cleared', async () => {
+    setActiveProvider('anthropic');
+    setAnthropicModel('claude-opus-5');
+    setAnthropicModel('');
+    expect(localStorage.getItem(ANTHROPIC_MODEL_STORAGE)).toBeNull();
+    expect(getAnthropicModel()).toBe(ANTHROPIC_MODEL);
+  });
+
+  it('surfaces an Anthropic truncation (stop_reason max_tokens) as a clear error', async () => {
+    setActiveProvider('anthropic');
+    await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce(
+      sseResponse([
+        'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"{\\"days\\":[" }}',
+        'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}',
+      ]),
+    );
+    await expect(
+      streamCompletion([{ role: 'user', content: 'plan 21 days' }]),
+    ).rejects.toThrow(/too long to generate/);
+  });
+
+  it('never sends `temperature` to Anthropic (Sonnet 5 / Opus 5 reject it)', async () => {
+    setActiveProvider('anthropic');
+    await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: [{ type: 'text', text: 'ok' }] }),
+    } as unknown as Response);
+    await chatWithTools([{ role: 'user', content: 'hi' }], [
+      {
+        type: 'function',
+        function: { name: 'noop', description: 'does nothing', parameters: {} },
+      },
+    ]);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+    );
+    expect(body).not.toHaveProperty('temperature');
+    expect(body.model).toBe('claude-haiku-4-5');
   });
 
   it('surfaces a 503 from Anthropic as a clear "unavailable" error', async () => {
