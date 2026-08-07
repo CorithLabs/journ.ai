@@ -78,32 +78,37 @@ export default function TabBar({ planId }: Props) {
   };
 
   return (
-    <nav
-      /*
-       * Phone: a floating pill fixed above the home indicator and inset from
-       * both edges, so nothing is clipped by rounded screen corners or the
-       * gesture area. A full-width in-flow bar was being cut at the edges.
-       * Desktop: the ordinary top tab strip.
-       */
+    /*
+     * Phone: a floating pill fixed above the home indicator and inset from
+     * both edges, so nothing is clipped by rounded screen corners or the
+     * gesture area. The breadcrumb is its first row, the tabs its second.
+     * Desktop: the ordinary top strip, breadcrumb inline at the left.
+     *
+     * The container is a plain element and the tablist is nested inside it.
+     * role="tablist" must contain only tabs — putting the breadcrumb in it
+     * made assistive technology announce a fifth, non-existent tab.
+     */
+    <div
       className={
         isMobile
-          ? `fixed z-30 left-3 right-3 flex items-stretch gap-0.5
+          ? `fixed z-30 left-3 right-3 flex flex-col
              bottom-[calc(0.75rem+env(safe-area-inset-bottom))]
              rounded-modal border border-white/10 shadow-glass
-             bg-surface-raised/85 backdrop-blur-glass px-1.5 py-1.5`
+             bg-surface-raised/85 backdrop-blur-glass px-1.5 pt-1.5 pb-1.5`
           : 'flex items-center gap-4 border-b border-white/5 bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0'
       }
-      aria-label="Plan tabs"
-      role="tablist"
       data-testid="tab-bar"
     >
-      {/* Desktop only — on a phone the breadcrumb rides the top bar, since
-          the bottom pill has no room beside four tabs. */}
-      {!isMobile && (
-        <div className="shrink-0 max-w-[40%]">
-          <PlanBreadcrumb planId={planId} />
-        </div>
-      )}
+      <div className={isMobile ? 'px-1.5 pb-1.5 min-w-0' : 'shrink-0 max-w-[40%]'}>
+        <PlanBreadcrumb planId={planId} />
+      </div>
+
+      <nav
+        className={isMobile ? 'flex items-stretch gap-0.5' : 'flex items-center'}
+        aria-label="Plan tabs"
+        role="tablist"
+        data-testid="tab-list"
+      >
       {TABS.map((tab, i) => {
         const isActive = tab.key === activeTab;
         return (
@@ -138,6 +143,7 @@ export default function TabBar({ planId }: Props) {
           </button>
         );
       })}
-    </nav>
+      </nav>
+    </div>
   );
 }
