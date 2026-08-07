@@ -6,7 +6,9 @@
  * response that gpt-4o-mini truncates mid-JSON, causing the "itinerary too
  * long" parse failure. The limit is enforced in two places:
  *   1. NewPlanModal — date-picker validation on plan creation.
- *   2. IntakeChat — before itinerary generation is allowed to start.
+ *   2. GenerateItinerary — blocks generation for a plan already on disk whose
+ *      range exceeds the cap (created before the cap shipped, or duplicated).
+ *      IntakeChat has no dates step, so generation is the second gate.
  */
 export const MAX_TRIP_DAYS = 14;
 
@@ -46,3 +48,12 @@ export function exceedsMaxTripDays(
 
 export const MAX_TRIP_DAYS_ERROR =
   'Maximum trip length is 14 days. Please shorten your trip.';
+
+/**
+ * Message for a plan whose saved dates already exceed the cap — names the
+ * actual span so the user knows by how much, and points at the two ways out.
+ */
+export function tooLongForGenerationMessage(dayCount: number | null): string {
+  const span = dayCount === null ? 'Your dates' : `Your dates span ${dayCount} days, which`;
+  return `${span} exceeds the ${MAX_TRIP_DAYS}-day maximum. Shorten the trip, or split it into two plans.`;
+}

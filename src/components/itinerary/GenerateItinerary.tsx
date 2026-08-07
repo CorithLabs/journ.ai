@@ -5,6 +5,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
 import { streamCompletion, MissingKeyError } from '../../services/aiClient';
 import { buildItineraryPrompt, BUDGET_RANGES } from './itineraryPrompt';
+import {
+  exceedsMaxTripDays,
+  tripDayCount,
+  tooLongForGenerationMessage,
+} from '../../utils/tripDuration';
 
 interface Props {
   plan: Plan;
@@ -106,7 +111,23 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
   // parse failure is diagnosable instead of a dead-end "couldn't read".
   const [rawResponse, setRawResponse] = useState<string | null>(null);
 
+  // NewPlanModal caps new plans at MAX_TRIP_DAYS, but a plan created before that
+  // cap shipped — or duplicated from one — can still be over. Generating from it
+  // would blow the token budget and fail mid-JSON, so block it up front with a
+  // message that says what to do instead of burning a request first.
+  const tooLong = exceedsMaxTripDays(plan.startDate, plan.endDate);
+  const tooLongMessage = tooLongForGenerationMessage(
+    tripDayCount(plan.startDate, plan.endDate),
+  );
+
   const generate = async () => {
+    // Defence in depth: the button is not rendered when tooLong, but Retry and
+    // any future caller route through here too.
+    if (tooLong) {
+      setError(tooLongMessage);
+      setStatus('error');
+      return;
+    }
     setStatus('generating'); setError(null); setStreamText(''); setRawResponse(null);
     try {
       const prompt = buildItineraryPrompt(plan);
@@ -210,10 +231,21 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
           </div>
         </div>
       )}
-      {status !== 'generating' && (
-        <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
-          <Sparkles size={16} aria-hidden="true" /> Generate Itinerary
-        </button>
+      {tooLong ? (
+        <div
+          role="alert"
+          className="flex items-start gap-2 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl max-w-sm text-left"
+          data-testid="trip-too-long-warning"
+        >
+          <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-sm text-status-warning">{tooLongMessage}</p>
+        </div>
+      ) : (
+        status !== 'generating' && (
+          <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
+            <Sparkles size={16} aria-hidden="true" /> Generate Itinerary
+          </button>
+        )
       )}
     </div>
   );

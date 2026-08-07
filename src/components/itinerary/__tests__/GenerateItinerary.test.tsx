@@ -91,6 +91,38 @@ describe('GenerateItinerary', () => {
     expect(screen.getByText('Generate Itinerary')).toBeInTheDocument();
   });
 
+  // A plan created before the 14-day cap shipped (or duplicated from one) can
+  // still exceed it. Generating would blow the token budget and fail mid-JSON,
+  // so the button is replaced by an explanation and no request is made.
+  describe('trip exceeding the 14-day cap', () => {
+    const longPlan: Plan = { ...mockPlan, startDate: '2025-07-01', endDate: '2025-07-21' };
+
+    it('blocks generation and explains why, naming the actual span', () => {
+      render(<MemoryRouter><GenerateItinerary plan={longPlan} onGenerated={onGenerated} /></MemoryRouter>);
+      const warning = screen.getByTestId('trip-too-long-warning');
+      expect(warning).toHaveTextContent(/21 days/);
+      expect(warning).toHaveTextContent(/14-day maximum/);
+      expect(screen.queryByTestId('start-generate-btn')).not.toBeInTheDocument();
+    });
+
+    it('makes no AI request for an over-length plan', () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      seedApiKey();
+      render(<MemoryRouter><GenerateItinerary plan={longPlan} onGenerated={onGenerated} /></MemoryRouter>);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(onGenerated).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
+    });
+
+    it('still allows a trip of exactly 14 days', () => {
+      const exactly14: Plan = { ...mockPlan, startDate: '2025-07-01', endDate: '2025-07-14' };
+      render(<MemoryRouter><GenerateItinerary plan={exactly14} onGenerated={onGenerated} /></MemoryRouter>);
+      expect(screen.getByTestId('start-generate-btn')).toBeInTheDocument();
+      expect(screen.queryByTestId('trip-too-long-warning')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows destination name', () => {
     render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
     expect(screen.getByText(/Tokyo/i)).toBeInTheDocument();
