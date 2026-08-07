@@ -147,6 +147,39 @@ export const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'find_activities',
+      description:
+        "Look up full details of itinerary activities — location and notes, which the summary above omits. Use this before answering questions about what an activity involves, or to check an activity's exact name before editing it.",
+      parameters: {
+        type: 'object',
+        properties: {
+          nameMatch: {
+            type: 'string',
+            description: 'Optional case-insensitive substring of the activity name; omit to list all',
+          },
+          dayIndex: { type: 'integer', description: 'Optional 0-based day to scope the search' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_clipboard_item',
+      description:
+        'Read the full saved text of a clipboard item — confirmation numbers, addresses, booking details. The list above shows only titles, so use this whenever the answer is inside a saved item.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titleMatch: { type: 'string', description: 'Part of the clipboard item title to match' },
+        },
+        required: ['titleMatch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_clipboard',
       description: 'Save a note to the clipboard for the current plan.',
       parameters: {
@@ -165,9 +198,15 @@ export const AGENT_TOOLS = [
   },
 ] as const;
 
+/**
+ * `message` is what the user sees. `data` is set only by read tools: it is the
+ * payload fed back to the model for the next turn, and its presence marks the
+ * action as a lookup rather than a change — so useAgentChat knows not to show a
+ * confirmation bubble for it and to let the model answer in its own words.
+ */
 export type AgentActionResult =
-  | { ok: true; message: string }
-  | { ok: false; message: string };
+  | { ok: true; message: string; data?: string }
+  | { ok: false; message: string; data?: string };
 
 interface RawToolCall {
   name: string;
@@ -403,6 +442,63 @@ export async function executeAgentAction(
         return { ok: true, message: `Done — I've marked "${target.title}" as complete.` };
       }
 
+      case 'find_activities': {
+        const match = String(call.args.nameMatch ?? '').trim().toLowerCase();
+        const dayScope = call.args.dayIndex != null ? Number(call.args.dayIndex) : null;
+        const hits: Record<string, unknown>[] = [];
+        for (const d of plan.itinerary) {
+          if (dayScope != null && d.dayIndex !== dayScope) continue;
+          for (const a of d.activities) {
+            if (match && !a.name.toLowerCase().includes(match)) continue;
+            hits.push({
+              day: d.dayIndex + 1,
+              dayIndex: d.dayIndex,
+              name: a.name,
+              time: a.time,
+              location: a.locationName || null,
+              notes: a.notes || null,
+              pinnedToTodo: a.pinnedToTodo,
+            });
+          }
+        }
+        return {
+          ok: true,
+          message: `Found ${hits.length} activit${hits.length === 1 ? 'y' : 'ies'}.`,
+          data: JSON.stringify(hits),
+        };
+      }
+
+      case 'read_clipboard_item': {
+        const match = String(call.args.titleMatch ?? '').trim().toLowerCase();
+        if (!match) return { ok: false, message: 'Which saved item should I look at?' };
+        const items: ClipboardItem[] = await db.clipboard
+          .where('planId')
+          .equals(plan.id)
+          .toArray();
+        const hits = items
+          .filter((c) => c.title.toLowerCase().includes(match))
+          .map((c) => ({
+            title: c.title,
+            type: c.type,
+            // Files have no text to read; say so rather than returning null and
+            // letting the model guess the item is empty.
+            body: c.body ?? (c.fileName ? `(file attachment: ${c.fileName})` : null),
+            linkedDayIndex: c.linkedDayIndex ?? null,
+          }));
+        if (!hits.length) {
+          return {
+            ok: false,
+            message: `I couldn't find a saved item matching "${call.args.titleMatch}".`,
+            data: JSON.stringify([]),
+          };
+        }
+        return {
+          ok: true,
+          message: `Read ${hits.length} saved item${hits.length === 1 ? '' : 's'}.`,
+          data: JSON.stringify(hits),
+        };
+      }
+
       case 'save_clipboard': {
         const title = String(call.args.title ?? '').trim();
         if (!title) return { ok: false, message: 'What should I title this clipboard item?' };
@@ -472,6 +568,7 @@ export function buildSystemPrompt(
     'Use move_activity to change which day or time an existing activity sits at — do not remove and re-add it, which loses its notes and location.',
     'Use pin_activity_to_todo when the user wants to track booking or preparing for something already in the itinerary.',
     'The to-do and clipboard lists below are the current state — use them to answer questions directly rather than calling a tool.',
+    'For detail they do NOT contain — an activity\'s location or notes, or the saved text inside a clipboard item — call find_activities or read_clipboard_item first, then answer from what comes back. You will get the results and a turn to reply.',
     'To REPLACE one activity with another (e.g. "swap the museum for the aquarium"), call edit_activity with nameMatch set to the current activity and newName (and locationName) set to the replacement — this keeps its time slot. Use remove_activity only when the user wants it gone with nothing in its place.',
     'Match existing activities by a distinctive part of their name (nameMatch is a case-insensitive substring). Use dayIndex (0-based, shown in the itinerary summary) when adding, or to disambiguate if the same name appears on multiple days.',
     'If a request is ambiguous (e.g. "add something for tonight"), ask a clarifying question INSTEAD of guessing — do not call a tool.',

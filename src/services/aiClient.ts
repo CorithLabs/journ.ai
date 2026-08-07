@@ -42,6 +42,26 @@ const MAX_TOKENS = 8000;
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /**
+   * Tool calls made by this assistant turn. Present only when replaying an
+   * assistant turn back to the model in a multi-turn tool loop — both providers
+   * require the original call (with its id) in the history before they will
+   * accept the matching result.
+   */
+  toolCalls?: ToolCall[];
+}
+
+/** A tool's output, fed back to the model. Pairs with a ToolCall by `id`. */
+export interface ToolResultMessage {
+  role: 'tool';
+  toolCallId: string;
+  content: string;
+}
+
+export type ConversationMessage = ChatMessage | ToolResultMessage;
+
+function isToolResult(m: ConversationMessage): m is ToolResultMessage {
+  return m.role === 'tool';
 }
 
 export interface StreamOptions {
@@ -304,8 +324,14 @@ export interface ToolSchema {
   function: { name: string; description: string; parameters: unknown };
 }
 
-/** A tool the model asked to run. `malformed` = arguments weren't valid JSON. */
+/**
+ * A tool the model asked to run. `malformed` = arguments weren't valid JSON.
+ * `id` is the provider's own call id — it must be echoed back on the result so
+ * the provider can pair the two, so it is carried verbatim and never generated
+ * here.
+ */
 export interface ToolCall {
+  id: string;
   name: string;
   args: Record<string, unknown>;
   malformed?: boolean;
@@ -325,7 +351,7 @@ export interface ChatWithToolsResult {
  * never talks to a provider endpoint directly.
  */
 export async function chatWithTools(
-  messages: ChatMessage[],
+  messages: ConversationMessage[],
   tools: readonly ToolSchema[],
   options: { temperature?: number; maxTokens?: number } = {},
 ): Promise<ChatWithToolsResult> {
@@ -339,9 +365,80 @@ export async function chatWithTools(
     : chatWithToolsOpenAI(apiKey, messages, tools, maxTokens, temperature);
 }
 
+/**
+ * Wire format for OpenAI: an assistant turn carries `tool_calls`, and each
+ * result is its own `role: 'tool'` message keyed by `tool_call_id`.
+ */
+function toOpenAIMessages(messages: ConversationMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (isToolResult(m)) {
+      return { role: 'tool', tool_call_id: m.toolCallId, content: m.content };
+    }
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      return {
+        role: 'assistant',
+        // OpenAI wants null, not '', when a turn is only tool calls.
+        content: m.content || null,
+        tool_calls: m.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+        })),
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
+}
+
+/**
+ * Wire format for Anthropic: an assistant turn carries `tool_use` blocks, and
+ * results come back as `tool_result` blocks inside a USER turn. Consecutive
+ * results must be batched into one user message — Anthropic rejects a turn
+ * whose tool_use blocks aren't all answered by the next user turn, so emitting
+ * one message per result breaks a parallel call.
+ */
+function toAnthropicMessages(
+  messages: ConversationMessage[],
+): { role: 'user' | 'assistant'; content: unknown }[] {
+  const out: { role: 'user' | 'assistant'; content: unknown }[] = [];
+  let pendingResults: unknown[] = [];
+
+  const flush = () => {
+    if (pendingResults.length) {
+      out.push({ role: 'user', content: pendingResults });
+      pendingResults = [];
+    }
+  };
+
+  for (const m of messages) {
+    if (isToolResult(m)) {
+      pendingResults.push({
+        type: 'tool_result',
+        tool_use_id: m.toolCallId,
+        content: m.content,
+      });
+      continue;
+    }
+    flush();
+    if (m.role === 'system') continue; // lifted to the top-level `system` field
+    if (m.role === 'assistant' && m.toolCalls?.length) {
+      const blocks: unknown[] = [];
+      if (m.content) blocks.push({ type: 'text', text: m.content });
+      for (const tc of m.toolCalls) {
+        blocks.push({ type: 'tool_use', id: tc.id, name: tc.name, input: tc.args });
+      }
+      out.push({ role: 'assistant', content: blocks });
+      continue;
+    }
+    out.push({ role: m.role as 'user' | 'assistant', content: m.content });
+  }
+  flush();
+  return out;
+}
+
 async function chatWithToolsOpenAI(
   apiKey: string,
-  messages: ChatMessage[],
+  messages: ConversationMessage[],
   tools: readonly ToolSchema[],
   maxTokens: number,
   temperature: number,
@@ -354,7 +451,7 @@ async function chatWithToolsOpenAI(
     },
     body: JSON.stringify({
       model: OPENAI_MODEL,
-      messages,
+      messages: toOpenAIMessages(messages),
       tools,
       tool_choice: 'auto',
       temperature,
@@ -371,20 +468,24 @@ async function chatWithToolsOpenAI(
     choices?: {
       message?: {
         content?: string | null;
-        tool_calls?: { function?: { name?: string; arguments?: string } }[];
+        tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[];
       };
     }[];
   };
   const msg = data.choices?.[0]?.message;
-  const toolCalls: ToolCall[] = (msg?.tool_calls ?? []).map((tc) => {
+  const toolCalls: ToolCall[] = (msg?.tool_calls ?? []).map((tc, i) => {
     const name = tc.function?.name ?? '';
+    // Fall back to a positional id only if the provider omitted one; the result
+    // must still carry SOME id or the follow-up turn is rejected.
+    const id = tc.id ?? `call_${i}`;
     try {
       return {
+        id,
         name,
         args: JSON.parse(tc.function?.arguments ?? '{}') as Record<string, unknown>,
       };
     } catch {
-      return { name, args: {}, malformed: true };
+      return { id, name, args: {}, malformed: true };
     }
   });
   return { text: msg?.content ?? '', toolCalls };
@@ -392,14 +493,18 @@ async function chatWithToolsOpenAI(
 
 async function chatWithToolsAnthropic(
   apiKey: string,
-  messages: ChatMessage[],
+  messages: ConversationMessage[],
   tools: readonly ToolSchema[],
   maxTokens: number,
   // Not sent: Sonnet 5 and Opus 5 reject `temperature` with a 400. Matches
   // streamAnthropic, which has never sent it.
   _temperature: number,
 ): Promise<ChatWithToolsResult> {
-  const { system, rest } = splitSystem(messages);
+  const systemParts = messages
+    .filter((m): m is ChatMessage => !isToolResult(m) && m.role === 'system')
+    .map((m) => m.content);
+  const system = systemParts.length ? systemParts.join('\n\n') : undefined;
+  const rest = toAnthropicMessages(messages);
   // OpenAI {type:'function', function:{name,description,parameters}} →
   // Anthropic {name, description, input_schema}.
   const anthropicTools = tools.map((t) => ({
@@ -435,7 +540,7 @@ async function chatWithToolsAnthropic(
   const data = (await resp.json()) as {
     content?: (
       | { type: 'text'; text: string }
-      | { type: 'tool_use'; name: string; input: Record<string, unknown> }
+      | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
     )[];
   };
   let text = '';
@@ -443,7 +548,7 @@ async function chatWithToolsAnthropic(
   for (const block of data.content ?? []) {
     if (block.type === 'text') text += block.text;
     else if (block.type === 'tool_use') {
-      toolCalls.push({ name: block.name, args: block.input ?? {} });
+      toolCalls.push({ id: block.id, name: block.name, args: block.input ?? {} });
     }
   }
   return { text, toolCalls };
