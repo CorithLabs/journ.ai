@@ -22,6 +22,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered by src/pwa/updates.ts instead of the auto-injected script,
+      // so we get the registration object and can poll for updates. The
+      // injected script never re-checks, which is how a phone stays on an old
+      // build indefinitely.
+      injectRegister: null,
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
         name: 'Journ.ai — AI Travel Planner',
