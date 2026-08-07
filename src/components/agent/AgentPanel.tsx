@@ -5,6 +5,7 @@ import { db } from '../../db';
 import { useAppStore, type ActiveTab } from '../../store';
 import { hasStoredKey } from '../../services/aiKey';
 import { useAgentChat } from './useAgentChat';
+import Markdown from './Markdown';
 
 interface Props {
   planId: string;
@@ -123,7 +124,14 @@ export default function AgentPanel({ planId }: Props) {
               }`}
               data-testid={`agent-msg-${m.role}`}
             >
-              {m.content}
+              {/* The user's own text is shown verbatim; only model output is
+                  markdown, and rendering the user's input would mangle a
+                  question that happens to contain * or _. */}
+              {m.role === 'user' ? (
+                <span className="whitespace-pre-wrap break-words">{m.content}</span>
+              ) : (
+                <Markdown content={m.content} />
+              )}
             </div>
           ))}
         {busy && (
