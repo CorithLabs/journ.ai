@@ -1,5 +1,6 @@
 import { useRef, KeyboardEvent } from 'react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import PlanBreadcrumb from './PlanBreadcrumb';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
 
@@ -90,12 +91,19 @@ export default function TabBar({ planId }: Props) {
              bottom-[calc(0.75rem+env(safe-area-inset-bottom))]
              rounded-modal border border-white/10 shadow-glass
              bg-surface-raised/85 backdrop-blur-glass px-1.5 py-1.5`
-          : 'flex items-end border-b border-white/5 bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0'
+          : 'flex items-center gap-4 border-b border-white/5 bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0'
       }
       aria-label="Plan tabs"
       role="tablist"
       data-testid="tab-bar"
     >
+      {/* Desktop only — on a phone the breadcrumb rides the top bar, since
+          the bottom pill has no room beside four tabs. */}
+      {!isMobile && (
+        <div className="shrink-0 max-w-[40%]">
+          <PlanBreadcrumb planId={planId} />
+        </div>
+      )}
       {TABS.map((tab, i) => {
         const isActive = tab.key === activeTab;
         return (

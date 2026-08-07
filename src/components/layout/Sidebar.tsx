@@ -15,6 +15,7 @@ import { db } from '../../db';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { versionLabel } from '../../utils/appVersion';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
 
 function formatDateRange(start: string, end: string): string {
@@ -338,6 +339,19 @@ export default function Sidebar() {
               <span className="ml-auto text-[10px] text-status-warning">Set up key</span>
             )}
           </button>
+
+          {/* Build identity. Not a link or a control — it exists to be read
+              aloud when something looks wrong, and to make a browser serving a
+              stale service-worker cache obvious at a glance. */}
+          {!narrow && (
+            <p
+              className="px-3 pt-1 text-[10px] text-ink-muted tabular-nums select-text"
+              data-testid="app-version"
+              title="App version"
+            >
+              {versionLabel()}
+            </p>
+          )}
         </div>
       </aside>
 
