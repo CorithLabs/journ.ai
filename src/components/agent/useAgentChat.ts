@@ -2,13 +2,25 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type Plan } from '../../db';
 import { useAppStore, type Message } from '../../store';
-import { chatWithTools, MissingKeyError, type ChatMessage } from '../../services/aiClient';
+import {
+  chatWithTools,
+  MissingKeyError,
+  type ChatMessage,
+  type ConversationMessage,
+} from '../../services/aiClient';
 import { AGENT_TOOLS, buildSystemPrompt, executeAgentAction } from './agentActions';
 
 export interface AgentChat {
   send: (text: string) => Promise<void>;
   busy: boolean;
 }
+
+/**
+ * Model turns allowed per user message. Enough for the realistic chains
+ * (look something up → act on it → summarise), low enough that a model stuck
+ * in a tool loop can't run up the user's own API bill.
+ */
+const MAX_TOOL_ROUNDS = 4;
 
 /**
  * Drives the AI agent conversation. Sends the session history + a
@@ -57,38 +69,92 @@ export function useAgentChat(plan: Plan | undefined): AgentChat {
         db.clipboard.where('planId').equals(plan.id).toArray(),
       ]);
 
-      const { text: assistantText, toolCalls } = await chatWithTools(
-        [
-          {
-            role: 'system',
-            content: buildSystemPrompt(plan, activeTab, { todos, clipboard }),
-          },
-          ...history,
-        ],
-        AGENT_TOOLS,
-        { temperature: 0.3 },
-      );
+      const conversation: ConversationMessage[] = [
+        {
+          role: 'system',
+          content: buildSystemPrompt(plan, activeTab, { todos, clipboard }),
+        },
+        ...history,
+      ];
 
-      if (toolCalls.length === 0) {
-        // No action — the model asked a clarifying question or chatted.
-        reply(assistantText || "I'm not sure what to change — could you clarify?");
-        return;
-      }
-
-      // The plan is re-read from IndexedDB before each call. Every itinerary
+      // The plan is re-read from IndexedDB after each write. Every itinerary
       // tool writes the whole `itinerary` array, so running two of them against
       // the same snapshot would make the second silently discard the first's
       // write — e.g. "add X and Y to Day 2" would land only Y.
       let current = plan;
-      for (const tc of toolCalls) {
-        if (tc.malformed) {
-          // The model returned unparseable arguments.
-          reply("I couldn't complete that action — try rephrasing.");
-          continue;
+      // True once a write tool has already told the user what changed, so the
+      // model's closing summary isn't shown on top of it saying the same thing.
+      let confirmed = false;
+      // Results of calls already made this turn, keyed by name + arguments.
+      // A model that doesn't accept a result and re-requests the same write
+      // would otherwise apply it once per round — four identical activities
+      // instead of one. Replaying the first result ends that loop without
+      // touching the database again.
+      const seen = new Map<string, string>();
+
+      for (let round = 0; ; round++) {
+        const { text: assistantText, toolCalls } = await chatWithTools(
+          conversation,
+          AGENT_TOOLS,
+          { temperature: 0.3 },
+        );
+
+        if (toolCalls.length === 0) {
+          // Nothing left to do: a clarifying question, an answer built from
+          // tool results, or plain chat.
+          if (assistantText) reply(assistantText);
+          else if (!confirmed) reply("I'm not sure what to change — could you clarify?");
+          return;
         }
-        const result = await executeAgentAction(current, { name: tc.name, args: tc.args });
-        reply(result.message);
-        if (result.ok) current = (await db.plans.get(plan.id)) ?? current;
+
+        // Replay the model's own turn before its results — both providers
+        // reject a result whose originating call isn't in the history.
+        conversation.push({ role: 'assistant', content: assistantText, toolCalls });
+
+        for (const tc of toolCalls) {
+          if (tc.malformed) {
+            // The model returned unparseable arguments.
+            reply("I couldn't complete that action — try rephrasing.");
+            confirmed = true;
+            conversation.push({
+              role: 'tool',
+              toolCallId: tc.id,
+              content: 'Error: the arguments were not valid JSON.',
+            });
+            continue;
+          }
+          const key = `${tc.name}:${JSON.stringify(tc.args)}`;
+          const priorResult = seen.get(key);
+          if (priorResult !== undefined) {
+            conversation.push({ role: 'tool', toolCallId: tc.id, content: priorResult });
+            continue;
+          }
+
+          const result = await executeAgentAction(current, { name: tc.name, args: tc.args });
+          seen.set(key, result.data ?? result.message);
+          // `data` marks a lookup: hand it to the model and stay silent, so it
+          // can answer in prose rather than the user seeing raw JSON.
+          if (result.data === undefined) {
+            reply(result.message);
+            confirmed = true;
+          }
+          conversation.push({
+            role: 'tool',
+            toolCallId: tc.id,
+            content: result.data ?? result.message,
+          });
+          if (result.ok && result.data === undefined) {
+            current = (await db.plans.get(plan.id)) ?? current;
+          }
+        }
+
+        // Bound the loop: a model that keeps calling tools would otherwise spend
+        // the user's own API credit indefinitely. Writes have already been
+        // applied and confirmed at this point — only the closing prose is lost.
+        if (round >= MAX_TOOL_ROUNDS - 1) {
+          if (!confirmed) reply("I couldn't finish that — could you try a simpler request?");
+          return;
+        }
       }
     } catch (err) {
       if (err instanceof MissingKeyError) {

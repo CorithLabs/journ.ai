@@ -176,6 +176,135 @@ describe('streamCompletion routing', () => {
     expect(getAnthropicModel()).toBe(ANTHROPIC_MODEL);
   });
 
+  // A multi-turn tool loop has to replay the model's own call before its
+  // result, and the two providers spell that differently.
+  describe('tool-loop wire format', () => {
+    const tools = [
+      { type: 'function' as const, function: { name: 'noop', description: 'x', parameters: {} } },
+    ];
+    const loopHistory = [
+      { role: 'user' as const, content: 'what is on day 3?' },
+      {
+        role: 'assistant' as const,
+        content: 'Let me look.',
+        toolCalls: [{ id: 'call_1', name: 'find_activities', args: { dayIndex: 2 } }],
+      },
+      { role: 'tool' as const, toolCallId: 'call_1', content: '[{"name":"Museum"}]' },
+    ];
+
+    const jsonResponse = (payload: unknown) =>
+      ({ ok: true, status: 200, json: async () => payload }) as unknown as Response;
+
+    it('OpenAI: tool_calls on the assistant turn, tool_call_id on the result', async () => {
+      setActiveProvider('openai');
+      await setApiKey('sk-test', OPENAI_KEY_STORAGE);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: 'Just the museum.' } }] }),
+      );
+      await chatWithTools(loopHistory, tools);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.messages[1]).toMatchObject({
+        role: 'assistant',
+        tool_calls: [
+          { id: 'call_1', type: 'function', function: { name: 'find_activities' } },
+        ],
+      });
+      // Arguments go over the wire as a JSON string, not an object.
+      expect(JSON.parse(body.messages[1].tool_calls[0].function.arguments)).toEqual({ dayIndex: 2 });
+      expect(body.messages[2]).toEqual({
+        role: 'tool',
+        tool_call_id: 'call_1',
+        content: '[{"name":"Museum"}]',
+      });
+    });
+
+    it('Anthropic: tool_use blocks on the assistant turn, tool_result in a user turn', async () => {
+      setActiveProvider('anthropic');
+      await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ content: [{ type: 'text', text: 'Just the museum.' }] }),
+      );
+      await chatWithTools(loopHistory, tools);
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.messages[1]).toEqual({
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Let me look.' },
+          { type: 'tool_use', id: 'call_1', name: 'find_activities', input: { dayIndex: 2 } },
+        ],
+      });
+      // Results ride in a USER turn, not a 'tool' role.
+      expect(body.messages[2]).toEqual({
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'call_1', content: '[{"name":"Museum"}]' },
+        ],
+      });
+    });
+
+    it('Anthropic: batches parallel tool results into ONE user turn', async () => {
+      setActiveProvider('anthropic');
+      await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+      fetchMock.mockResolvedValueOnce(jsonResponse({ content: [] }));
+      await chatWithTools(
+        [
+          { role: 'user', content: 'add two things' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              { id: 'c1', name: 'add_activity', args: { name: 'A' } },
+              { id: 'c2', name: 'add_activity', args: { name: 'B' } },
+            ],
+          },
+          { role: 'tool', toolCallId: 'c1', content: 'added A' },
+          { role: 'tool', toolCallId: 'c2', content: 'added B' },
+        ],
+        tools,
+      );
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      // Anthropic rejects a turn whose tool_use blocks are not all answered by
+      // the next user turn — one message per result would break a parallel call.
+      expect(body.messages).toHaveLength(3);
+      expect(body.messages[2].content).toEqual([
+        { type: 'tool_result', tool_use_id: 'c1', content: 'added A' },
+        { type: 'tool_result', tool_use_id: 'c2', content: 'added B' },
+      ]);
+    });
+
+    it('Anthropic: an assistant turn with no tool calls stays a plain string', async () => {
+      setActiveProvider('anthropic');
+      await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+      fetchMock.mockResolvedValueOnce(jsonResponse({ content: [] }));
+      await chatWithTools(
+        [
+          { role: 'system', content: 'be terse' },
+          { role: 'user', content: 'hi' },
+          { role: 'assistant', content: 'hello' },
+        ],
+        tools,
+      );
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+      expect(body.system).toBe('be terse');
+      expect(body.messages).toEqual([
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+      ]);
+    });
+
+    it('carries the provider call id through to the returned tool calls', async () => {
+      setActiveProvider('anthropic');
+      await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          content: [{ type: 'tool_use', id: 'toolu_abc', name: 'noop', input: { a: 1 } }],
+        }),
+      );
+      const res = await chatWithTools([{ role: 'user', content: 'go' }], tools);
+      expect(res.toolCalls).toEqual([{ id: 'toolu_abc', name: 'noop', args: { a: 1 } }]);
+    });
+  });
+
   it('surfaces an Anthropic truncation (stop_reason max_tokens) as a clear error', async () => {
     setActiveProvider('anthropic');
     await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);

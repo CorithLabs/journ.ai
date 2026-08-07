@@ -237,6 +237,89 @@ describe('executeAgentAction', () => {
     });
   });
 
+  // Read tools return `data` for the model rather than a user-facing change.
+  // Its presence is what tells useAgentChat to stay silent and loop again.
+  describe('read tools', () => {
+    it('find_activities returns location and notes, which the prompt omits', async () => {
+      const detailed: Plan = {
+        ...plan,
+        itinerary: [
+          {
+            dayIndex: 1,
+            label: 'Day 2',
+            activities: [
+              {
+                id: 'a1', name: 'Museum', time: '10:00',
+                locationName: 'Ueno Park', notes: 'Closed Mondays', pinnedToTodo: false,
+              },
+            ],
+          },
+        ],
+      };
+      const res = await executeAgentAction(detailed, {
+        name: 'find_activities',
+        args: { nameMatch: 'museum' },
+      });
+      expect(res.ok).toBe(true);
+      expect(res.data).toBeDefined();
+      expect(JSON.parse(res.data!)).toEqual([
+        expect.objectContaining({ name: 'Museum', location: 'Ueno Park', notes: 'Closed Mondays', day: 2 }),
+      ]);
+      expect(db.plans.update).not.toHaveBeenCalled();
+    });
+
+    it('find_activities with no filter returns every activity', async () => {
+      const res = await executeAgentAction(plan, { name: 'find_activities', args: {} });
+      expect(JSON.parse(res.data!)).toHaveLength(1);
+    });
+
+    it('read_clipboard_item returns the saved body', async () => {
+      vi.mocked(db.clipboard.where).mockReturnValue({
+        equals: vi.fn().mockReturnThis(),
+        toArray: vi.fn().mockResolvedValue([
+          { id: 'c1', planId: 'plan-1', type: 'Hotel', title: 'Hotel — Shinjuku', body: 'Confirmation: TK-88421' },
+        ]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      const res = await executeAgentAction(plan, {
+        name: 'read_clipboard_item',
+        args: { titleMatch: 'hotel' },
+      });
+      expect(res.ok).toBe(true);
+      expect(JSON.parse(res.data!)[0].body).toMatch(/TK-88421/);
+    });
+
+    it('read_clipboard_item describes a file attachment instead of returning null', async () => {
+      vi.mocked(db.clipboard.where).mockReturnValue({
+        equals: vi.fn().mockReturnThis(),
+        toArray: vi.fn().mockResolvedValue([
+          { id: 'c2', planId: 'plan-1', type: 'Boarding Pass', title: 'Flight', fileName: 'pass.pdf' },
+        ]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      const res = await executeAgentAction(plan, {
+        name: 'read_clipboard_item',
+        args: { titleMatch: 'flight' },
+      });
+      expect(JSON.parse(res.data!)[0].body).toMatch(/file attachment: pass\.pdf/);
+    });
+
+    it('read_clipboard_item returns an empty result set rather than failing silently', async () => {
+      vi.mocked(db.clipboard.where).mockReturnValue({
+        equals: vi.fn().mockReturnThis(),
+        toArray: vi.fn().mockResolvedValue([]),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+      const res = await executeAgentAction(plan, {
+        name: 'read_clipboard_item',
+        args: { titleMatch: 'nope' },
+      });
+      expect(res.ok).toBe(false);
+      // Still carries data so the model learns nothing matched and can say so.
+      expect(JSON.parse(res.data!)).toEqual([]);
+    });
+  });
+
   it('complete_todo marks a matching task done', async () => {
     vi.mocked(db.todos.where).mockReturnValue({
       equals: vi.fn().mockReturnThis(),
