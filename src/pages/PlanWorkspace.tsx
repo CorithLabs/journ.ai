@@ -74,7 +74,9 @@ export default function PlanWorkspace() {
       {/* Demo banner — renders only for the seeded demo plan, until dismissed */}
       <DemoBanner planId={planId} />
       <TabBar planId={planId} />
-      <div className="flex-1 min-h-0 overflow-hidden">
+      {/* Padding, not margin: the pane still scrolls under the floating bar,
+          so its last item clears the pill instead of hiding behind it. */}
+      <div className="flex-1 min-h-0 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <Routes>
           <Route index element={<Navigate to="itinerary" replace />} />
           <Route path="itinerary" element={<ItineraryTab planId={planId} />} />

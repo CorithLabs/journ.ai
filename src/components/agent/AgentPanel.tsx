@@ -83,7 +83,7 @@ export default function AgentPanel({ planId }: Props) {
       className={`fixed z-40 flex flex-col border border-white/10 shadow-glass
         bg-surface-raised/85 backdrop-blur-glass
         ${floating
-          ? 'w-[380px] max-h-[calc(100vh-4rem)] h-[560px] rounded-card'
+          ? 'w-[380px] max-h-[calc(100dvh-4rem)] h-[560px] rounded-card'
           : 'inset-y-0 right-0 w-full sm:w-[380px] border-y-0 border-r-0'}
         ${dragging ? 'select-none' : 'transition-shadow'}`}
       style={

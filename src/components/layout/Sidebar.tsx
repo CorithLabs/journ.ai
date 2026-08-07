@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   PlusCircle,
@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
 
 function formatDateRange(start: string, end: string): string {
@@ -34,16 +35,29 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { planId } = useParams<{ planId: string }>();
   /*
-   * Collapsed by default on phones.
+   * Phone and desktop have genuinely different sidebars, so they get separate
+   * state rather than one shared boolean.
    *
-   * Below md the expanded sidebar is a 240px `fixed` overlay — on a 375px
-   * screen that covers most of the app and sits on top of it, so the page
-   * underneath cannot be read or tapped. Desktop keeps it open, where a
-   * 240px rail alongside the content is the point of it.
+   * Desktop: an in-flow rail that collapses between 240px and 56px.
+   * Phone: an off-canvas drawer, full 240px, slid out of view when closed —
+   *   never a 56px rail, which wasted a tenth of the screen permanently and
+   *   left nowhere sensible to put the trigger.
+   *
+   * Conflating the two is why the drawer would not open: `collapsed` was
+   * driving both a width and a position, and the two meanings fought.
    */
-  const [collapsed, setCollapsed] = useState(
-    () => typeof window !== 'undefined' && window.innerWidth < 768,
-  );
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
+
+  /** Icon-only presentation. Desktop-only: the drawer is always full width. */
+  const narrow = !isMobile && collapsed;
+
+  // Leaving the drawer open across a breakpoint change would strand an
+  // overlay on a desktop layout that has no backdrop to dismiss it.
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false);
+  }, [isMobile]);
   const [contextMenu, setContextMenu] = useState<{
     planId: string;
     x: number;
@@ -90,12 +104,26 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
-      {!collapsed && (
+      {/* Floating trigger — lives outside the drawer so it stays reachable
+          when the drawer is slid off-screen. */}
+      {isMobile && !drawerOpen && (
+        <button
+          onClick={() => setDrawerOpen(true)}
+          className="fixed top-3 left-3 z-40 p-2.5 rounded-card bg-surface-raised/85 backdrop-blur-glass border border-white/10 shadow-card text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          aria-label="Open navigation"
+          data-testid="sidebar-open-btn"
+        >
+          <Menu size={20} aria-hidden="true" />
+        </button>
+      )}
+
+      {/* Scrim behind the open drawer. */}
+      {isMobile && drawerOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-20 md:hidden"
-          onClick={() => setCollapsed(true)}
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setDrawerOpen(false)}
           aria-hidden="true"
+          data-testid="sidebar-scrim"
         />
       )}
 
@@ -115,17 +143,22 @@ export default function Sidebar() {
         className={`
           flex flex-col border-r border-white/5
           bg-surface-raised/75 backdrop-blur-glass
-          transition-all duration-200 ease-in-out z-30
-          ${collapsed
-            ? 'relative w-14 md:w-14'
-            : 'w-60 md:w-60 fixed md:relative inset-y-0 left-0'
+          ${isMobile
+            /* Off-canvas drawer. Always full width and always mounted, so it
+               slides rather than reflowing the page, and transform animation
+               stays on the compositor. */
+            ? `fixed inset-y-0 left-0 w-60 z-50 transition-transform duration-200 ease-out
+               ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}`
+            /* In-flow rail. `relative` is safe here because no `fixed` is in
+               play on this branch — the two must never both apply. */
+            : `relative transition-all duration-200 ease-in-out z-30 ${collapsed ? 'w-14' : 'w-60'}`
           }
         `}
         aria-label="Navigation sidebar"
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-4 border-b border-white/5 shrink-0">
-          {!collapsed && (
+          {!narrow && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <Compass size={20} className="text-accent shrink-0" aria-hidden="true" />
               <span className="text-base font-bold text-ink-primary tracking-tight truncate">
@@ -134,11 +167,14 @@ export default function Sidebar() {
             </div>
           )}
           <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="p-1.5 rounded-lg text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => (isMobile ? setDrawerOpen(false) : setCollapsed((c) => !c))}
+            className="p-2.5 md:p-1.5 rounded-lg text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label={
+              isMobile ? 'Close navigation' : narrow ? 'Expand sidebar' : 'Collapse sidebar'
+            }
+            data-testid="sidebar-toggle"
           >
-            {collapsed ? <Menu size={18} /> : <X size={18} />}
+            {isMobile || !narrow ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
 
@@ -150,12 +186,12 @@ export default function Sidebar() {
               flex items-center gap-2 w-full rounded-xl px-3 py-2
               bg-accent hover:bg-accent-light text-ink-inverse font-semibold
               transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
-              ${collapsed ? 'justify-center' : ''}
+              ${narrow ? 'justify-center' : ''}
             `}
             aria-label="Create new plan"
           >
             <PlusCircle size={16} aria-hidden="true" />
-            {!collapsed && <span className="text-sm">New Plan</span>}
+            {!narrow && <span className="text-sm">New Plan</span>}
           </button>
         </div>
 
@@ -176,7 +212,7 @@ export default function Sidebar() {
             </div>
           ) : plans.length === 0 ? (
             // Empty state
-            !collapsed && (
+            !narrow && (
               <div
                 className="flex flex-col items-center justify-center gap-3 py-10 px-3 text-center"
                 data-testid="sidebar-empty-state"
@@ -201,9 +237,9 @@ export default function Sidebar() {
                     <button
                       onClick={() => {
                         navigate(`/plan/${plan.id}/itinerary`);
-                        // On a phone the sidebar is an overlay, so leaving it
-                        // open would hide the plan the user just chose.
-                        if (window.innerWidth < 768) setCollapsed(true);
+                        // The drawer covers the content, so leaving it open
+                        // would hide the plan the user just chose.
+                        if (isMobile) setDrawerOpen(false);
                       }}
                       onContextMenu={(e) => handleContextMenu(e, plan.id)}
                       className={`
@@ -223,7 +259,7 @@ export default function Sidebar() {
                         className={isActive ? 'text-accent shrink-0' : 'text-ink-muted shrink-0'}
                         aria-hidden="true"
                       />
-                      {!collapsed && (
+                      {!narrow && (
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">
                             {plan.destination}
@@ -242,7 +278,7 @@ export default function Sidebar() {
         </nav>
 
         {/* iOS install banner */}
-        {showIosBanner && !collapsed && (
+        {showIosBanner && !narrow && (
           <div className="px-3 py-2 mx-2 mb-2 rounded-xl bg-surface-overlay border border-white/10 text-xs text-ink-secondary">
             <p>To install: tap <strong>Share</strong> then <strong>Add to Home Screen</strong></p>
             <button
@@ -263,12 +299,12 @@ export default function Sidebar() {
                 flex items-center gap-2 w-full rounded-xl px-3 py-2
                 text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay
                 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
-                ${collapsed ? 'justify-center' : ''}
+                ${narrow ? 'justify-center' : ''}
               `}
               aria-label="Install app"
             >
               <Download size={16} aria-hidden="true" />
-              {!collapsed && <span className="text-sm">Install App</span>}
+              {!narrow && <span className="text-sm">Install App</span>}
             </button>
           )}
           <button
@@ -277,7 +313,7 @@ export default function Sidebar() {
               flex items-center gap-2 w-full rounded-xl px-3 py-2
               text-ink-secondary hover:text-ink-primary hover:bg-surface-overlay
               transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
-              ${collapsed ? 'justify-center' : ''}
+              ${narrow ? 'justify-center' : ''}
             `}
             aria-label={
               needsKey ? 'Open settings — API key required' : 'Open settings'
@@ -297,8 +333,8 @@ export default function Sidebar() {
                 />
               )}
             </span>
-            {!collapsed && <span className="text-sm">Settings</span>}
-            {!collapsed && needsKey && (
+            {!narrow && <span className="text-sm">Settings</span>}
+            {!narrow && needsKey && (
               <span className="ml-auto text-[10px] text-status-warning">Set up key</span>
             )}
           </button>
