@@ -14,7 +14,7 @@ interface Props {
  * plus the filename and human-readable file size for file items.
  */
 export default function ClipboardCard({ item, onClick }: Props) {
-  const border = TYPE_BORDER[item.type] ?? 'border-category-slate';
+  const border = TYPE_BORDER[item.type] ?? 'border-l-category-slate';
   const mime = item.fileBlob?.type;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
 
