@@ -13,8 +13,34 @@ import type { Activity } from '../db';
  * what swapTimes does.
  */
 
-/** Minutes since midnight, or null when the value isn't a usable HH:MM. */
+/**
+ * Coarse times of day, for when the hour genuinely isn't known yet.
+ *
+ * Stored in the same `time` field as a clock value. Each carries a sort anchor
+ * so buckets and exact times interleave sensibly — "Morning" lands before
+ * 10:00, "Evening" after 18:30.
+ *
+ * Unlike a clock time, several activities may share a slot: three things in
+ * the evening is a real plan, whereas two things at exactly 19:00 is not.
+ */
+export const TIME_SLOTS = [
+  { id: 'morning', label: 'Morning', anchor: 8 * 60 },
+  { id: 'noon', label: 'Noon', anchor: 12 * 60 },
+  { id: 'evening', label: 'Evening', anchor: 18 * 60 },
+  { id: 'night', label: 'Night', anchor: 21 * 60 },
+] as const;
+
+export type TimeSlotId = (typeof TIME_SLOTS)[number]['id'];
+
+export function isTimeSlot(time: string | undefined | null): time is TimeSlotId {
+  return TIME_SLOTS.some((s) => s.id === time);
+}
+
+/** Minutes since midnight, or null when the value isn't a usable time. */
 export function timeToMinutes(time: string | undefined | null): number | null {
+  const slot = TIME_SLOTS.find((s) => s.id === time);
+  if (slot) return slot.anchor;
+
   if (!time) return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
   if (!m) return null;
@@ -58,8 +84,10 @@ export function swapTimes(activities: Activity[], idA: string, idB: string): Act
   );
 }
 
-/** 12-hour label for display, e.g. "8:00 AM". Falls back to the raw value. */
+/** 12-hour label, or the slot name. Falls back to the raw value. */
 export function formatTime(time: string): string {
+  const slot = TIME_SLOTS.find((s) => s.id === time);
+  if (slot) return slot.label;
   const mins = timeToMinutes(time);
   if (mins === null) return time || '—';
   const h24 = Math.floor(mins / 60);
@@ -67,4 +95,39 @@ export function formatTime(time: string): string {
   const suffix = h24 < 12 ? 'AM' : 'PM';
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
   return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/**
+ * Other activities on the same day already at this exact clock time.
+ *
+ * Only exact times clash: you cannot be in Shinjuku and Shibuya at 19:00.
+ * Time slots deliberately do not — sharing "Evening" is the whole point of
+ * choosing a slot instead of an hour.
+ */
+export function findTimeClashes(
+  activities: Activity[],
+  time: string,
+  excludeId?: string,
+): Activity[] {
+  if (isTimeSlot(time) || timeToMinutes(time) === null) return [];
+  return activities.filter((a) => a.id !== excludeId && a.time === time);
+}
+
+/**
+ * The next free quarter-hour at or after `time` on this day, for offering a
+ * way out of a clash rather than only reporting it. Returns null if the day is
+ * somehow full to midnight.
+ */
+export function nextFreeTime(activities: Activity[], time: string, excludeId?: string): string | null {
+  const start = timeToMinutes(time);
+  if (start === null) return null;
+  const taken = new Set(
+    activities.filter((a) => a.id !== excludeId).map((a) => timeToMinutes(a.time)),
+  );
+  for (let m = start; m < 24 * 60; m += 15) {
+    if (!taken.has(m)) {
+      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    }
+  }
+  return null;
 }
