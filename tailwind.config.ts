@@ -26,6 +26,19 @@ export default {
           muted: '#475569',     // slate-600
           inverse: '#0a0f1a',   // on accent buttons
         },
+        // ── Categorical ──────────────────────────────────────
+        // Colour-codes clipboard types and to-do categories. Deliberately
+        // separate from `accent` (brand) and `status` (good/warning/bad):
+        // these carry no judgement, they only need to be tellable apart.
+        // Named by hue because that is all they mean.
+        category: {
+          slate: '#64748b',
+          cyan: '#22d3ee',
+          sky: '#38bdf8',
+          violet: '#a78bfa',
+          emerald: '#34d399',
+          amber: '#fbbf24',
+        },
         // ── Status ───────────────────────────────────────────
         status: {
           success: '#10b981', // emerald-500
@@ -34,9 +47,19 @@ export default {
           info: '#06b6d4',    // same as accent
         },
       },
+      /*
+       * Corner radius, by role. Pick from the role, not by eye — mixing these
+       * is what made cards, buttons and popovers all read as the same object.
+       *
+       *   rounded-modal  drawers, modals                     24px
+       *   rounded-card   content cards, panels, popovers     16px
+       *   rounded-xl     controls: buttons, inputs, selects  12px
+       *   rounded-lg     small inline affordances, icon hits  8px
+       *   rounded-full   pills, chips, badges, avatars
+       */
       borderRadius: {
-        card: '1rem',   // 16px — standard card/panel
-        modal: '1.5rem', // 24px — drawers and modals
+        card: '1rem',
+        modal: '1.5rem',
       },
       backdropBlur: {
         glass: '12px',

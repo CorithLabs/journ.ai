@@ -115,7 +115,7 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
         ref={ref}
         role="menu"
         aria-label="Plan options"
-        className="fixed z-50 w-44 bg-surface-overlay border border-white/10 rounded-xl shadow-glass py-1"
+        className="fixed z-50 w-44 bg-surface-overlay border border-white/10 rounded-card shadow-glass py-1"
         style={{ left: x, top: y }}
       >
         {!confirmDelete ? (

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Sparkles, X, Send, AlertTriangle } from 'lucide-react';
+import { Sparkles, X, Send, AlertTriangle, PanelRight } from 'lucide-react';
 import { db } from '../../db';
 import { useAppStore, type ActiveTab } from '../../store';
 import { hasStoredKey } from '../../services/aiKey';
 import { useAgentChat } from './useAgentChat';
 import Markdown from './Markdown';
+import { useDraggablePanel, isDraggableViewport } from './useDraggablePanel';
 
 interface Props {
   planId: string;
@@ -30,6 +31,13 @@ export default function AgentPanel({ planId }: Props) {
   const messages = useAppStore((s) => s.agentMessages);
   const [input, setInput] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  const { position, dragging, onHandlePointerDown, reset } = useDraggablePanel(panelRef);
+  // Below the breakpoint the panel is full-screen, so a stored position from a
+  // desktop session must not turn it into a floating box on a phone.
+  const canDrag = isDraggableViewport();
+  const floating = canDrag && position !== null;
 
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
   const { send, busy } = useAgentChat(plan);
@@ -64,14 +72,33 @@ export default function AgentPanel({ planId }: Props) {
 
   return (
     <aside
+      ref={panelRef}
       role="dialog"
       aria-modal="false"
       aria-label="AI agent"
       data-testid="agent-panel"
-      className="fixed inset-y-0 right-0 z-40 w-full sm:w-[380px] bg-surface-raised border-l border-white/10 shadow-glass flex flex-col"
+      // Docked to the right edge until dragged. Once moved it becomes a
+      // floating pane: fixed at an explicit offset, with a height that leaves
+      // room to breathe rather than filling the viewport.
+      className={`fixed z-40 flex flex-col border border-white/10 shadow-glass
+        bg-surface-raised/85 backdrop-blur-glass
+        ${floating
+          ? 'w-[380px] max-h-[calc(100vh-4rem)] h-[560px] rounded-card'
+          : 'inset-y-0 right-0 w-full sm:w-[380px] border-y-0 border-r-0'}
+        ${dragging ? 'select-none' : 'transition-shadow'}`}
+      style={
+        floating
+          ? { left: position!.x, top: position!.y, right: 'auto', bottom: 'auto' }
+          : undefined
+      }
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
+      {/* Header — also the drag handle */}
+      <div
+        onPointerDown={onHandlePointerDown}
+        className={`flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0
+          ${canDrag ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : ''}`}
+        data-testid="agent-panel-handle"
+      >
         <div className="flex items-center gap-2 min-w-0">
           <Sparkles size={18} className="text-accent shrink-0" aria-hidden="true" />
           <div className="min-w-0">
@@ -81,14 +108,29 @@ export default function AgentPanel({ planId }: Props) {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          className="p-1 rounded-lg text-ink-muted hover:text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          aria-label="Close AI agent"
-          data-testid="agent-close"
-        >
-          <X size={20} />
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {/* Only offered once moved — nothing to undo before that. Also the
+              keyboard-reachable way back, since dragging is pointer-only. */}
+          {floating && (
+            <button
+              onClick={reset}
+              className="p-1 rounded-lg text-ink-muted hover:text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+              aria-label="Dock AI agent to the right"
+              title="Dock to the right"
+              data-testid="agent-dock"
+            >
+              <PanelRight size={18} />
+            </button>
+          )}
+          <button
+            onClick={() => setOpen(false)}
+            className="p-1 rounded-lg text-ink-muted hover:text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label="Close AI agent"
+            data-testid="agent-close"
+          >
+            <X size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Degraded banner when no key configured */}

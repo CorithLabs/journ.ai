@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useNavigate } from 'react-router-dom';
 import { db, type TodoItem, type Plan } from '../../db';
 import Toast from '../ui/Toast';
+import { scrollBehavior } from '../../utils/motion';
 
 interface Props { planId: string; }
 
@@ -12,10 +13,10 @@ const CATS = ['Booking', 'Document', 'Packing', 'Other'] as const;
 type Cat = (typeof CATS)[number];
 
 const CAT_COLOR: Record<Cat, string> = {
-  Booking: 'border-cyan-400',
-  Document: 'border-sky-400',
-  Packing: 'border-emerald-400',
-  Other: 'border-slate-600',
+  Booking: 'border-category-cyan',
+  Document: 'border-category-sky',
+  Packing: 'border-category-emerald',
+  Other: 'border-category-slate',
 };
 
 function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
@@ -163,7 +164,7 @@ export default function TodoList({ planId }: Props) {
     navigate(`/plan/${planId}/itinerary`);
     // Scroll happens after navigation; use a short timeout to allow the DOM to update
     setTimeout(() => {
-      document.getElementById(`day-${dayIndex}`)?.scrollIntoView({ behavior: 'smooth' });
+      document.getElementById(`day-${dayIndex}`)?.scrollIntoView({ behavior: scrollBehavior() });
     }, 150);
   };
 

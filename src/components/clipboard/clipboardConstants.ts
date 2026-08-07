@@ -17,12 +17,12 @@ export type ClipboardType = ClipboardItem['type'];
  * Uses the app's cyan/sky accent palette plus supporting hues.
  */
 export const TYPE_BORDER: Record<ClipboardType, string> = {
-  Note: 'border-slate-500',
-  'Boarding Pass': 'border-cyan-400',
-  Hotel: 'border-sky-400',
-  Email: 'border-violet-400',
-  Location: 'border-emerald-400',
-  Other: 'border-amber-400',
+  Note: 'border-category-slate',
+  'Boarding Pass': 'border-category-cyan',
+  Hotel: 'border-category-sky',
+  Email: 'border-category-violet',
+  Location: 'border-category-emerald',
+  Other: 'border-category-amber',
 };
 
 /** Body character limits. */
