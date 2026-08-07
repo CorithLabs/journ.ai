@@ -1,8 +1,23 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import pkg from './package.json';
+
+/*
+ * Build identity, surfaced in Settings.
+ *
+ * The commit comes from Vercel when building there and is blank locally,
+ * which is enough to tell a deployed build apart from a dev one — and to
+ * tell whether a browser is serving a stale service-worker cache.
+ */
+const APP_VERSION = pkg.version;
+const BUILD_SHA = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7);
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __BUILD_SHA__: JSON.stringify(BUILD_SHA),
+  },
   plugins: [
     react(),
     VitePWA({
@@ -37,6 +52,15 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        /*
+         * Take over immediately instead of waiting for every tab to close.
+         * Without this a browser can keep serving the previous build long
+         * after a deploy — which is why Chrome held the old layout while
+         * Firefox, with no prior worker registered, showed the new one.
+         */
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
