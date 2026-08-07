@@ -46,6 +46,20 @@ export function exceedsMaxTripDays(
   return count > MAX_TRIP_DAYS;
 }
 
+/**
+ * Latest selectable end date for a given start, as YYYY-MM-DD for an <input
+ * type="date"> `max` attribute. Inclusive counting, so the span is exactly
+ * MAX_TRIP_DAYS: start + (MAX_TRIP_DAYS - 1) days. Returns '' when the start is
+ * missing or unparseable, which leaves the picker unconstrained.
+ */
+export function maxEndDate(startDate: string | undefined | null): string {
+  if (!startDate) return '';
+  const start = Date.parse(`${startDate.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(start)) return '';
+  const last = new Date(start + (MAX_TRIP_DAYS - 1) * 24 * 60 * 60 * 1000);
+  return last.toISOString().slice(0, 10);
+}
+
 export const MAX_TRIP_DAYS_ERROR =
   'Maximum trip length is 14 days. Please shorten your trip.';
 

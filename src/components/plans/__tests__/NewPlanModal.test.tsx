@@ -18,6 +18,92 @@ describe('NewPlanModal', () => {
     vi.mocked(db.plans.add).mockResolvedValue('new-plan-id');
   });
 
+  const renderModal = () =>
+    render(
+      <MemoryRouter>
+        <NewPlanModal onClose={onClose} />
+      </MemoryRouter>,
+    );
+
+  // "12345" used to be accepted as a city, producing a nonsense itinerary
+  // prompt and an unmappable plan.
+  describe('destination validation', () => {
+    it.each(['12345', '!!!', '7'])('rejects %s and creates no plan', async (value) => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value } });
+      fireEvent.click(screen.getByTestId('create-plan-btn'));
+      await waitFor(() =>
+        expect(screen.getByText(/Enter a place name/i)).toBeInTheDocument(),
+      );
+      expect(db.plans.add).not.toHaveBeenCalled();
+    });
+
+    it('accepts a real place name', async () => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Tokyo' } });
+      fireEvent.click(screen.getByTestId('create-plan-btn'));
+      await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
+    });
+  });
+
+  describe('destination suggestions', () => {
+    it('offers matches while typing and stores the country when one is picked', async () => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'toro' } });
+
+      const option = await screen.findByTestId('destination-option-0', undefined, {
+        timeout: 2000,
+      });
+      expect(option).toHaveTextContent('Toronto, Canada');
+
+      fireEvent.mouseDown(option);
+      expect(screen.getByTestId('destination-input')).toHaveValue('Toronto, Canada');
+
+      fireEvent.click(screen.getByTestId('create-plan-btn'));
+      // The country is what makes the visa to-do correct for Toronto.
+      await waitFor(() =>
+        expect(db.plans.add).toHaveBeenCalledWith(
+          expect.objectContaining({ destination: 'Toronto, Canada', country: 'Canada' }),
+        ),
+      );
+    });
+
+    it('drops a previously picked country once the field is edited by hand', async () => {
+      renderModal();
+      const input = screen.getByTestId('destination-input');
+      fireEvent.change(input, { target: { value: 'toro' } });
+      fireEvent.mouseDown(await screen.findByTestId('destination-option-0', undefined, { timeout: 2000 }));
+      // Typing something else must not leave "Canada" attached to it.
+      fireEvent.change(input, { target: { value: 'Kyoto' } });
+      fireEvent.click(screen.getByTestId('create-plan-btn'));
+      await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
+      expect(vi.mocked(db.plans.add).mock.calls[0][0]).not.toHaveProperty('country');
+    });
+
+    it('shows no dropdown for a single character', async () => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 't' } });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(screen.queryByTestId('destination-suggestions')).not.toBeInTheDocument();
+    });
+  });
+
+  // The cap was only reported after submitting; the picker now enforces it.
+  describe('date range constraints', () => {
+    it('caps the end-date picker 13 days after the start, inclusive of both ends', () => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('start-date-input'), { target: { value: '2025-07-01' } });
+      const end = screen.getByTestId('end-date-input');
+      expect(end).toHaveAttribute('max', '2025-07-14');
+      expect(end).toHaveAttribute('min', '2025-07-01');
+    });
+
+    it('leaves the picker unconstrained until a start date is chosen', () => {
+      renderModal();
+      expect(screen.getByTestId('end-date-input')).not.toHaveAttribute('max');
+    });
+  });
+
   it('renders form fields', () => {
     render(
       <MemoryRouter>
