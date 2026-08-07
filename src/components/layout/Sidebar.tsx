@@ -101,12 +101,23 @@ export default function Sidebar() {
 
       <aside
         data-testid="sidebar"
+        /*
+         * `relative` must NOT go in the base classes.
+         *
+         * Expanded on mobile the sidebar has to be `fixed` so it overlays the
+         * content; on desktop it is `relative` and sits in the flow. Tailwind
+         * emits .fixed before .relative, so a base `relative` wins at equal
+         * specificity and silently cancels the mobile `fixed` — the sidebar
+         * becomes an in-flow 240px column and squeezes the page to ~150px on a
+         * phone. Each branch therefore declares its own position, and the two
+         * are mutually exclusive so they can never collide again.
+         */
         className={`
-          relative flex flex-col border-r border-white/5
+          flex flex-col border-r border-white/5
           bg-surface-raised/75 backdrop-blur-glass
           transition-all duration-200 ease-in-out z-30
           ${collapsed
-            ? 'w-14 md:w-14'
+            ? 'relative w-14 md:w-14'
             : 'w-60 md:w-60 fixed md:relative inset-y-0 left-0'
           }
         `}
