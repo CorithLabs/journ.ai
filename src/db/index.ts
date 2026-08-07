@@ -6,6 +6,14 @@ export interface Plan {
   id: string;          // UUID v4
   name: string;        // Display name / destination
   destination: string;
+  /**
+   * Country the destination sits in, resolved when the plan is created.
+   * Optional: plans created before this existed, or typed free-form with no
+   * geocoding match, have none. Drives the visa to-do, which is a per-country
+   * requirement — a "Toronto visa" is not a thing.
+   * Not indexed, so no Dexie version bump is needed.
+   */
+  country?: string;
   startDate: string;   // ISO 8601 date string e.g. '2025-03-14'
   endDate: string;
   createdAt: string;   // ISO 8601 datetime
