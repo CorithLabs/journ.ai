@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { sortByTime, swapTimes, timeToMinutes, formatTime } from '../activityTime';
+import {
+  sortByTime, swapTimes, timeToMinutes, formatTime,
+  findTimeClashes, nextFreeTime, isTimeSlot, TIME_SLOTS,
+} from '../activityTime';
 import type { Activity } from '../../db';
 
 const act = (id: string, time: string, name = id): Activity => ({
@@ -66,7 +69,7 @@ describe('timeToMinutes', () => {
   });
 
   it('rejects out-of-range and malformed values', () => {
-    for (const bad of ['24:00', '10:60', '', 'noon', '8', '10:5']) {
+    for (const bad of ['24:00', '10:60', '', 'lunchtime', '8', '10:5']) {
       expect(timeToMinutes(bad)).toBeNull();
     }
   });
@@ -82,5 +85,72 @@ describe('formatTime', () => {
 
   it('passes through anything it cannot parse', () => {
     expect(formatTime('later')).toBe('later');
+  });
+});
+
+describe('time slots', () => {
+  it('recognises each slot and rejects anything else', () => {
+    for (const slot of TIME_SLOTS) expect(isTimeSlot(slot.id)).toBe(true);
+    expect(isTimeSlot('19:00')).toBe(false);
+    expect(isTimeSlot('lunchtime')).toBe(false);
+  });
+
+  it('gives slots a label rather than a clock reading', () => {
+    expect(formatTime('morning')).toBe('Morning');
+    expect(formatTime('night')).toBe('Night');
+  });
+
+  // Slots and clock times share one field, so they have to interleave.
+  it('sorts slots among exact times sensibly', () => {
+    const out = sortByTime([
+      act('night', 'night'), act('ten', '10:00'),
+      act('morning', 'morning'), act('evening', 'evening'),
+    ]);
+    expect(out.map((a) => a.id)).toEqual(['morning', 'ten', 'evening', 'night']);
+  });
+});
+
+describe('findTimeClashes', () => {
+  // You cannot be in Shinjuku and Shibuya at 19:00.
+  it('flags another activity at the same exact time', () => {
+    const day = [act('shinjuku', '19:00'), act('shibuya', '19:00'), act('other', '09:00')];
+    const found = findTimeClashes(day, '19:00', 'shibuya');
+    expect(found.map((a) => a.id)).toEqual(['shinjuku']);
+  });
+
+  it('does not flag the activity against itself', () => {
+    expect(findTimeClashes([act('a', '19:00')], '19:00', 'a')).toEqual([]);
+  });
+
+  // Sharing a slot is the entire point of choosing one.
+  it('never flags a shared time slot', () => {
+    const day = [act('a', 'evening'), act('b', 'evening'), act('c', 'evening')];
+    expect(findTimeClashes(day, 'evening', 'c')).toEqual([]);
+  });
+
+  it('ignores unparseable times rather than grouping them together', () => {
+    expect(findTimeClashes([act('a', ''), act('b', '')], '', 'b')).toEqual([]);
+  });
+});
+
+describe('nextFreeTime', () => {
+  it('offers the next free quarter-hour after a clash', () => {
+    // Placing a third activity at 19:00 when 19:00 and 19:15 are both taken.
+    const day = [act('a', '19:00'), act('b', '19:15')];
+    expect(nextFreeTime(day, '19:00')).toBe('19:30');
+  });
+
+  it('skips only the slots actually occupied', () => {
+    const day = [act('a', '19:00'), act('b', '19:30')];
+    expect(nextFreeTime(day, '19:00')).toBe('19:15');
+  });
+
+  it('returns the same time when nothing is taken', () => {
+    expect(nextFreeTime([], '19:00')).toBe('19:00');
+  });
+
+  it('gives up rather than rolling past midnight', () => {
+    const day = [act('a', '23:45')];
+    expect(nextFreeTime(day, '23:45', 'other')).toBeNull();
   });
 });

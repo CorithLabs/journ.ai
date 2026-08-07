@@ -7,7 +7,7 @@ import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
 import ActivityCard from './ActivityCard';
 import { scrollBehavior } from '../../utils/motion';
-import { sortByTime, swapTimes } from '../../utils/activityTime';
+import { sortByTime, swapTimes, findTimeClashes, nextFreeTime, formatTime } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 
 interface Props { plan: Plan; }
@@ -23,7 +23,7 @@ function budgetLabel(
   return { text: `Est. $${lo}\u2013${hi}/day`, warn: lo > (caps[range ?? ''] ?? Infinity) };
 }
 
-function AddInline({ onAdd }: { onAdd: (n: string, t: string) => Promise<void> }) {
+function AddInline({ onAdd, siblings }: { onAdd: (n: string, t: string) => Promise<void>; siblings: Activity[] }) {
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
   const [tm, setTm] = useState('09:00');
@@ -32,13 +32,33 @@ function AddInline({ onAdd }: { onAdd: (n: string, t: string) => Promise<void> }
       <PlusCircle size={12} /> Add activity
     </button>
   );
+  const clashes = findTimeClashes(siblings, tm);
+  const free = clashes.length ? nextFreeTime(siblings, tm) : null;
+
   return (
-    <form onSubmit={async e => { e.preventDefault(); if (!nm.trim()) return; await onAdd(nm.trim(), tm); setNm(''); setOpen(false); }} className="flex gap-2 items-center">
-      <input type="time" value={tm} onChange={e => setTm(e.target.value)} className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-24 focus:outline-none" />
-      <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
-        className="flex-1 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-none" />
-      <button type="submit" className="text-xs text-accent hover:underline">Add</button>
-      <button type="button" onClick={() => setOpen(false)} className="text-xs text-ink-muted hover:underline">Cancel</button>
+    <form onSubmit={async e => { e.preventDefault(); if (!nm.trim()) return; await onAdd(nm.trim(), tm); setNm(''); setOpen(false); }} className="space-y-1">
+      <div className="flex gap-2 items-center">
+        <input type="time" value={tm} onChange={e => setTm(e.target.value)} className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-24 focus:outline-none" aria-label="Time" />
+        <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
+          className="flex-1 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-none" />
+        <button type="submit" className="text-xs text-accent hover:underline">Add</button>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-ink-muted hover:underline">Cancel</button>
+      </div>
+      {/* Caught before the activity exists, rather than after — cheaper to
+          correct now than to notice a double-booked hour later. */}
+      {clashes.length > 0 && (
+        <p className="text-xs text-status-warning" role="alert" data-testid="add-time-clash">
+          {`"${clashes[0].name}" is already at ${formatTime(tm)}.`}
+          {free && (
+            <>
+              {' '}
+              <button type="button" className="underline text-accent" onClick={() => setTm(free)}>
+                Use {formatTime(free)}
+              </button>
+            </>
+          )}
+        </p>
+      )}
     </form>
   );
 }
@@ -159,7 +179,7 @@ Change it anyway?`);
                   {day.activities.length === 0 && <p className="text-xs text-ink-muted py-2">No activities yet.</p>}
                   {sortByTime(day.activities).map((act, ai) => (
                     <div key={act.id}>
-                      <ActivityCard act={act} plan={plan}
+                      <ActivityCard act={act} plan={plan} siblings={day.activities}
                         onDel={() => delAct(day.dayIndex, act.id)}
                         onUpd={u => updAct(day.dayIndex, act.id, u)}
                         onPin={() => pinAct(day.dayIndex, act)} />
@@ -173,7 +193,7 @@ Change it anyway?`);
                       </div>
                     </div>
                   ))}
-                  <AddInline onAdd={async (name, time) => {
+                  <AddInline siblings={day.activities} onAdd={async (name, time) => {
                     const newAct: Activity = { id: uuidv4(), name, time, locationName: '', notes: '', pinnedToTodo: false };
                     await persist(plan.itinerary.map((d, i) => i === day.dayIndex ? { ...d, activities: [...d.activities, newAct] } : d));
                   }} />

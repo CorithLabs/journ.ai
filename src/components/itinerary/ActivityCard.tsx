@@ -1,18 +1,26 @@
 import { useState } from 'react';
 import { AlertTriangle, Pin, Pencil, Trash2, MapPin } from 'lucide-react';
 import { type Activity, type Plan } from '../../db';
-import { formatTime } from '../../utils/activityTime';
+import {
+  formatTime,
+  isTimeSlot,
+  TIME_SLOTS,
+  findTimeClashes,
+  nextFreeTime,
+} from '../../utils/activityTime';
 import { mapsUrlFor } from '../../utils/mapsLink';
 
 interface Props {
   act: Activity;
+  /** The rest of the day, for spotting two activities at the same clock time. */
+  siblings?: Activity[];
   plan: Pick<Plan, 'destination' | 'country'>;
   onDel: () => void;
   onUpd: (u: Partial<Activity>) => void;
   onPin: () => void;
 }
 
-export default function ActivityCard({ act, plan, onDel, onUpd, onPin }: Props) {
+export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, onPin }: Props) {
   const mapsUrl = act.locationName?.trim() || act.coordinates ? mapsUrlFor(act, plan) : null;
   const [ed, setEd] = useState(false);
   const [nm, setNm] = useState(act.name);
@@ -20,6 +28,10 @@ export default function ActivityCard({ act, plan, onDel, onUpd, onPin }: Props) 
   const [loc, setLoc] = useState(act.locationName);
   const [notes, setNotes] = useState(act.notes);
   const [err, setErr] = useState('');
+
+  const clashes = findTimeClashes(siblings, tm, act.id);
+  const suggestion = clashes.length ? nextFreeTime(siblings, tm, act.id) : null;
+
 
   const save = () => {
     if (!nm.trim()) { setErr('Name cannot be blank'); return; }
@@ -37,13 +49,55 @@ export default function ActivityCard({ act, plan, onDel, onUpd, onPin }: Props) 
           {err && <p className="text-xs text-status-danger mt-0.5">{err}</p>}
         </div>
         <div className="flex gap-2">
-          <input type="time" value={tm} onChange={e => setTm(e.target.value)} onBlur={save}
+          <input type="time" value={isTimeSlot(tm) ? '' : tm} onChange={e => setTm(e.target.value)} onBlur={save}
             className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
-            aria-label="Time" />
+            aria-label="Time" data-testid="edit-time" />
           <input value={loc} onChange={e => setLoc(e.target.value)} onBlur={save}
             className="flex-1 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
             aria-label="Location" placeholder="Location" />
         </div>
+
+        {/* When the hour is not known yet. Several activities may share a slot
+            — three things in the evening is a real plan — which is why slots
+            are exempt from the clash check below. */}
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Time of day">
+          {TIME_SLOTS.map(slot => (
+            <button
+              key={slot.id}
+              type="button"
+              onClick={() => { setTm(slot.id); onUpd({ time: slot.id }); }}
+              className={`px-2 py-1 rounded-full text-[11px] border transition-colors ${
+                tm === slot.id
+                  ? 'bg-accent/15 border-accent/40 text-ink-primary'
+                  : 'border-white/10 text-ink-secondary hover:text-ink-primary'
+              }`}
+              data-testid={`slot-${slot.id}`}
+            >
+              {slot.label}
+            </button>
+          ))}
+        </div>
+
+        {clashes.length > 0 && (
+          <p className="text-xs text-status-warning" role="alert" data-testid="time-clash">
+            {clashes.length === 1
+              ? `"${clashes[0].name}" is already at ${formatTime(tm)}.`
+              : `${clashes.length} other activities are already at ${formatTime(tm)}.`}
+            {suggestion && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="underline text-accent"
+                  onClick={() => { setTm(suggestion); onUpd({ time: suggestion }); }}
+                  data-testid="use-free-time"
+                >
+                  Use {formatTime(suggestion)} instead
+                </button>
+              </>
+            )}
+          </p>
+        )}
         <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} rows={2}
           className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none resize-none"
           aria-label="Notes" placeholder="Notes" />
