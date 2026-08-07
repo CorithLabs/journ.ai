@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
 import { streamCompletion, MissingKeyError } from '../../services/aiClient';
 import { buildItineraryPrompt, BUDGET_RANGES } from './itineraryPrompt';
+import StartManualButton from './StartManualButton';
 import {
   exceedsMaxTripDays,
   tripDayCount,
@@ -242,9 +243,14 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
         </div>
       ) : (
         status !== 'generating' && (
-          <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
-            <Sparkles size={16} aria-hidden="true" /> Generate Itinerary
-          </button>
+          <div className="flex flex-col items-center gap-3">
+            <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
+              <Sparkles size={16} aria-hidden="true" /> Generate Itinerary
+            </button>
+            {/* Also the way out when generation keeps failing — the day
+                skeletons are written locally and need no provider. */}
+            <StartManualButton plan={plan} />
+          </div>
         )
       )}
     </div>

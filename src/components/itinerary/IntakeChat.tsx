@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Sparkles } from 'lucide-react';
 import { db, type Plan } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
+import StartManualButton from './StartManualButton';
+import { hasAnyAiKey } from '../../services/aiKeyStatus';
 
 interface Props {
   plan: Plan;
@@ -79,6 +81,7 @@ export default function IntakeChat({ plan }: Props) {
       content: STEP_MESSAGES.numTravellers,
     },
   ]);
+  const needsKey = !hasAnyAiKey();
   const [step, setStep] = useState<IntakeStep>('numTravellers');
   const [input, setInput] = useState('');
   const [intake, setIntake] = useState({
@@ -364,6 +367,21 @@ export default function IntakeChat({ plan }: Props) {
             </button>
           </div>
         )}
+
+        {/* Manual escape. Without a key the AI questions lead nowhere, so it
+            is presented as the main path rather than a footnote. */}
+        <div className={`flex flex-col items-center gap-1 ${needsKey ? 'mt-4' : 'mt-6'}`}>
+          {needsKey && (
+            <p className="text-xs text-status-warning text-center max-w-xs" data-testid="intake-no-key">
+              No AI key set up, so I can't build this for you — you can still
+              plan it yourself, or add a key in Settings.
+            </p>
+          )}
+          <StartManualButton plan={plan} variant={needsKey ? 'button' : 'link'} />
+          {!needsKey && (
+            <p className="text-[11px] text-ink-muted">Skip the questions and add activities yourself</p>
+          )}
+        </div>
 
         <div ref={bottomRef} />
       </div>

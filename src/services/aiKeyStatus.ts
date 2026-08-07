@@ -13,4 +13,4 @@ export function hasAnyAiKey(): boolean {
 }
 
 export const NO_AI_KEY_MESSAGE =
-  'Add an OpenAI or Anthropic API key in Settings to build a trip. Journ.ai uses your own key and never sends it to our servers.';
+  'No AI key set up — you can still create this trip and plan it yourself. Add an OpenAI or Anthropic key in Settings to have it built for you. Journ.ai uses your own key and never sends it to our servers.';

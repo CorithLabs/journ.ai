@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import IntakeChat from '../IntakeChat';
-import type { Plan } from '../../../db';
+import { db, type Plan } from '../../../db';
 
 const mockPlan: Plan = {
   id: 'plan-1',
@@ -26,6 +26,37 @@ async function sendAnswer(text: string) {
     await act(async () => { fireEvent.submit(form); });
   }
 }
+
+// ItineraryView already supports building a day by hand, but was only
+// reachable through AI generation. Writing the scaffolded days is the route in.
+describe('IntakeChat manual escape', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(db.plans.update).mockResolvedValue(1);
+  });
+
+  it('leads with the manual path when no AI key is configured', () => {
+    render(<IntakeChat plan={mockPlan} />);
+    expect(screen.getByTestId('intake-no-key')).toBeInTheDocument();
+    expect(screen.getByTestId('start-manual-btn')).toBeInTheDocument();
+  });
+
+  it('writes empty days spanning the trip, which routes on to the itinerary', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('start-manual-btn'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    const [, patch] = vi.mocked(db.plans.update).mock.calls[0];
+    // 14–20 July inclusive.
+    expect((patch as { itinerary: unknown[] }).itinerary).toHaveLength(7);
+  });
+
+  it('still offers the manual path when a key exists, without the warning', () => {
+    localStorage.setItem('aitp_api_key', JSON.stringify({ ciphertext: 'x', iv: 'y' }));
+    render(<IntakeChat plan={mockPlan} />);
+    expect(screen.queryByTestId('intake-no-key')).not.toBeInTheDocument();
+    expect(screen.getByTestId('start-manual-btn')).toBeInTheDocument();
+  });
+});
 
 describe('IntakeChat suggestions', () => {
   // Only budget had tappable answers; every other question was a bare text box.

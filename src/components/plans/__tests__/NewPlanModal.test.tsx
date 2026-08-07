@@ -29,24 +29,25 @@ describe('NewPlanModal', () => {
       </MemoryRouter>,
     );
 
-  // Intake and generation both need a key, so a plan created without one
-  // can't progress past the first screen.
+  // A key unlocks the AI paths, but an itinerary can still be built by hand,
+  // so the warning is a nudge rather than a wall — blocking creation would
+  // make the app look broken rather than unconfigured.
   describe('without an AI key', () => {
     beforeEach(() => localStorage.clear());
 
-    it('blocks creation and points at Settings', () => {
+    it('warns but still allows the plan to be created', async () => {
       renderModal();
       expect(screen.getByTestId('new-plan-needs-key')).toBeInTheDocument();
-      expect(screen.getByTestId('create-plan-btn')).toBeDisabled();
-      expect(screen.getByTestId('new-plan-goto-settings')).toBeInTheDocument();
+      expect(screen.getByTestId('create-plan-btn')).not.toBeDisabled();
+
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Tokyo' } });
+      fireEvent.click(screen.getByTestId('create-plan-btn'));
+      await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
     });
 
-    it('creates nothing even when the form is submitted directly', async () => {
+    it('offers a route to Settings for those who do want AI', () => {
       renderModal();
-      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Tokyo' } });
-      fireEvent.submit(screen.getByTestId('destination-input').closest('form')!);
-      await waitFor(() => expect(screen.getByTestId('new-plan-needs-key')).toBeInTheDocument());
-      expect(db.plans.add).not.toHaveBeenCalled();
+      expect(screen.getByTestId('new-plan-goto-settings')).toBeInTheDocument();
     });
 
     it('navigates to Settings and closes the modal', () => {
