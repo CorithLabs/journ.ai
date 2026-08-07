@@ -13,10 +13,10 @@ const CATS = ['Booking', 'Document', 'Packing', 'Other'] as const;
 type Cat = (typeof CATS)[number];
 
 const CAT_COLOR: Record<Cat, string> = {
-  Booking: 'border-category-cyan',
-  Document: 'border-category-sky',
-  Packing: 'border-category-emerald',
-  Other: 'border-category-slate',
+  Booking: 'border-l-category-cyan',
+  Document: 'border-l-category-sky',
+  Packing: 'border-l-category-emerald',
+  Other: 'border-l-category-slate',
 };
 
 function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
