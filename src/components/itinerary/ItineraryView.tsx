@@ -5,10 +5,10 @@ import { type Plan, type Activity, db } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
-import ActivityCard from './ActivityCard';
+import ActivityCard, { SlotPicker } from './ActivityCard';
 import { scrollBehavior } from '../../utils/motion';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { sortByTime, swapTimes, findTimeClashes, nextFreeTime, formatTime, timeBetween } from '../../utils/activityTime';
+import { sortByTime, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 
 interface Props { plan: Plan; }
@@ -25,20 +25,21 @@ function budgetLabel(
 }
 
 function AddInline({
-  onAdd, siblings, dayLabel, seedTime = '09:00', variant = 'link', label = 'Add activity',
+  onAdd, siblings, dayLabel, seedSlot = 'morning', variant = 'link', label = 'Add activity',
 }: {
   onAdd: (n: string, t: string) => Promise<void>;
   siblings: Activity[];
   dayLabel: string;
-  /** Where in the day this button sits, as a time. */
-  seedTime?: string;
+  /** Which part of the day this button sits in. */
+  seedSlot?: TimeSlotId;
   variant?: 'link' | 'gap';
   label?: string;
 }) {
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
-  const [tm, setTm] = useState(seedTime);
+  const [tm, setTm] = useState<string>(seedSlot);
+  const [showExact, setShowExact] = useState(false);
 
   const clashes = findTimeClashes(siblings, tm);
   const free = clashes.length ? nextFreeTime(siblings, tm) : null;
@@ -46,7 +47,8 @@ function AddInline({
   const start = () => {
     // The seed is only right at the moment of opening: a card either side may
     // have moved since this button rendered.
-    setTm(seedTime);
+    setTm(seedSlot);
+    setShowExact(false);
     setOpen(true);
   };
 
@@ -61,8 +63,8 @@ function AddInline({
   if (!open && variant === 'gap') {
     /*
      * A + in the space between two cards, so adding something mid-afternoon is
-     * one tap where it belongs rather than "add at the bottom, then set the
-     * time, then move it up". The time is pre-filled from the gap itself.
+     * one tap where it belongs rather than "add at the bottom, then move it
+     * up". The part of the day is taken from the gap itself.
      */
     return (
       <div className="flex items-center gap-2 py-1 opacity-60 hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -89,11 +91,23 @@ function AddInline({
 
   const fields = (
     <>
-      <div className="flex gap-2 items-center">
-        <input type="time" value={tm} onChange={e => setTm(e.target.value)} className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-24 focus:outline-none" aria-label="Time" />
-        <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
-          className="flex-1 min-w-0 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-none" />
-      </div>
+      <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
+        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
+
+      {/* Part of the day first — that is what a plan is built in. The clock is
+          for the few things that come with one. */}
+      <SlotPicker value={tm} onPick={setTm} />
+
+      {showExact ? (
+        <input type="time" value={exactTime(tm) ?? ''} onChange={e => setTm(e.target.value)}
+          className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-28 focus:outline-none" aria-label="Exact time" />
+      ) : (
+        <button type="button" onClick={() => setShowExact(true)}
+          className="text-xs text-ink-muted hover:text-accent" data-testid="add-exact-time">
+          + Exact time
+        </button>
+      )}
+
       {/* Caught before the activity exists, rather than after — cheaper to
           correct now than to notice a double-booked hour later. */}
       {clashes.length > 0 && (
@@ -149,7 +163,7 @@ function AddInline({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-1">
+    <form onSubmit={submit} className="space-y-2">
       {fields}
       <div className="flex gap-2">
         <button type="submit" className="text-xs text-accent hover:underline">Add</button>
@@ -160,15 +174,14 @@ function AddInline({
 }
 
 /**
- * The time to offer for an activity inserted at a given point in the day.
+ * Which part of the day a `+` between two cards should offer.
  *
- * Between the neighbours, then nudged past anything already sitting on that
- * minute — a pre-filled clash would just be a warning the user has to clear
- * before they can type a name.
+ * The card above it, since that is what the user just pointed past — a gap
+ * inside the evening adds to the evening. At the very top of a day there is
+ * no card above, so the one below decides.
  */
-function insertTime(day: Activity[], before?: string | null, after?: string | null): string {
-  const guess = timeBetween(before, after);
-  return findTimeClashes(day, guess).length ? nextFreeTime(day, guess) ?? guess : guess;
+function seedSlotFor(before?: Activity, after?: Activity): TimeSlotId {
+  return slotForTime(before?.time) ?? slotForTime(after?.time) ?? TIME_SLOTS[0].id;
 }
 
 export default function ItineraryView({ plan }: Props) {
@@ -179,11 +192,14 @@ export default function ItineraryView({ plan }: Props) {
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
 
-  const addAct = async (di: number, name: string, time: string) => {
+  const addAct = async (di: number, name: string, time: string, afterId?: string) => {
     const newAct: Activity = { id: uuidv4(), name, time, locationName: '', notes: '', pinnedToTodo: false };
-    // Appended, not spliced: the day is sorted by time on render, so where it
-    // lands is decided by the time, not by its position in the array.
-    await persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: [...d.activities, newAct] } : d));
+    const acts = plan.itinerary[di].activities;
+    // Order within a part of the day is the array's, so an activity added from
+    // a gap has to land in that gap rather than at the end of the day.
+    const at = afterId ? acts.findIndex(a => a.id === afterId) + 1 : acts.length;
+    const next = [...acts.slice(0, at), newAct, ...acts.slice(at)];
+    await persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: next } : d));
   };
 
   const delAct = async (di: number, id: string) => {
@@ -220,24 +236,23 @@ export default function ItineraryView({ plan }: Props) {
   };
 
   /**
-   * Move up / down trades times with the neighbour.
+   * Move up / down one place through the day.
    *
-   * Splicing the array would achieve nothing: the day is sorted by time on
-   * render, so the sort would immediately put the card back. Swapping keeps
-   * the exact times the user typed rather than inventing one between two
-   * neighbours, which is what dropping a dragged card into a gap would need.
+   * Crossing into the next part of the day is what changes the time — the card
+   * takes that slot. Within a slot the cards simply trade places, because
+   * order inside a slot is the order the user arranged, not a clock.
    */
-  const moveAct = async (di: number, idx: number, dir: 'up' | 'down') => {
-    const acts = sortByTime(plan.itinerary[di].activities);
-    const ni = dir === 'up' ? idx - 1 : idx + 1;
-    if (ni < 0 || ni >= acts.length) return;
+  const moveAct = async (di: number, id: string, dir: 'up' | 'down') => {
+    const acts = plan.itinerary[di].activities;
+    const next = moveActivity(acts, id, dir);
+    if (next === acts) return;
 
-    const moving = acts[idx];
-    const other = acts[ni];
-    if (!(await confirmTimeChange(moving))) return;
+    const before = acts.find(a => a.id === id);
+    const after = next.find(a => a.id === id);
+    // Only a slot change is a time change, and only that needs confirming.
+    if (before && after && before.time !== after.time && !(await confirmTimeChange(before))) return;
 
-    const swapped = swapTimes(plan.itinerary[di].activities, moving.id, other.id);
-    await persist(plan.itinerary.map((d, i) => (i === di ? { ...d, activities: swapped } : d)));
+    await persist(plan.itinerary.map((d, i) => (i === di ? { ...d, activities: next } : d)));
   };
 
   /**
@@ -303,8 +318,8 @@ Change it anyway?`);
                           targets rather than the 16px-tall text links they
                           were, which were effectively unhittable on a phone. */}
                       <div className="flex gap-1 mt-0.5 pl-6">
-                        <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, ai, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
-                        <button disabled={ai === day.activities.length - 1} onClick={() => moveAct(day.dayIndex, ai, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
+                        <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, act.id, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
+                        <button disabled={ai === sorted.length - 1} onClick={() => moveAct(day.dayIndex, act.id, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
                       </div>
                       {ai < sorted.length - 1 && (
                         <AddInline
@@ -312,14 +327,14 @@ Change it anyway?`);
                           dayLabel={day.label}
                           variant="gap"
                           label={`Add activity between ${act.name} and ${sorted[ai + 1].name}`}
-                          seedTime={insertTime(day.activities, act.time, sorted[ai + 1].time)}
-                          onAdd={(name, time) => addAct(day.dayIndex, name, time)}
+                          seedSlot={seedSlotFor(act, sorted[ai + 1])}
+                          onAdd={(name, time) => addAct(day.dayIndex, name, time, act.id)}
                         />
                       )}
                     </div>
                   ))}
                   <AddInline siblings={day.activities} dayLabel={day.label}
-                    seedTime={insertTime(day.activities, sortByTime(day.activities).slice(-1)[0]?.time)}
+                    seedSlot={seedSlotFor(sortByTime(day.activities).slice(-1)[0])}
                     onAdd={(name, time) => addAct(day.dayIndex, name, time)} />
                 </div>
               )}

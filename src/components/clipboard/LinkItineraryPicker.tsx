@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { slotLabel } from '../../utils/activityTime';
 import { X } from 'lucide-react';
 import type { Plan } from '../../db';
 
@@ -88,7 +89,7 @@ export default function LinkItineraryPicker({ plan, onClose, onLink }: Props) {
                   <option value="">Whole day</option>
                   {selectedDay.activities.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.time} · {a.name}
+                      {slotLabel(a.time)} · {a.name}
                     </option>
                   ))}
                 </select>

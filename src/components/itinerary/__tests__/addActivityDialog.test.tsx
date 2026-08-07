@@ -55,11 +55,14 @@ describe('adding an activity on a phone', () => {
     expect(screen.getByPlaceholderText('Activity name')).toBeInTheDocument();
   });
 
-  it('warns before creating a second activity at the same time', () => {
+  // A clash is only possible between two exact clock times, which now take a
+  // deliberate extra tap to reach.
+  it('warns before creating a second activity at the same exact time', () => {
     setViewport(DESKTOP);
     render(<ItineraryView plan={plan} />);
     fireEvent.click(screen.getByText('Add activity'));
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '10:00' } });
+    fireEvent.click(screen.getByTestId('add-exact-time'));
+    fireEvent.change(screen.getByLabelText('Exact time'), { target: { value: '10:00' } });
     expect(screen.getByTestId('add-time-clash')).toHaveTextContent('Museum');
   });
 });
@@ -99,19 +102,21 @@ describe('inserting between two cards', () => {
     expect(screen.getByLabelText('Add activity between Museum and Lunch')).toBeInTheDocument();
   });
 
-  // The point of tapping *that* gap: the time should already be in it.
-  it('pre-fills a time inside the gap', () => {
+  // The point of tapping *that* gap: the part of the day is already chosen.
+  it('pre-selects the part of the day the gap sits in', () => {
     setViewport(DESKTOP);
     render(<ItineraryView plan={threeActs} />);
     fireEvent.click(screen.getByLabelText('Add activity between Lunch and Park'));
-    expect(screen.getByLabelText('Time')).toHaveValue('14:00');
+    // Lunch is 12:00, so the gap below it is Noon.
+    expect(screen.getByTestId('slot-noon')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('offers a time after the last activity at the end of the day', () => {
+  it('follows the last activity of the day at the end', () => {
     setViewport(DESKTOP);
     render(<ItineraryView plan={threeActs} />);
     fireEvent.click(screen.getByText('Add activity'));
-    expect(screen.getByLabelText('Time')).toHaveValue('17:00');
+    // Park is 16:00, still Noon.
+    expect(screen.getByTestId('slot-noon')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('opens the top dialog on a phone', () => {
@@ -119,6 +124,17 @@ describe('inserting between two cards', () => {
     render(<ItineraryView plan={threeActs} />);
     fireEvent.click(screen.getByLabelText('Add activity between Museum and Lunch'));
     expect(screen.getByTestId('add-activity-dialog')).toBeInTheDocument();
-    expect(screen.getByLabelText('Time')).toHaveValue('11:00');
+    expect(screen.getByTestId('slot-morning')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  // Clock times are the exception now, so the picker leads and the clock is
+  // one tap further in.
+  it('offers slots first, with an exact time behind an extra tap', () => {
+    setViewport(DESKTOP);
+    render(<ItineraryView plan={plan} />);
+    fireEvent.click(screen.getByText('Add activity'));
+    expect(screen.queryByLabelText('Exact time')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('add-exact-time'));
+    expect(screen.getByLabelText('Exact time')).toBeInTheDocument();
   });
 });
