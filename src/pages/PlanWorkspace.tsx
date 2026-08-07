@@ -13,8 +13,6 @@ import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
-import { useIsMobile } from '../hooks/useIsMobile';
-import PlanBreadcrumb from '../components/layout/PlanBreadcrumb';
 import { itineraryStage } from '../utils/planState';
 
 /**
@@ -55,7 +53,6 @@ export default function PlanWorkspace() {
   const setActivePlan = useAppStore((s) => s.setActivePlan);
   const setAgentPanelOpen = useAppStore((s) => s.setAgentPanelOpen);
   const clearAgentSession = useAppStore((s) => s.clearAgentSession);
-  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (planId) setActivePlan(planId);
@@ -76,20 +73,10 @@ export default function PlanWorkspace() {
       <PlanWeatherLoader planId={planId} />
       {/* Demo banner — renders only for the seeded demo plan, until dismissed */}
       <DemoBanner planId={planId} />
-      {/* Phone top bar: names the plan once the drawer closes. Padded left to
-          clear the floating menu trigger the sidebar renders there. */}
-      {isMobile && (
-        <div
-          className="shrink-0 flex items-center pl-14 pr-3 py-3 min-w-0"
-          data-testid="mobile-top-bar"
-        >
-          <PlanBreadcrumb planId={planId} />
-        </div>
-      )}
       <TabBar planId={planId} />
       {/* Padding, not margin: the pane still scrolls under the floating bar,
           so its last item clears the pill instead of hiding behind it. */}
-      <div className="flex-1 min-h-0 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="flex-1 min-h-0 overflow-hidden pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-0">
         <Routes>
           <Route index element={<Navigate to="itinerary" replace />} />
           <Route path="itinerary" element={<ItineraryTab planId={planId} />} />

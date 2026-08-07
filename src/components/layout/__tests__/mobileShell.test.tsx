@@ -79,6 +79,36 @@ describe('Sidebar as a phone drawer', () => {
 describe('TabBar as a phone pill', () => {
   const classes = () => screen.getByTestId('tab-bar').className;
 
+  // The breadcrumb is the pill's first row, the tabs its second.
+  it('carries the breadcrumb inside the pill on a phone', () => {
+    setViewport(PHONE);
+    vi.mocked(useLiveQuery).mockReturnValue({
+      id: 'p1', name: 'Ottawa', destination: 'Ottawa, Canada',
+      startDate: '', endDate: '', createdAt: '', updatedAt: '',
+      deleted: false, itinerary: [],
+    });
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    const pill = screen.getByTestId('tab-bar');
+    expect(pill).toContainElement(screen.getByTestId('plan-breadcrumb'));
+    expect(pill.className).toContain('flex-col');
+  });
+
+  // role="tablist" must contain only tabs, or assistive technology announces
+  // the breadcrumb as a fifth tab.
+  it('keeps the breadcrumb out of the tablist', () => {
+    setViewport(PHONE);
+    vi.mocked(useLiveQuery).mockReturnValue({
+      id: 'p1', name: 'Ottawa', destination: 'Ottawa, Canada',
+      startDate: '', endDate: '', createdAt: '', updatedAt: '',
+      deleted: false, itinerary: [],
+    });
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    expect(screen.getByRole('tablist')).not.toContainElement(
+      screen.getByTestId('plan-breadcrumb'),
+    );
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
+  });
+
   // A full-width in-flow bar was being clipped at the screen edges.
   it('floats inset from both edges and above the home indicator', () => {
     setViewport(PHONE);
