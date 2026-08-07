@@ -21,9 +21,21 @@ import {
 export type AiProvider = 'openai' | 'anthropic';
 
 export const PROVIDER_STORAGE = 'aitp_ai_provider';
+export const ANTHROPIC_MODEL_STORAGE = 'aitp_anthropic_model';
 
 export const OPENAI_MODEL = 'gpt-4o-mini';
-export const ANTHROPIC_MODEL = 'claude-haiku-3-5';
+/**
+ * Fallback when the user hasn't picked one in Settings. Haiku 4.5 is the
+ * cheapest and fastest current model — a good default for itinerary generation.
+ */
+export const ANTHROPIC_MODEL = 'claude-haiku-4-5';
+
+/** Models offered in Settings, cheapest first. */
+export const ANTHROPIC_MODELS = [
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — fastest, cheapest' },
+  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — balanced' },
+  { id: 'claude-opus-5', label: 'Claude Opus 5 — most capable' },
+] as const;
 
 const MAX_TOKENS = 8000;
 
@@ -50,6 +62,18 @@ export function getActiveProvider(): AiProvider {
 /** Persist the active provider preference. */
 export function setActiveProvider(provider: AiProvider): void {
   localStorage.setItem(PROVIDER_STORAGE, provider);
+}
+
+/** The Anthropic model to call. Falls back to ANTHROPIC_MODEL when unset. */
+export function getAnthropicModel(): string {
+  return localStorage.getItem(ANTHROPIC_MODEL_STORAGE)?.trim() || ANTHROPIC_MODEL;
+}
+
+/** Persist the Anthropic model choice. Empty string clears it (back to default). */
+export function setAnthropicModel(model: string): void {
+  const trimmed = model.trim();
+  if (trimmed) localStorage.setItem(ANTHROPIC_MODEL_STORAGE, trimmed);
+  else localStorage.removeItem(ANTHROPIC_MODEL_STORAGE);
 }
 
 /** The localStorage key holding the encrypted key for a provider. */
@@ -201,7 +225,7 @@ async function streamAnthropic(
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
+      model: getAnthropicModel(),
       max_tokens: maxTokens,
       stream: true,
       ...(system ? { system } : {}),
@@ -237,13 +261,23 @@ async function streamAnthropic(
       try {
         const evt = JSON.parse(data) as {
           type?: string;
-          delta?: { type?: string; text?: string };
+          delta?: { type?: string; text?: string; stop_reason?: string };
           error?: { message?: string };
         };
         // SSE error event — surface the payload to the caller.
         if (evt.type === 'error') {
           throw new Error(
             evt.error?.message ?? 'AI provider returned an error.',
+          );
+        }
+        // Truncation: Anthropic reports it as stop_reason 'max_tokens' on the
+        // message_delta event (OpenAI's equivalent is finish_reason 'length').
+        // Without this the caller just gets malformed JSON and a generic parse
+        // error instead of an actionable "trip too long" message. Message text
+        // is kept identical to the OpenAI path so callers match on one string.
+        if (evt.type === 'message_delta' && evt.delta?.stop_reason === 'max_tokens') {
+          throw new Error(
+            'The response was too long to generate in one go. Try a shorter request or retry.',
           );
         }
         if (evt.type === 'content_block_delta' && evt.delta?.text) {
@@ -361,7 +395,9 @@ async function chatWithToolsAnthropic(
   messages: ChatMessage[],
   tools: readonly ToolSchema[],
   maxTokens: number,
-  temperature: number,
+  // Not sent: Sonnet 5 and Opus 5 reject `temperature` with a 400. Matches
+  // streamAnthropic, which has never sent it.
+  _temperature: number,
 ): Promise<ChatWithToolsResult> {
   const { system, rest } = splitSystem(messages);
   // OpenAI {type:'function', function:{name,description,parameters}} →
@@ -380,9 +416,8 @@ async function chatWithToolsAnthropic(
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
+      model: getAnthropicModel(),
       max_tokens: maxTokens,
-      temperature,
       ...(system ? { system } : {}),
       messages: rest,
       tools: anthropicTools,
