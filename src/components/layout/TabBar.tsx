@@ -1,5 +1,7 @@
 import { useRef, KeyboardEvent } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useAppStore } from '../../store';
 import PlanBreadcrumb from './PlanBreadcrumb';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
@@ -46,6 +48,8 @@ const STORAGE_KEY = (planId: string) => `journ_active_tab_${planId}`;
 
 export default function TabBar({ planId }: Props) {
   const isMobile = useIsMobile();
+  const agentOpen = useAppStore((st) => st.agentPanelOpen);
+  const setAgentOpen = useAppStore((st) => st.setAgentPanelOpen);
   const navigate = useNavigate();
   const location = useLocation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -103,8 +107,9 @@ export default function TabBar({ planId }: Props) {
         <PlanBreadcrumb planId={planId} />
       </div>
 
+      <div className={isMobile ? 'flex items-stretch' : 'contents'}>
       <nav
-        className={isMobile ? 'flex items-stretch gap-0.5' : 'flex items-center'}
+        className={isMobile ? 'flex items-stretch gap-0.5 flex-1 min-w-0' : 'flex items-center'}
         aria-label="Plan tabs"
         role="tablist"
         data-testid="tab-list"
@@ -144,6 +149,29 @@ export default function TabBar({ planId }: Props) {
         );
       })}
       </nav>
+
+        {/* The agent trigger sits in the bar rather than floating beside it,
+            but OUTSIDE the tablist — it opens a panel, it is not a fifth tab,
+            and putting it in the list would break tab semantics and arrow-key
+            navigation. */}
+        {isMobile && (
+          <>
+            <span className="w-px self-stretch bg-white/10 mx-1" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => setAgentOpen(!agentOpen)}
+              className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-xl shrink-0 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
+                agentOpen ? 'bg-accent/15 text-accent' : 'text-accent/80 hover:text-accent'
+              }`}
+              aria-label={agentOpen ? 'Close AI assistant' : 'Open AI assistant'}
+              aria-expanded={agentOpen}
+              data-testid="agent-tab-btn"
+            >
+              <Sparkles size={18} />
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

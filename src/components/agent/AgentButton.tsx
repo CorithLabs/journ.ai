@@ -1,4 +1,5 @@
 import { Sparkles } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useAppStore } from '../../store';
 
 /**
@@ -6,11 +7,17 @@ import { useAppStore } from '../../store';
  * Toggles the persistent AI agent panel.
  */
 export default function AgentButton() {
+  // On phones the trigger lives in the bottom bar, so the floating button
+  // would be a second control for the same thing sitting on top of it.
+  const isMobile = useIsMobile();
   const open = useAppStore((s) => s.agentPanelOpen);
   const toggle = useAppStore((s) => s.toggleAgentPanel);
 
   // Hidden while the panel is open (the panel has its own close control).
   if (open) return null;
+  // On phones the trigger lives in the bottom bar. Keeping this too would put
+  // a second control for the same thing floating on top of it.
+  if (isMobile) return null;
 
   return (
     <button

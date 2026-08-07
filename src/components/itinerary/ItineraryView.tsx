@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, PlusCircle, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { type Plan, type Activity, db } from '../../db';
 import { getDayColor } from '../../constants/colors';
@@ -7,7 +7,8 @@ import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
 import ActivityCard from './ActivityCard';
 import { scrollBehavior } from '../../utils/motion';
-import { sortByTime, swapTimes, findTimeClashes, nextFreeTime, formatTime } from '../../utils/activityTime';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { sortByTime, swapTimes, findTimeClashes, nextFreeTime, formatTime, timeBetween } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 
 interface Props { plan: Plan; }
@@ -23,26 +24,75 @@ function budgetLabel(
   return { text: `Est. $${lo}\u2013${hi}/day`, warn: lo > (caps[range ?? ''] ?? Infinity) };
 }
 
-function AddInline({ onAdd, siblings }: { onAdd: (n: string, t: string) => Promise<void>; siblings: Activity[] }) {
+function AddInline({
+  onAdd, siblings, dayLabel, seedTime = '09:00', variant = 'link', label = 'Add activity',
+}: {
+  onAdd: (n: string, t: string) => Promise<void>;
+  siblings: Activity[];
+  dayLabel: string;
+  /** Where in the day this button sits, as a time. */
+  seedTime?: string;
+  variant?: 'link' | 'gap';
+  label?: string;
+}) {
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
-  const [tm, setTm] = useState('09:00');
-  if (!open) return (
-    <button onClick={() => setOpen(true)} className="flex items-center gap-1 text-xs text-ink-muted hover:text-accent py-1">
-      <PlusCircle size={12} /> Add activity
-    </button>
-  );
+  const [tm, setTm] = useState(seedTime);
+
   const clashes = findTimeClashes(siblings, tm);
   const free = clashes.length ? nextFreeTime(siblings, tm) : null;
 
-  return (
-    <form onSubmit={async e => { e.preventDefault(); if (!nm.trim()) return; await onAdd(nm.trim(), tm); setNm(''); setOpen(false); }} className="space-y-1">
+  const start = () => {
+    // The seed is only right at the moment of opening: a card either side may
+    // have moved since this button rendered.
+    setTm(seedTime);
+    setOpen(true);
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nm.trim()) return;
+    await onAdd(nm.trim(), tm);
+    setNm('');
+    setOpen(false);
+  };
+
+  if (!open && variant === 'gap') {
+    /*
+     * A + in the space between two cards, so adding something mid-afternoon is
+     * one tap where it belongs rather than "add at the bottom, then set the
+     * time, then move it up". The time is pre-filled from the gap itself.
+     */
+    return (
+      <div className="flex items-center gap-2 py-1 opacity-60 hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+        <button
+          type="button"
+          onClick={start}
+          aria-label={label}
+          data-testid="add-activity-gap"
+          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-surface-raised text-ink-muted hover:text-accent hover:border-accent/40 transition-colors"
+        >
+          <Plus size={14} aria-hidden="true" />
+        </button>
+        <span className="h-px flex-1 bg-white/10" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (!open) return (
+    <button onClick={start} className="flex items-center gap-1 text-xs text-ink-muted hover:text-accent py-2">
+      <PlusCircle size={12} /> Add activity
+    </button>
+  );
+
+  const fields = (
+    <>
       <div className="flex gap-2 items-center">
         <input type="time" value={tm} onChange={e => setTm(e.target.value)} className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-24 focus:outline-none" aria-label="Time" />
         <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
-          className="flex-1 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-none" />
-        <button type="submit" className="text-xs text-accent hover:underline">Add</button>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-ink-muted hover:underline">Cancel</button>
+          className="flex-1 min-w-0 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary placeholder:text-ink-muted focus:outline-none" />
       </div>
       {/* Caught before the activity exists, rather than after — cheaper to
           correct now than to notice a double-booked hour later. */}
@@ -59,8 +109,66 @@ function AddInline({ onAdd, siblings }: { onAdd: (n: string, t: string) => Promi
           )}
         </p>
       )}
+    </>
+  );
+
+  /*
+   * On a phone the form opens as a dialog pinned to the TOP of the screen.
+   *
+   * Inline, an activity added at the bottom of a long day sits directly above
+   * the on-screen keyboard — which covers it the moment the field is focused,
+   * so the user cannot see what they are typing. Anchoring high keeps the
+   * fields in the visible half whatever the keyboard does.
+   */
+  if (isMobile) {
+    return (
+      <>
+        <div
+          className="fixed inset-0 bg-black/50 z-50"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Add activity to ${dayLabel}`}
+          className="fixed top-4 left-3 right-3 z-50 bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-4 space-y-3"
+          data-testid="add-activity-dialog"
+        >
+          <p className="text-sm font-semibold text-ink-primary">Add to {dayLabel}</p>
+          <form onSubmit={submit} className="space-y-2">
+            {fields}
+            <div className="flex gap-2 pt-1">
+              <button type="submit" className="flex-1 bg-accent text-ink-inverse font-semibold py-2 rounded-xl text-sm">Add</button>
+              <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl text-sm text-ink-secondary border border-white/10">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-1">
+      {fields}
+      <div className="flex gap-2">
+        <button type="submit" className="text-xs text-accent hover:underline">Add</button>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-ink-muted hover:underline">Cancel</button>
+      </div>
     </form>
   );
+}
+
+/**
+ * The time to offer for an activity inserted at a given point in the day.
+ *
+ * Between the neighbours, then nudged past anything already sitting on that
+ * minute — a pre-filled clash would just be a warning the user has to clear
+ * before they can type a name.
+ */
+function insertTime(day: Activity[], before?: string | null, after?: string | null): string {
+  const guess = timeBetween(before, after);
+  return findTimeClashes(day, guess).length ? nextFreeTime(day, guess) ?? guess : guess;
 }
 
 export default function ItineraryView({ plan }: Props) {
@@ -70,6 +178,13 @@ export default function ItineraryView({ plan }: Props) {
 
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
+
+  const addAct = async (di: number, name: string, time: string) => {
+    const newAct: Activity = { id: uuidv4(), name, time, locationName: '', notes: '', pinnedToTodo: false };
+    // Appended, not spliced: the day is sorted by time on render, so where it
+    // lands is decided by the time, not by its position in the array.
+    await persist(plan.itinerary.map((d, i) => i === di ? { ...d, activities: [...d.activities, newAct] } : d));
+  };
 
   const delAct = async (di: number, id: string) => {
     const saved = plan.itinerary[di].activities.find(a => a.id === id);
@@ -177,7 +292,7 @@ Change it anyway?`);
               {!isCol && (
                 <div className={`space-y-2 ml-4 border-l-2 pl-3 pb-2 border-white/5`}>
                   {day.activities.length === 0 && <p className="text-xs text-ink-muted py-2">No activities yet.</p>}
-                  {sortByTime(day.activities).map((act, ai) => (
+                  {sortByTime(day.activities).map((act, ai, sorted) => (
                     <div key={act.id}>
                       <ActivityCard act={act} plan={plan} siblings={day.activities}
                         onDel={() => delAct(day.dayIndex, act.id)}
@@ -191,12 +306,21 @@ Change it anyway?`);
                         <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, ai, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
                         <button disabled={ai === day.activities.length - 1} onClick={() => moveAct(day.dayIndex, ai, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
                       </div>
+                      {ai < sorted.length - 1 && (
+                        <AddInline
+                          siblings={day.activities}
+                          dayLabel={day.label}
+                          variant="gap"
+                          label={`Add activity between ${act.name} and ${sorted[ai + 1].name}`}
+                          seedTime={insertTime(day.activities, act.time, sorted[ai + 1].time)}
+                          onAdd={(name, time) => addAct(day.dayIndex, name, time)}
+                        />
+                      )}
                     </div>
                   ))}
-                  <AddInline siblings={day.activities} onAdd={async (name, time) => {
-                    const newAct: Activity = { id: uuidv4(), name, time, locationName: '', notes: '', pinnedToTodo: false };
-                    await persist(plan.itinerary.map((d, i) => i === day.dayIndex ? { ...d, activities: [...d.activities, newAct] } : d));
-                  }} />
+                  <AddInline siblings={day.activities} dayLabel={day.label}
+                    seedTime={insertTime(day.activities, sortByTime(day.activities).slice(-1)[0]?.time)}
+                    onAdd={(name, time) => addAct(day.dayIndex, name, time)} />
                 </div>
               )}
             </section>

@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  sortByTime, swapTimes, timeToMinutes, formatTime,
-  findTimeClashes, nextFreeTime, isTimeSlot, TIME_SLOTS,
-} from '../activityTime';
+import { sortByTime, swapTimes, timeToMinutes, formatTime, findTimeClashes, nextFreeTime, isTimeSlot, TIME_SLOTS, timeBetween } from '../activityTime';
 import type { Activity } from '../../db';
 
 const act = (id: string, time: string, name = id): Activity => ({
@@ -152,5 +149,43 @@ describe('nextFreeTime', () => {
   it('gives up rather than rolling past midnight', () => {
     const day = [act('a', '23:45')];
     expect(nextFreeTime(day, '23:45', 'other')).toBeNull();
+  });
+});
+
+describe('timeBetween', () => {
+  it('lands halfway between two neighbours', () => {
+    expect(timeBetween('10:00', '12:00')).toBe('11:00');
+  });
+
+  it('rounds to a quarter hour', () => {
+    expect(timeBetween('10:00', '11:10')).toBe('10:30');
+  });
+
+  // In a 10-minute gap the nearest quarter hour is a neighbour itself.
+  it('keeps the exact midpoint when rounding would collide', () => {
+    expect(timeBetween('10:00', '10:10')).toBe('10:05');
+  });
+
+  it('follows on an hour after the last activity of the day', () => {
+    expect(timeBetween('18:00', undefined)).toBe('19:00');
+  });
+
+  it('sits an hour before the first', () => {
+    expect(timeBetween(undefined, '09:00')).toBe('08:00');
+  });
+
+  // Slots bound the gap through their anchors, so inserting between Morning
+  // (08:00) and Evening (18:00) offers a real early-afternoon time.
+  it('uses slot anchors as bounds', () => {
+    expect(timeBetween('morning', 'evening')).toBe('13:00');
+    expect(timeBetween('night', null)).toBe('22:00');
+  });
+
+  it('starts an empty day at 09:00', () => {
+    expect(timeBetween(null, null)).toBe('09:00');
+  });
+
+  it('never runs past midnight', () => {
+    expect(timeBetween('23:30', undefined)).toBe('23:59');
   });
 });

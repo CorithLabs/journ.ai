@@ -113,6 +113,38 @@ export function findTimeClashes(
   return activities.filter((a) => a.id !== excludeId && a.time === time);
 }
 
+function minutesToTime(mins: number): string {
+  const m = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins)));
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/** An hour is the assumed length of an activity when guessing around one. */
+const DEFAULT_GAP_MINUTES = 60;
+
+/**
+ * A starting time for an activity inserted between two others.
+ *
+ * Halfway between the neighbours, rounded to a quarter hour when that still
+ * lands strictly between them — close enough to where the user pointed that
+ * they usually will not change it. Slots bound the gap through their anchors,
+ * so a space between Morning and Evening offers an early afternoon. With only
+ * one bound (the ends of the day, a blank time) it steps an hour past what is
+ * known, and an empty day starts at 09:00.
+ */
+export function timeBetween(before?: string | null, after?: string | null): string {
+  const b = timeToMinutes(before);
+  const a = timeToMinutes(after);
+
+  if (b !== null && a !== null && a > b) {
+    const mid = (a + b) / 2;
+    const quarter = Math.round(mid / 15) * 15;
+    return minutesToTime(quarter > b && quarter < a ? quarter : mid);
+  }
+  if (b !== null) return minutesToTime(b + DEFAULT_GAP_MINUTES);
+  if (a !== null) return minutesToTime(a - DEFAULT_GAP_MINUTES);
+  return '09:00';
+}
+
 /**
  * The next free quarter-hour at or after `time` on this day, for offering a
  * way out of a clash rather than only reporting it. Returns null if the day is
@@ -125,9 +157,7 @@ export function nextFreeTime(activities: Activity[], time: string, excludeId?: s
     activities.filter((a) => a.id !== excludeId).map((a) => timeToMinutes(a.time)),
   );
   for (let m = start; m < 24 * 60; m += 15) {
-    if (!taken.has(m)) {
-      return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-    }
+    if (!taken.has(m)) return minutesToTime(m);
   }
   return null;
 }
