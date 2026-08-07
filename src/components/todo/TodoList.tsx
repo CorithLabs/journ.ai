@@ -95,7 +95,7 @@ function Row({ item, plan, onToggle, onDel, onUpd, onNavigateToDay }: RowProps) 
   };
 
   return (
-    <div className={`flex items-center gap-3 py-2.5 px-3 rounded-xl border-l-2 ${color} bg-surface-raised group hover:bg-surface-overlay transition-colors`} data-testid="task-row">
+    <div className={`card-surface group flex items-center gap-3 py-2.5 px-3 rounded-card border-l-2 ${color}`} data-testid="task-row">
       <button onClick={onToggle} className="shrink-0 text-ink-muted hover:text-accent" aria-label={item.status === 'done' ? 'Mark incomplete' : 'Mark complete'}>
         {item.status === 'done' ? <CheckSquare size={18} className="text-status-success" /> : <Square size={18} />}
       </button>

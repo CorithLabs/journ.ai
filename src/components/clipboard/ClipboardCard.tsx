@@ -34,7 +34,7 @@ export default function ClipboardCard({ item, onClick }: Props) {
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left flex gap-3 items-start bg-surface-raised border border-white/5 border-l-2 ${border} rounded-card p-3 shadow-card hover:bg-surface-overlay transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none`}
+      className={`card-surface w-full text-left flex gap-3 items-start border-l-2 ${border} rounded-card p-3 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none`}
       data-testid="clipboard-card"
       aria-label={`${item.type}: ${item.title}`}
     >

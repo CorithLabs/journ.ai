@@ -49,7 +49,7 @@ export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
   }
 
   return (
-    <div className="group flex items-start gap-2 bg-surface-raised hover:bg-surface-overlay border border-white/5 rounded-card p-3 transition-colors" data-testid="activity-card">
+    <div className="group card-surface flex items-start gap-2 rounded-card p-3" data-testid="activity-card">
       <GripVertical size={14} className="mt-1 text-ink-muted cursor-grab shrink-0" aria-label="Drag handle" />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
