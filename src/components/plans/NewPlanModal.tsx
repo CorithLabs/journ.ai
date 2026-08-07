@@ -103,9 +103,6 @@ export default function NewPlanModal({ onClose }: Props) {
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    // Belt and braces: the submit button is disabled without a key, but a
-    // form can also be submitted with Enter.
-    if (needsKey) errs.destination = NO_AI_KEY_MESSAGE;
     if (!destination.trim()) {
       errs.destination = 'Destination is required';
     } else if (!isPlausibleDestination(destination)) {
@@ -182,12 +179,13 @@ export default function NewPlanModal({ onClose }: Props) {
         </button>
       </div>
 
-      {/* Every route out of a new plan — intake, generation — needs a key, so
-          creating one without it produces a plan that can't progress. The
-          button stays reachable and explains the fix rather than sitting dead. */}
+      {/* A nudge, not a wall. Without a key the AI paths are unavailable, but
+          the itinerary can still be built by hand — so creating the plan is
+          worthwhile, and blocking it would make the app look broken rather
+          than unconfigured. */}
       {needsKey && (
         <div
-          role="alert"
+          role="status"
           className="flex items-start gap-2 mb-4 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl"
           data-testid="new-plan-needs-key"
         >
@@ -354,7 +352,7 @@ export default function NewPlanModal({ onClose }: Props) {
 
         <button
           type="submit"
-          disabled={saving || tooLong || needsKey}
+          disabled={saving || tooLong}
           className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ink-inverse font-semibold px-4 py-2.5 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none text-sm"
           data-testid="create-plan-btn"
         >
