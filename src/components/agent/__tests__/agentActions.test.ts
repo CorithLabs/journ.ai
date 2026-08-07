@@ -61,6 +61,42 @@ describe('executeAgentAction', () => {
     expect(db.plans.update).not.toHaveBeenCalled();
   });
 
+  it('remove_activity deletes the matching activity', async () => {
+    vi.mocked(db.plans.update).mockResolvedValue(1);
+    const res = await executeAgentAction(plan, {
+      name: 'remove_activity',
+      args: { nameMatch: 'museum' },
+    });
+    expect(res.ok).toBe(true);
+    expect(res.message).toMatch(/removed "Museum"/i);
+    // Day 2's activities should no longer contain the Museum.
+    const written = vi.mocked(db.plans.update).mock.calls[0][1] as { itinerary: typeof plan.itinerary };
+    const day2 = written.itinerary.find((d) => d.dayIndex === 1)!;
+    expect(day2.activities).toHaveLength(0);
+  });
+
+  it('edit_activity replaces one activity with another, keeping its time slot', async () => {
+    vi.mocked(db.plans.update).mockResolvedValue(1);
+    const res = await executeAgentAction(plan, {
+      name: 'edit_activity',
+      args: { nameMatch: 'museum', newName: 'Aquarium', locationName: 'Sumida Aquarium' },
+    });
+    expect(res.ok).toBe(true);
+    const written = vi.mocked(db.plans.update).mock.calls[0][1] as { itinerary: typeof plan.itinerary };
+    const act = written.itinerary.find((d) => d.dayIndex === 1)!.activities[0];
+    expect(act.name).toBe('Aquarium');
+    expect(act.locationName).toBe('Sumida Aquarium');
+    expect(act.time).toBe('10:00'); // slot preserved
+  });
+
+  it('remove_activity / edit_activity report when nothing matches', async () => {
+    const r1 = await executeAgentAction(plan, { name: 'remove_activity', args: { nameMatch: 'nope' } });
+    const r2 = await executeAgentAction(plan, { name: 'edit_activity', args: { nameMatch: 'nope', newName: 'X' } });
+    expect(r1.ok).toBe(false);
+    expect(r2.ok).toBe(false);
+    expect(db.plans.update).not.toHaveBeenCalled();
+  });
+
   it('complete_todo marks a matching task done', async () => {
     vi.mocked(db.todos.where).mockReturnValue({
       equals: vi.fn().mockReturnThis(),
