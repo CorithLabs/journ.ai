@@ -13,7 +13,7 @@ import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
-import { isIntakeComplete } from '../utils/planState';
+import { itineraryStage } from '../utils/planState';
 
 /**
  * Inner component that has access to plan data and triggers weather fetch.
@@ -26,16 +26,20 @@ function PlanWeatherLoader({ planId }: { planId: string }) {
 }
 
 /**
- * The AI agent, held back until the intake conversation is finished.
+ * The AI agent, held back only while the intake conversation is on screen.
  *
  * IntakeChat is itself a chat UI, so showing the agent alongside it puts two
  * chat surfaces on screen at once and makes it ambiguous which one the trip
- * questions should be answered in. Once intake is complete the agent is the
- * only chat, and appears on every tab as before.
+ * questions should be answered in.
+ *
+ * Gating on intake COMPLETION was wrong: a manually built plan never answers
+ * the intake questions, so the agent stayed hidden forever on exactly the
+ * plans where it is most useful. What matters is which screen is showing, not
+ * how the itinerary came to exist.
  */
 function GatedAgent({ planId }: { planId: string }) {
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
-  if (!isIntakeComplete(plan)) return null;
+  if (itineraryStage(plan) === 'intake') return null;
   return (
     <>
       <AgentButton />

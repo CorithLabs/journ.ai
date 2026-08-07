@@ -3,7 +3,7 @@ import { db } from '../../db';
 import IntakeChat from '../itinerary/IntakeChat';
 import GenerateItinerary from '../itinerary/GenerateItinerary';
 import ItineraryView from '../itinerary/ItineraryView';
-import { isIntakeComplete } from '../../utils/planState';
+import { itineraryStage } from '../../utils/planState';
 
 interface Props {
   planId: string;
@@ -41,23 +41,17 @@ export default function ItineraryTab({ planId }: Props) {
     );
   }
 
-  // Shared with PlanWorkspace, which hides the AI agent until intake is done —
-  // the two must agree or both chat UIs show at once.
-  const hasIntake = isIntakeComplete(plan);
-  const hasItinerary = Array.isArray(plan.itinerary) && plan.itinerary.length > 0;
-
-  // State 1 — no completed intake yet: gather preferences.
-  if (!hasIntake) {
-    return <IntakeChat plan={plan} />;
+  // Shared with PlanWorkspace so the two can't disagree about which screen the
+  // user is on. An existing itinerary wins, which is what makes a manually
+  // started plan (days, but no intake) land here rather than back in intake.
+  switch (itineraryStage(plan)) {
+    case 'view':
+      return <ItineraryView plan={plan} />;
+    case 'intake':
+      return <IntakeChat plan={plan} />;
+    // onGenerated is intentionally a no-op: GenerateItinerary writes the
+    // itinerary to IndexedDB, and useLiveQuery re-renders into 'view' on its own.
+    default:
+      return <GenerateItinerary plan={plan} onGenerated={() => {}} />;
   }
-
-  // State 2 — intake done but no itinerary: offer AI generation.
-  // onGenerated is intentionally a no-op: GenerateItinerary writes the itinerary
-  // to IndexedDB, which makes useLiveQuery re-render into State 3 on its own.
-  if (!hasItinerary) {
-    return <GenerateItinerary plan={plan} onGenerated={() => {}} />;
-  }
-
-  // State 3 — itinerary exists: review and edit.
-  return <ItineraryView plan={plan} />;
 }

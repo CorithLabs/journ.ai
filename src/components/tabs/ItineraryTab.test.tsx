@@ -102,6 +102,21 @@ describe('ItineraryTab routing state machine', () => {
     expect(screen.queryByTestId('stub-intake-chat')).not.toBeInTheDocument();
   });
 
+  // A manual plan has days but never answers the intake questions. Checking
+  // intake first bounced it straight back to the chat that "Build it myself"
+  // was meant to escape, so the manual path never actually worked.
+  it('a manually started plan — days but no intake — renders ItineraryView', () => {
+    mockUseLiveQuery.mockReturnValue(
+      basePlan({
+        intake: undefined,
+        itinerary: [{ dayIndex: 0, label: 'Day 1 — Mon 14 Jul', activities: [] }],
+      }),
+    );
+    render(<ItineraryTab planId="p1" />);
+    expect(screen.getByTestId('stub-itinerary-view')).toBeInTheDocument();
+    expect(screen.queryByTestId('stub-intake-chat')).not.toBeInTheDocument();
+  });
+
   it('State 3 takes precedence — a partial/interrupted itinerary still routes to ItineraryView', () => {
     mockUseLiveQuery.mockReturnValue(
       basePlan({

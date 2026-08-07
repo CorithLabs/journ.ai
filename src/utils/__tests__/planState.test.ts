@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isIntakeComplete } from '../planState';
+import { isIntakeComplete, itineraryStage } from '../planState';
 import type { Plan } from '../../db';
 
 const base: Plan = {
@@ -44,5 +44,36 @@ describe('isIntakeComplete', () => {
   it('tolerates a missing plan while it loads', () => {
     expect(isIntakeComplete(undefined)).toBe(false);
     expect(isIntakeComplete(null)).toBe(false);
+  });
+});
+
+const day = { dayIndex: 0, label: 'Day 1', activities: [] };
+
+describe('itineraryStage', () => {
+  it('starts at intake for a brand new plan', () => {
+    expect(itineraryStage(base)).toBe('intake');
+  });
+
+  it('offers generation once intake is complete but no itinerary exists', () => {
+    expect(itineraryStage({ ...base, intake: intake() })).toBe('generate');
+  });
+
+  it('shows the itinerary once one has been generated', () => {
+    expect(itineraryStage({ ...base, intake: intake(), itinerary: [day] })).toBe('view');
+  });
+
+  // The bug: a manual plan has days but never answers the intake questions.
+  // Checking intake first sent it back to the chat "Build it myself" escaped,
+  // and kept the AI agent hidden on exactly the plans that need it most.
+  it('shows the itinerary for a manual plan that has days but no intake', () => {
+    expect(itineraryStage({ ...base, itinerary: [day] })).toBe('view');
+  });
+
+  it('treats an empty itinerary array as no itinerary', () => {
+    expect(itineraryStage({ ...base, intake: intake(), itinerary: [] })).toBe('generate');
+  });
+
+  it('tolerates a missing plan while it loads', () => {
+    expect(itineraryStage(undefined)).toBe('intake');
   });
 });
