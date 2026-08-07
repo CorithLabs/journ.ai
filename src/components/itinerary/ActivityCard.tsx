@@ -3,12 +3,42 @@ import { AlertTriangle, Pin, Pencil, Trash2, MapPin } from 'lucide-react';
 import { type Activity, type Plan } from '../../db';
 import {
   formatTime,
-  isTimeSlot,
+  slotLabel,
+  slotForTime,
+  exactTime,
   TIME_SLOTS,
   findTimeClashes,
   nextFreeTime,
 } from '../../utils/activityTime';
 import { mapsUrlFor } from '../../utils/mapsLink';
+
+/** Morning / Noon / Evening / Night, with the current one lit. */
+export function SlotPicker({ value, onPick }: { value: string; onPick: (t: string) => void }) {
+  // An exact time lights its own slot, so 15:00 shows as Noon and tapping
+  // Noon simply drops the clock value.
+  const current = slotForTime(value);
+  return (
+    <div className="flex flex-wrap gap-1" role="group" aria-label="Time of day">
+      {TIME_SLOTS.map(slot => (
+        <button
+          key={slot.id}
+          type="button"
+          title={slot.hint}
+          onClick={() => onPick(slot.id)}
+          className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+            current === slot.id
+              ? 'bg-accent/15 border-accent/40 text-ink-primary'
+              : 'border-white/10 text-ink-secondary hover:text-ink-primary'
+          }`}
+          aria-pressed={current === slot.id}
+          data-testid={`slot-${slot.id}`}
+        >
+          {slot.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface Props {
   act: Activity;
@@ -28,6 +58,9 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
   const [loc, setLoc] = useState(act.locationName);
   const [notes, setNotes] = useState(act.notes);
   const [err, setErr] = useState('');
+  // The clock is the exception now, so it stays out of the way unless this
+  // activity already has one or the user asks for it.
+  const [showExact, setShowExact] = useState(Boolean(exactTime(act.time)));
 
   const clashes = findTimeClashes(siblings, tm, act.id);
   const suggestion = clashes.length ? nextFreeTime(siblings, tm, act.id) : null;
@@ -48,35 +81,33 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
             aria-label="Activity name" placeholder="Activity name" />
           {err && <p className="text-xs text-status-danger mt-0.5">{err}</p>}
         </div>
-        <div className="flex gap-2">
-          <input type="time" value={isTimeSlot(tm) ? '' : tm} onChange={e => setTm(e.target.value)} onBlur={save}
-            className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
-            aria-label="Time" data-testid="edit-time" />
-          <input value={loc} onChange={e => setLoc(e.target.value)} onBlur={save}
-            className="flex-1 bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
-            aria-label="Location" placeholder="Location" />
-        </div>
+        <input value={loc} onChange={e => setLoc(e.target.value)} onBlur={save}
+          className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
+          aria-label="Location" placeholder="Location" />
 
-        {/* When the hour is not known yet. Several activities may share a slot
-            — three things in the evening is a real plan — which is why slots
-            are exempt from the clash check below. */}
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Time of day">
-          {TIME_SLOTS.map(slot => (
-            <button
-              key={slot.id}
-              type="button"
-              onClick={() => { setTm(slot.id); onUpd({ time: slot.id }); }}
-              className={`px-2 py-1 rounded-full text-[11px] border transition-colors ${
-                tm === slot.id
-                  ? 'bg-accent/15 border-accent/40 text-ink-primary'
-                  : 'border-white/10 text-ink-secondary hover:text-ink-primary'
-              }`}
-              data-testid={`slot-${slot.id}`}
-            >
-              {slot.label}
+        {/* The part of the day is the time. An exact clock value is available
+            below for the few things that have one — a check-in, a flight. */}
+        <SlotPicker
+          value={tm}
+          onPick={next => { setTm(next); onUpd({ time: next }); }}
+        />
+
+        {showExact ? (
+          <div className="flex items-center gap-2">
+            <input type="time" value={exactTime(tm) ?? ''} onChange={e => setTm(e.target.value)} onBlur={save}
+              className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
+              aria-label="Exact time" data-testid="edit-time" />
+            <button type="button" className="text-xs text-ink-muted hover:underline"
+              onClick={() => { setShowExact(false); const slot = slotForTime(tm); if (slot) { setTm(slot); onUpd({ time: slot }); } }}>
+              Clear
             </button>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <button type="button" className="text-xs text-ink-muted hover:text-accent"
+            onClick={() => setShowExact(true)} data-testid="show-exact-time">
+            + Exact time
+          </button>
+        )}
 
         {clashes.length > 0 && (
           <p className="text-xs text-status-warning" role="alert" data-testid="time-clash">
@@ -117,11 +148,18 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
       <div className="flex-1 min-w-0 p-3">
         <div className="flex items-center gap-2 mb-1">
           <span
-            className="shrink-0 text-[11px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full tabular-nums"
+            className="shrink-0 text-[11px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full"
             data-testid="activity-time"
           >
-            {formatTime(act.time)}
+            {slotLabel(act.time)}
           </span>
+          {/* Kept beside the slot rather than replaced by it: a 3pm check-in
+              belongs to Noon, but 3pm is still the thing you must not miss. */}
+          {exactTime(act.time) && (
+            <span className="shrink-0 text-[11px] text-ink-muted tabular-nums" data-testid="activity-exact-time">
+              {formatTime(act.time)}
+            </span>
+          )}
           {act.budgetWarning && (
             <AlertTriangle size={12} className="text-status-warning shrink-0" aria-label="Budget warning" />
           )}
