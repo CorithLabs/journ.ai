@@ -29,8 +29,62 @@ async function sendAnswer(text: string) {
 
 // ItineraryView already supports building a day by hand, but was only
 // reachable through AI generation. Writing the scaffolded days is the route in.
+// Visas are issued by countries, so the question names the country resolved
+// at plan creation rather than the city.
+describe('IntakeChat visa question', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(db.plans.update).mockResolvedValue(1);
+  });
+
+  const answerThrough = async (plan: Plan) => {
+    render(<IntakeChat plan={plan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    await screen.findByText(/What kinds of activities/i);
+    // The likes step's chips are activity values, so answer by typing.
+    await sendAnswer('skip');
+    await screen.findByText(/like to avoid/i);
+    await sendAnswer('skip');
+    await screen.findByText(/budget range/i);
+    fireEvent.click(screen.getByText(/Mid-range/));
+    await screen.findByText(/booked your flights/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-Both booked'));
+  };
+
+  it('names the country, not the city', async () => {
+    await answerThrough({ ...mockPlan, destination: 'Toronto, Canada', country: 'Canada' });
+    expect(await screen.findByText(/do you need a visa to visit Canada/i)).toBeInTheDocument();
+  });
+
+  it('asks generically when no country was resolved', async () => {
+    await answerThrough({ ...mockPlan, country: undefined });
+    expect(await screen.findByText(/do you need a visa for this trip/i)).toBeInTheDocument();
+  });
+
+  it('records a "no" so no visa task is created downstream', async () => {
+    await answerThrough({ ...mockPlan, country: 'Japan' });
+    await screen.findByText(/do you need a visa/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    const [, patch] = vi.mocked(db.plans.update).mock.calls.at(-1)!;
+    expect((patch as { intake: { needsVisa: boolean | null } }).intake.needsVisa).toBe(false);
+  });
+
+  it('records "Not sure" as null, which asks the user to check rather than apply', async () => {
+    await answerThrough({ ...mockPlan, country: 'Japan' });
+    await screen.findByText(/do you need a visa/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-Not sure'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    const [, patch] = vi.mocked(db.plans.update).mock.calls.at(-1)!;
+    expect((patch as { intake: { needsVisa: boolean | null } }).intake.needsVisa).toBeNull();
+  });
+});
+
 describe('IntakeChat manual escape', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
     vi.mocked(db.plans.update).mockResolvedValue(1);
   });
@@ -45,7 +99,7 @@ describe('IntakeChat manual escape', () => {
     render(<IntakeChat plan={mockPlan} />);
     fireEvent.click(screen.getByTestId('start-manual-btn'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
-    const [, patch] = vi.mocked(db.plans.update).mock.calls[0];
+    const [, patch] = vi.mocked(db.plans.update).mock.calls.at(-1)!;
     // 14–20 July inclusive.
     expect((patch as { itinerary: unknown[] }).itinerary).toHaveLength(7);
   });
