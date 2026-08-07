@@ -62,15 +62,20 @@ export default function ActivityCard({ act, onDel, onUpd, onPin }: Props) {
             <div className="text-xs text-ink-muted mt-0.5">{act.locationName}</div>
             {act.notes && <div className="text-xs text-ink-secondary mt-1 line-clamp-2">{act.notes}</div>}
           </div>
-          <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={onPin} className={`p-1 rounded-lg ${act.pinnedToTodo ? 'text-accent' : 'text-ink-muted hover:text-ink-primary'}`} aria-label={act.pinnedToTodo ? 'Unpin' : 'Pin to to-do'}>
-              <Pin size={14} />
+          {/* Always visible on touch. Revealing these on hover hid them
+              completely on a phone, where there is no hover — pin, edit and
+              delete were unreachable. Desktop keeps the reveal so the card
+              stays quiet until pointed at. Targets are 44px on touch, the
+              minimum comfortable size, tightening to the icon on desktop. */}
+          <div className="flex items-center gap-1 shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+            <button onClick={onPin} className={`p-2.5 md:p-1 rounded-lg ${act.pinnedToTodo ? 'text-accent' : 'text-ink-muted hover:text-ink-primary'}`} aria-label={act.pinnedToTodo ? 'Unpin' : 'Pin to to-do'}>
+              <Pin size={16} className="md:w-3.5 md:h-3.5" />
             </button>
-            <button onClick={() => setEd(true)} className="p-1 rounded-lg text-ink-muted hover:text-ink-primary" aria-label="Edit activity">
-              <Pencil size={14} />
+            <button onClick={() => setEd(true)} className="p-2.5 md:p-1 rounded-lg text-ink-muted hover:text-ink-primary" aria-label="Edit activity">
+              <Pencil size={16} className="md:w-3.5 md:h-3.5" />
             </button>
-            <button onClick={onDel} className="p-1 rounded-lg text-ink-muted hover:text-status-danger" aria-label="Delete activity">
-              <Trash2 size={14} />
+            <button onClick={onDel} className="p-2.5 md:p-1 rounded-lg text-ink-muted hover:text-status-danger" aria-label="Delete activity">
+              <Trash2 size={16} className="md:w-3.5 md:h-3.5" />
             </button>
           </div>
         </div>

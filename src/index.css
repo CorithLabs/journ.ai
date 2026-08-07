@@ -107,6 +107,41 @@ body,
 }
 
 /*
+ * Legibility floor on small screens.
+ *
+ * The interface leans heavily on 12px text — fine at arm's length on a
+ * monitor, too small held in one hand. Rather than rewriting every call
+ * site, the two smallest steps are nudged up below the md breakpoint;
+ * everything above is already comfortable.
+ *
+ * Applied to the utilities themselves so it reaches components uniformly,
+ * including ones added later, and so no layout depends on a hand-picked
+ * exception. Line height rises with size to keep blocks from tightening.
+ */
+@media (max-width: 767px) {
+  .text-xs {
+    font-size: 0.8125rem; /* 13px */
+    line-height: 1.15rem;
+  }
+
+  .text-\[11px\] {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  /*
+   * Inputs at 16px stop iOS Safari zooming the viewport on focus — it does
+   * that for anything smaller, and the zoom does not reverse on blur, which
+   * strands the user at desktop scale mid-form.
+   */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/*
  * Content cards — activities, tasks, clipboard items.
  *
  * These were solid surface-raised, only ~7% lighter than the page ground, and
