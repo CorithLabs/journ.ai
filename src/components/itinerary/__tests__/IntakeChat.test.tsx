@@ -27,6 +27,50 @@ async function sendAnswer(text: string) {
   }
 }
 
+describe('IntakeChat suggestions', () => {
+  // Only budget had tappable answers; every other question was a bare text box.
+  it('offers tappable answers for the opening question', () => {
+    render(<IntakeChat plan={mockPlan} />);
+    expect(screen.getByTestId('intake-suggestions')).toBeInTheDocument();
+    expect(screen.getByTestId('intake-suggestion-2')).toBeInTheDocument();
+  });
+
+  it('answers immediately for a single-value question', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    // Advancing to the kids question proves the answer was accepted.
+    await waitFor(() =>
+      expect(screen.getByText(/Are any of the travellers children/i)).toBeInTheDocument(),
+    );
+  });
+
+  it('accumulates into the input for a multi-value question instead of submitting', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+
+    const streetFood = await screen.findByTestId('intake-suggestion-street food');
+    fireEvent.click(streetFood);
+    fireEvent.click(screen.getByTestId('intake-suggestion-museums'));
+
+    // Both chosen, still on the same question awaiting more.
+    expect(screen.getByTestId('intake-input')).toHaveValue('street food, museums');
+    expect(screen.getByTestId('intake-suggestions')).toBeInTheDocument();
+  });
+
+  it('does not add the same value twice', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    const streetFood = await screen.findByTestId('intake-suggestion-street food');
+    fireEvent.click(streetFood);
+    fireEvent.click(streetFood);
+    expect(screen.getByTestId('intake-input')).toHaveValue('street food');
+  });
+});
+
 describe('IntakeChat', () => {
   beforeEach(() => { vi.clearAllMocks(); });
 

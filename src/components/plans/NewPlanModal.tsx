@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db';
 import type { Plan } from '../../db';
-import { X, MapPin } from 'lucide-react';
+import { X, MapPin, AlertTriangle } from 'lucide-react';
+import { hasAnyAiKey, NO_AI_KEY_MESSAGE } from '../../services/aiKeyStatus';
 import {
   MAX_TRIP_DAYS,
   MAX_TRIP_DAYS_ERROR,
@@ -31,6 +32,8 @@ export default function NewPlanModal({ onClose }: Props) {
 
   // Country comes from the picked suggestion. Cleared whenever the field is
   // edited by hand, so it can never disagree with the destination text.
+  const needsKey = !hasAnyAiKey();
+
   const [country, setCountry] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<DestinationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -100,6 +103,9 @@ export default function NewPlanModal({ onClose }: Props) {
 
   const validate = () => {
     const errs: Record<string, string> = {};
+    // Belt and braces: the submit button is disabled without a key, but a
+    // form can also be submitted with Enter.
+    if (needsKey) errs.destination = NO_AI_KEY_MESSAGE;
     if (!destination.trim()) {
       errs.destination = 'Destination is required';
     } else if (!isPlausibleDestination(destination)) {
@@ -175,6 +181,33 @@ export default function NewPlanModal({ onClose }: Props) {
           <X size={18} aria-hidden="true" />
         </button>
       </div>
+
+      {/* Every route out of a new plan — intake, generation — needs a key, so
+          creating one without it produces a plan that can't progress. The
+          button stays reachable and explains the fix rather than sitting dead. */}
+      {needsKey && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 mb-4 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl"
+          data-testid="new-plan-needs-key"
+        >
+          <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm text-status-warning">{NO_AI_KEY_MESSAGE}</p>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                navigate('/settings');
+              }}
+              className="mt-1.5 text-xs text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded"
+              data-testid="new-plan-goto-settings"
+            >
+              Go to Settings →
+            </button>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
@@ -321,7 +354,7 @@ export default function NewPlanModal({ onClose }: Props) {
 
         <button
           type="submit"
-          disabled={saving || tooLong}
+          disabled={saving || tooLong || needsKey}
           className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ink-inverse font-semibold px-4 py-2.5 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none text-sm"
           data-testid="create-plan-btn"
         >
