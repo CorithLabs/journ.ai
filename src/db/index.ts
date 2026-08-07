@@ -29,6 +29,12 @@ export interface Plan {
     budgetRange: 'budget' | 'mid' | 'premium' | 'luxury' | null;
     flightsBooked: boolean | null;
     accommodationBooked: boolean | null;
+    /**
+     * Whether a visa is needed for this trip. Asked about the COUNTRY, since
+     * that is what visas apply to. `null` means "not sure", which produces a
+     * check-the-requirements reminder rather than an apply-for-one task.
+     */
+    needsVisa?: boolean | null;
   };
   itinerary: Day[]; // inline — no separate table
 }

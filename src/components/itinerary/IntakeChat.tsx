@@ -17,6 +17,7 @@ type IntakeStep =
   | 'dislikes'
   | 'budget'
   | 'bookings'
+  | 'visa'
   | 'done';
 
 interface Message {
@@ -57,6 +58,7 @@ const STEP_SUGGESTIONS: Partial<Record<IntakeStep, { values: string[]; multi?: b
   bookings: {
     values: ['Both booked', 'Flights only', 'Accommodation only', 'Neither'],
   },
+  visa: { values: ['Yes', 'No', 'Not sure'] },
 };
 
 const STEP_MESSAGES: Record<IntakeStep, string> = {
@@ -70,6 +72,8 @@ const STEP_MESSAGES: Record<IntakeStep, string> = {
     "Anything you'd like to avoid? (e.g. 'crowds, spicy food') — type 'skip' if none",
   budget: 'What is your budget range? (per person, per day)',
   bookings: 'Have you already booked your flights and/or accommodation?',
+  // Replaced at runtime with the country name — see visaQuestion().
+  visa: 'Do you need a visa for this trip?',
   done: "Great — I have everything I need! Click below to generate your itinerary.",
 };
 
@@ -93,7 +97,18 @@ export default function IntakeChat({ plan }: Props) {
     budgetRange: null as 'budget' | 'mid' | 'premium' | 'luxury' | null,
     flightsBooked: null as boolean | null,
     accommodationBooked: null as boolean | null,
+    needsVisa: null as boolean | null,
   });
+
+  /**
+   * Visas are issued by countries, so ask about the country when one was
+   * resolved at plan creation. A free-typed destination has none, so fall back
+   * to a generic phrasing rather than naming the city and being wrong.
+   */
+  const visaQuestion = () =>
+    plan.country
+      ? `Last one — do you need a visa to visit ${plan.country}?`
+      : 'Last one — do you need a visa for this trip?';
   const [saving, setSaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -177,9 +192,16 @@ export default function IntakeChat({ plan }: Props) {
       case 'bookings': {
         const flightsBooked = /flight/i.test(value) || /both/i.test(value) || /yes/i.test(value);
         const accommodationBooked = /hotel/i.test(value) || /accomm/i.test(value) || /both/i.test(value) || /yes/i.test(value);
-        const newIntake = { ...intake, flightsBooked, accommodationBooked };
+        setIntake((prev) => ({ ...prev, flightsBooked, accommodationBooked }));
+        advance('visa', visaQuestion());
+        break;
+      }
+      case 'visa': {
+        // "Not sure" stays null on purpose — it produces a check-the-rules
+        // reminder rather than an apply-for-one task.
+        const needsVisa = /^y/i.test(value) ? true : /^n(o|ope)?$/i.test(value.trim()) ? false : null;
+        const newIntake = { ...intake, needsVisa };
         setIntake(newIntake);
-        // Save and finish
         saveIntake(newIntake);
         break;
       }
