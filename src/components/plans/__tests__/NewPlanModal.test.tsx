@@ -15,7 +15,11 @@ describe('NewPlanModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     vi.mocked(db.plans.add).mockResolvedValue('new-plan-id');
+    // A plan can't be created without an AI key, so the default for these
+    // tests is "configured"; the no-key path is covered on its own below.
+    localStorage.setItem('aitp_api_key', JSON.stringify({ ciphertext: 'x', iv: 'y' }));
   });
 
   const renderModal = () =>
@@ -24,6 +28,40 @@ describe('NewPlanModal', () => {
         <NewPlanModal onClose={onClose} />
       </MemoryRouter>,
     );
+
+  // Intake and generation both need a key, so a plan created without one
+  // can't progress past the first screen.
+  describe('without an AI key', () => {
+    beforeEach(() => localStorage.clear());
+
+    it('blocks creation and points at Settings', () => {
+      renderModal();
+      expect(screen.getByTestId('new-plan-needs-key')).toBeInTheDocument();
+      expect(screen.getByTestId('create-plan-btn')).toBeDisabled();
+      expect(screen.getByTestId('new-plan-goto-settings')).toBeInTheDocument();
+    });
+
+    it('creates nothing even when the form is submitted directly', async () => {
+      renderModal();
+      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Tokyo' } });
+      fireEvent.submit(screen.getByTestId('destination-input').closest('form')!);
+      await waitFor(() => expect(screen.getByTestId('new-plan-needs-key')).toBeInTheDocument());
+      expect(db.plans.add).not.toHaveBeenCalled();
+    });
+
+    it('navigates to Settings and closes the modal', () => {
+      renderModal();
+      fireEvent.click(screen.getByTestId('new-plan-goto-settings'));
+      expect(onClose).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/settings');
+    });
+  });
+
+  it('shows no key warning once a key is configured', () => {
+    renderModal();
+    expect(screen.queryByTestId('new-plan-needs-key')).not.toBeInTheDocument();
+    expect(screen.getByTestId('create-plan-btn')).not.toBeDisabled();
+  });
 
   // "12345" used to be accepted as a city, producing a nonsense itinerary
   // prompt and an unmappable plan.

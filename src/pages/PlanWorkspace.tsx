@@ -13,6 +13,7 @@ import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
 import { db } from '../db';
 import { useWeather } from '../hooks/useWeather';
+import { isIntakeComplete } from '../utils/planState';
 
 /**
  * Inner component that has access to plan data and triggers weather fetch.
@@ -22,6 +23,25 @@ function PlanWeatherLoader({ planId }: { planId: string }) {
   // Fetch weather whenever the plan (destination / dates) changes
   useWeather(plan);
   return null;
+}
+
+/**
+ * The AI agent, held back until the intake conversation is finished.
+ *
+ * IntakeChat is itself a chat UI, so showing the agent alongside it puts two
+ * chat surfaces on screen at once and makes it ambiguous which one the trip
+ * questions should be answered in. Once intake is complete the agent is the
+ * only chat, and appears on every tab as before.
+ */
+function GatedAgent({ planId }: { planId: string }) {
+  const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
+  if (!isIntakeComplete(plan)) return null;
+  return (
+    <>
+      <AgentButton />
+      <AgentPanel planId={planId} />
+    </>
+  );
 }
 
 export default function PlanWorkspace() {
@@ -62,9 +82,8 @@ export default function PlanWorkspace() {
         </Routes>
       </div>
 
-      {/* Persistent AI agent — available on every tab within this plan */}
-      <AgentButton />
-      <AgentPanel planId={planId} />
+      {/* Persistent AI agent — every tab, but only once intake is finished */}
+      <GatedAgent planId={planId} />
     </div>
   );
 }

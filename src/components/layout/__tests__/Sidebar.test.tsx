@@ -20,6 +20,7 @@ function renderSidebar() {
 describe('Sidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('renders the sidebar with the app logo', () => {
@@ -62,7 +63,31 @@ describe('Sidebar', () => {
     expect(screen.getByText(/Mar 14/)).toBeInTheDocument();
   });
 
+  // Nothing AI-driven works without a key, so the warning is surfaced where
+  // the fix is rather than only failing at the point of use.
+  describe('API key warning', () => {
+    it('flags the settings entry when no provider key is stored', () => {
+      renderSidebar();
+      expect(screen.getByTestId('settings-key-alert')).toBeInTheDocument();
+      expect(screen.getByLabelText(/API key required/)).toBeInTheDocument();
+    });
+
+    it('clears the flag once a key exists for either provider', () => {
+      localStorage.setItem(
+        'aitp_anthropic_key',
+        JSON.stringify({ ciphertext: 'x', iv: 'y' }),
+      );
+      renderSidebar();
+      expect(screen.queryByTestId('settings-key-alert')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Open settings')).toBeInTheDocument();
+    });
+  });
+
   it('shows settings button at the bottom', () => {
+    localStorage.setItem(
+      'aitp_api_key',
+      JSON.stringify({ ciphertext: 'x', iv: 'y' }),
+    );
     mockUseLiveQuery.mockReturnValue([]);
     renderSidebar();
     expect(screen.getByLabelText('Open settings')).toBeInTheDocument();

@@ -30,6 +30,33 @@ const BUDGET_OPTIONS = [
   { value: 'luxury', label: 'Luxury ($600+/day per person)' },
 ];
 
+/**
+ * Tappable answers per question, so the intake isn't a bare text box.
+ *
+ * `multi` steps append into the input with a comma and wait — likes and
+ * dislikes take several values, so tapping one must not submit the answer.
+ * Single-value steps submit immediately, matching how budget already behaves.
+ */
+const STEP_SUGGESTIONS: Partial<Record<IntakeStep, { values: string[]; multi?: boolean }>> = {
+  numTravellers: { values: ['1', '2', '3', '4', '5'] },
+  kids: { values: ['Yes', 'No'] },
+  kidAges: { values: ['skip'] },
+  likes: {
+    multi: true,
+    values: [
+      'street food', 'museums', 'temples', 'hiking', 'beaches',
+      'nightlife', 'shopping', 'art galleries', 'live music', 'markets',
+    ],
+  },
+  dislikes: {
+    multi: true,
+    values: ['crowds', 'early starts', 'long walks', 'spicy food', 'museums', 'skip'],
+  },
+  bookings: {
+    values: ['Both booked', 'Flights only', 'Accommodation only', 'Neither'],
+  },
+};
+
 const STEP_MESSAGES: Record<IntakeStep, string> = {
   numTravellers: "Let's build your trip! How many people are travelling?",
   kids: 'Are any of the travellers children? (yes / no)',
@@ -84,8 +111,9 @@ export default function IntakeChat({ plan }: Props) {
     }
   };
 
-  const handleSend = () => {
-    const value = input.trim();
+  /** `override` lets a suggestion chip answer without typing into the input. */
+  const handleSend = (override?: string) => {
+    const value = (override ?? input).trim();
     if (!value) return;
     addMessage('user', value);
     setInput('');
@@ -276,6 +304,36 @@ export default function IntakeChat({ plan }: Props) {
             </div>
           </div>
         ))}
+
+        {/* Suggestion chips for the current question */}
+        {STEP_SUGGESTIONS[step] && (
+          <div className="flex flex-wrap gap-2 pl-8" data-testid="intake-suggestions">
+            {STEP_SUGGESTIONS[step]!.values.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  const cfg = STEP_SUGGESTIONS[step]!;
+                  // 'skip' always answers outright, even on a multi step —
+                  // appending it to other choices would be contradictory.
+                  if (!cfg.multi || value === 'skip') {
+                    handleSend(value);
+                    return;
+                  }
+                  setInput((prev) => {
+                    const parts = prev.split(',').map((s) => s.trim()).filter(Boolean);
+                    if (parts.includes(value)) return prev; // already chosen
+                    return [...parts, value].join(', ');
+                  });
+                }}
+                className="px-3 py-1.5 rounded-full bg-surface-overlay border border-white/10 text-xs text-ink-secondary hover:text-ink-primary hover:border-accent/40 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+                data-testid={`intake-suggestion-${value}`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Budget quick-select */}
         {step === 'budget' && (

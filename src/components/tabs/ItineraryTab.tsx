@@ -3,6 +3,7 @@ import { db } from '../../db';
 import IntakeChat from '../itinerary/IntakeChat';
 import GenerateItinerary from '../itinerary/GenerateItinerary';
 import ItineraryView from '../itinerary/ItineraryView';
+import { isIntakeComplete } from '../../utils/planState';
 
 interface Props {
   planId: string;
@@ -40,9 +41,9 @@ export default function ItineraryTab({ planId }: Props) {
     );
   }
 
-  // Intake is complete only when it exists AND budgetRange (the final question)
-  // has been answered. `!= null` matches both null and undefined.
-  const hasIntake = plan.intake != null && plan.intake.budgetRange != null;
+  // Shared with PlanWorkspace, which hides the AI agent until intake is done —
+  // the two must agree or both chat UIs show at once.
+  const hasIntake = isIntakeComplete(plan);
   const hasItinerary = Array.isArray(plan.itinerary) && plan.itinerary.length > 0;
 
   // State 1 — no completed intake yet: gather preferences.

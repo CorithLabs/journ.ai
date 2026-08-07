@@ -8,11 +8,13 @@ import {
   MapPin,
   Download,
   Compass,
+  AlertTriangle,
 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
+import { hasAnyAiKey } from '../../services/aiKeyStatus';
 
 function formatDateRange(start: string, end: string): string {
   // Parse YYYY-MM-DD as a LOCAL date. `new Date('2025-03-14')` is parsed as UTC
@@ -39,6 +41,11 @@ export default function Sidebar() {
   } | null>(null);
 
   const { canInstall, triggerInstall } = usePwaInstall();
+
+  // Read on every render rather than cached in state: the key is saved on the
+  // Settings page, which doesn't unmount this sidebar, so a cached value would
+  // keep showing the warning after the user has fixed it.
+  const needsKey = !hasAnyAiKey();
 
   // IMPORTANT: Plan.deleted is a boolean (true/false), NOT a number.
   // Dexie's IndexableType does not include boolean in its TypeScript
@@ -245,10 +252,28 @@ export default function Sidebar() {
               transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
               ${collapsed ? 'justify-center' : ''}
             `}
-            aria-label="Open settings"
+            aria-label={
+              needsKey ? 'Open settings — API key required' : 'Open settings'
+            }
+            data-testid="sidebar-settings-btn"
           >
-            <Settings size={16} aria-hidden="true" />
+            <span className="relative shrink-0">
+              <Settings size={16} aria-hidden="true" />
+              {/* Without a key, nothing AI-driven works — surface it where the
+                  fix is, rather than only failing at the point of use. */}
+              {needsKey && (
+                <AlertTriangle
+                  size={10}
+                  className="absolute -top-1 -right-1 text-status-warning fill-surface-raised"
+                  aria-hidden="true"
+                  data-testid="settings-key-alert"
+                />
+              )}
+            </span>
             {!collapsed && <span className="text-sm">Settings</span>}
+            {!collapsed && needsKey && (
+              <span className="ml-auto text-[10px] text-status-warning">Set up key</span>
+            )}
           </button>
         </div>
       </aside>
