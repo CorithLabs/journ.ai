@@ -63,6 +63,76 @@ export const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'move_activity',
+      description:
+        'Move an existing activity to a different day and/or a different time, keeping its name, location and notes. Found by a case-insensitive substring of its name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nameMatch: { type: 'string', description: 'Part of the activity name to find, e.g. "museum"' },
+          toDayIndex: { type: 'integer', description: 'Destination 0-based day index' },
+          fromDayIndex: { type: 'integer', description: 'Optional 0-based day to scope the search' },
+          time: { type: 'string', description: 'Optional new HH:MM 24h time' },
+        },
+        required: ['nameMatch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_todo',
+      description:
+        'Create a new to-do task for the current plan, e.g. "book the train to Kyoto". Use this for anything the user needs to remember or arrange, as opposed to an itinerary activity that happens at a time and place.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          category: {
+            type: 'string',
+            enum: ['Booking', 'Document', 'Packing', 'Other'],
+            description: 'Booking for reservations, Document for visas/insurance, Packing for what to bring',
+          },
+          dueDate: { type: 'string', description: 'Optional ISO date, e.g. 2025-07-10' },
+        },
+        required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reopen_todo',
+      description:
+        'Mark a completed to-do task as not done again, by matching its title (case-insensitive substring). The opposite of complete_todo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          titleMatch: { type: 'string', description: 'Part of the task title to match' },
+        },
+        required: ['titleMatch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'pin_activity_to_todo',
+      description:
+        'Create a to-do task linked to an existing itinerary activity, so the user can track booking or preparing for it. Found by a case-insensitive substring of the activity name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          nameMatch: { type: 'string', description: 'Part of the activity name to find' },
+          dayIndex: { type: 'integer', description: 'Optional 0-based day to scope the search' },
+        },
+        required: ['nameMatch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'complete_todo',
       description: "Mark a to-do task as done by matching its title (case-insensitive substring).",
       parameters: {
@@ -201,6 +271,120 @@ export async function executeAgentAction(
         return { ok: false, message: `I couldn't find an activity matching "${call.args.nameMatch}".` };
       }
 
+      case 'move_activity': {
+        const match = String(call.args.nameMatch ?? '').trim().toLowerCase();
+        if (!match) return { ok: false, message: 'Which activity should I move?' };
+        const fromScope =
+          call.args.fromDayIndex != null ? Number(call.args.fromDayIndex) : null;
+        const hasTarget = call.args.toDayIndex != null;
+        const toDayIndex = hasTarget ? Number(call.args.toDayIndex) : null;
+        const newTime = typeof call.args.time === 'string' ? call.args.time : null;
+        if (!hasTarget && !newTime) {
+          return { ok: false, message: 'Where should I move it — which day, or what time?' };
+        }
+        if (toDayIndex != null && !plan.itinerary.some((d) => d.dayIndex === toDayIndex)) {
+          return { ok: false, message: `There is no Day ${toDayIndex + 1} in this plan.` };
+        }
+        for (const d of plan.itinerary) {
+          if (fromScope != null && d.dayIndex !== fromScope) continue;
+          const act = d.activities.find((a) => a.name.toLowerCase().includes(match));
+          if (!act) continue;
+          const dest = toDayIndex ?? d.dayIndex;
+          const moved: Activity = { ...act, time: newTime ?? act.time };
+          // Detach from the old day first, then append to the destination. When
+          // dest === source this is a no-op removal followed by a re-add, which
+          // also moves it to the end — harmless, the UI sorts by time.
+          const itinerary = plan.itinerary.map((day) => {
+            const without = day.activities.filter((a) => a.id !== act.id);
+            if (day.dayIndex === dest) return { ...day, activities: [...without, moved] };
+            return { ...day, activities: without };
+          });
+          await db.plans.update(plan.id, { itinerary, updatedAt: new Date().toISOString() });
+          const where = dest !== d.dayIndex ? ` to Day ${dest + 1}` : '';
+          const when = newTime ? ` at ${newTime}` : '';
+          return { ok: true, message: `Done — I've moved "${act.name}"${where}${when}.` };
+        }
+        return { ok: false, message: `I couldn't find an activity matching "${call.args.nameMatch}".` };
+      }
+
+      case 'add_todo': {
+        const title = String(call.args.title ?? '').trim();
+        if (!title) return { ok: false, message: 'What should the task be called?' };
+        const allowed = ['Booking', 'Document', 'Packing', 'Other'] as const;
+        const raw = String(call.args.category ?? '');
+        const category = (allowed as readonly string[]).includes(raw)
+          ? (raw as TodoItem['category'])
+          : 'Other';
+        const now = new Date().toISOString();
+        const todo: TodoItem = {
+          id: uuidv4(),
+          planId: plan.id,
+          title,
+          category,
+          status: 'todo',
+          dueDate: typeof call.args.dueDate === 'string' ? call.args.dueDate : undefined,
+          autoGenerated: false,
+          createdAt: now,
+          updatedAt: now,
+        };
+        await db.todos.add(todo);
+        return { ok: true, message: `Done — I've added "${title}" to your ${category} to-dos.` };
+      }
+
+      case 'reopen_todo': {
+        const match = String(call.args.titleMatch ?? '').trim().toLowerCase();
+        if (!match) return { ok: false, message: 'Which task should I reopen?' };
+        const todos: TodoItem[] = await db.todos.where('planId').equals(plan.id).toArray();
+        const target = todos.find((t) => t.title.toLowerCase().includes(match));
+        if (!target) {
+          return { ok: false, message: `I couldn't find a task matching "${call.args.titleMatch}".` };
+        }
+        await db.todos.update(target.id, { status: 'todo', updatedAt: new Date().toISOString() });
+        return { ok: true, message: `Done — I've reopened "${target.title}".` };
+      }
+
+      case 'pin_activity_to_todo': {
+        const match = String(call.args.nameMatch ?? '').trim().toLowerCase();
+        if (!match) return { ok: false, message: 'Which activity should I add a task for?' };
+        const dayScope = call.args.dayIndex != null ? Number(call.args.dayIndex) : null;
+        for (const d of plan.itinerary) {
+          if (dayScope != null && d.dayIndex !== dayScope) continue;
+          const act = d.activities.find((a) => a.name.toLowerCase().includes(match));
+          if (!act) continue;
+          // Don't create a duplicate task for an activity that already has one.
+          const existing: TodoItem[] = await db.todos.where('planId').equals(plan.id).toArray();
+          if (existing.some((t) => t.sourceActivityId === act.id)) {
+            return { ok: false, message: `"${act.name}" is already on your to-do list.` };
+          }
+          const now = new Date().toISOString();
+          await db.todos.add({
+            id: uuidv4(),
+            planId: plan.id,
+            title: act.name,
+            category: 'Booking',
+            status: 'todo',
+            autoGenerated: false,
+            sourceActivityId: act.id,
+            sourceDayIndex: d.dayIndex,
+            createdAt: now,
+            updatedAt: now,
+          });
+          const itinerary = plan.itinerary.map((day) =>
+            day.dayIndex === d.dayIndex
+              ? {
+                  ...day,
+                  activities: day.activities.map((a) =>
+                    a.id === act.id ? { ...a, pinnedToTodo: true } : a,
+                  ),
+                }
+              : day,
+          );
+          await db.plans.update(plan.id, { itinerary, updatedAt: new Date().toISOString() });
+          return { ok: true, message: `Done — I've added "${act.name}" to your to-do list.` };
+        }
+        return { ok: false, message: `I couldn't find an activity matching "${call.args.nameMatch}".` };
+      }
+
       case 'complete_todo': {
         const match = String(call.args.titleMatch ?? '').trim().toLowerCase();
         if (!match) return { ok: false, message: 'Which task should I mark as done?' };
@@ -250,8 +434,22 @@ export async function executeAgentAction(
   }
 }
 
-/** Build the system prompt with plan context, date, active tab, itinerary summary. */
-export function buildSystemPrompt(plan: Plan, activeTab: string): string {
+/**
+ * Build the system prompt with plan context, date, active tab, and summaries of
+ * the itinerary, to-dos and clipboard.
+ *
+ * The to-do and clipboard summaries exist because the agent loop is single-shot:
+ * a tool call is executed and its confirmation is shown, with no second turn in
+ * which the model could read a result. A `list_todos`-style tool would therefore
+ * return data the model never sees, so anything it needs to ANSWER questions
+ * about has to be in the prompt up front. Clipboard bodies are omitted — titles
+ * and types are enough to answer "what have I saved?" without bloating context.
+ */
+export function buildSystemPrompt(
+  plan: Plan,
+  activeTab: string,
+  context: { todos?: TodoItem[]; clipboard?: ClipboardItem[] } = {},
+): string {
   const today = new Date().toISOString().split('T')[0];
   const summary = plan.itinerary
     .map(
@@ -261,9 +459,19 @@ export function buildSystemPrompt(plan: Plan, activeTab: string): string {
           .join('; ') || 'no activities'}`,
     )
     .join('\n');
+  const todoSummary = (context.todos ?? [])
+    .map((t) => `- [${t.status === 'done' ? 'x' : ' '}] ${t.title} (${t.category})`)
+    .join('\n');
+  const clipboardSummary = (context.clipboard ?? [])
+    .map((c) => `- ${c.title} (${c.type})`)
+    .join('\n');
   return [
     'You are Journ.ai, a travel-planning assistant embedded in the app.',
-    'You can modify the current plan by calling the provided tools: add, remove, or edit activities, complete a to-do, or save a clipboard note.',
+    'You can modify the current plan by calling the provided tools: add, remove, edit or move activities; add, complete or reopen a to-do; add a to-do linked to an activity; or save a clipboard note.',
+    'Choose between an activity and a to-do by what the user is describing: an ACTIVITY is something they do at a time and place on a specific day (use add_activity); a TO-DO is something to arrange or remember beforehand, with no slot in the day (use add_todo). "Book the train" is a to-do; "take the 9am train to Kyoto" is an activity.',
+    'Use move_activity to change which day or time an existing activity sits at — do not remove and re-add it, which loses its notes and location.',
+    'Use pin_activity_to_todo when the user wants to track booking or preparing for something already in the itinerary.',
+    'The to-do and clipboard lists below are the current state — use them to answer questions directly rather than calling a tool.',
     'To REPLACE one activity with another (e.g. "swap the museum for the aquarium"), call edit_activity with nameMatch set to the current activity and newName (and locationName) set to the replacement — this keeps its time slot. Use remove_activity only when the user wants it gone with nothing in its place.',
     'Match existing activities by a distinctive part of their name (nameMatch is a case-insensitive substring). Use dayIndex (0-based, shown in the itinerary summary) when adding, or to disambiguate if the same name appears on multiple days.',
     'If a request is ambiguous (e.g. "add something for tonight"), ask a clarifying question INSTEAD of guessing — do not call a tool.',
@@ -273,5 +481,9 @@ export function buildSystemPrompt(plan: Plan, activeTab: string): string {
     `Plan: ${plan.destination} (${plan.startDate} to ${plan.endDate})`,
     'Itinerary summary:',
     summary || '(no days yet)',
+    'To-do list:',
+    todoSummary || '(no tasks yet)',
+    'Clipboard items:',
+    clipboardSummary || '(nothing saved yet)',
   ].join('\n');
 }

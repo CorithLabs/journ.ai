@@ -81,6 +81,47 @@ describe('AI agent chat — actions', () => {
     });
   });
 
+  // Every itinerary tool writes the whole `itinerary` array. Running two of
+  // them against one stale snapshot made the second discard the first's write,
+  // so "add X and Y" silently landed only Y. The loop re-reads between calls.
+  it('applies two itinerary tool calls in one turn without clobbering the first', async () => {
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({
+      text: '',
+      toolCalls: [
+        { name: 'add_activity', args: { dayIndex: 2, name: 'Ramen Alley', time: '12:00' } },
+        { name: 'add_activity', args: { dayIndex: 2, name: 'Golden Gai', time: '20:00' } },
+      ],
+    });
+    vi.mocked(db.plans.update).mockResolvedValue(1);
+    // Re-read after the first write returns the plan WITH the first activity,
+    // which is what the second call must build on.
+    vi.mocked(db.plans.get).mockResolvedValue({
+      ...plan,
+      itinerary: [
+        {
+          dayIndex: 2,
+          label: 'Day 3',
+          activities: [
+            { id: 'a1', name: 'Ramen Alley', time: '12:00', locationName: '', notes: '', pinnedToTodo: false },
+          ],
+        },
+      ],
+    });
+    renderPanel();
+
+    fireEvent.change(screen.getByTestId('agent-input'), {
+      target: { value: 'Add Ramen Alley and Golden Gai to Day 3' },
+    });
+    fireEvent.click(screen.getByTestId('agent-send'));
+
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalledTimes(2));
+    const second = vi.mocked(db.plans.update).mock.calls[1][1] as {
+      itinerary: { activities: { name: string }[] }[];
+    };
+    const names = second.itinerary[0].activities.map((a) => a.name);
+    expect(names).toEqual(['Ramen Alley', 'Golden Gai']);
+  });
+
   it('shows a clarifying question when the model returns no tool call', async () => {
     vi.mocked(aiClient.chatWithTools).mockResolvedValue({
       text: 'Which evening did you mean — Day 1 or Day 2?',

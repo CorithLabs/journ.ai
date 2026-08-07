@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Plan } from '../../db';
+import { db, type Plan } from '../../db';
 import { useAppStore, type Message } from '../../store';
 import { chatWithTools, MissingKeyError, type ChatMessage } from '../../services/aiClient';
 import { AGENT_TOOLS, buildSystemPrompt, executeAgentAction } from './agentActions';
@@ -49,9 +49,20 @@ export function useAgentChat(plan: Plan | undefined): AgentChat {
         .agentMessages.filter((m) => m.role === 'user' || m.role === 'assistant')
         .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+      // Fetched into the prompt rather than exposed as read tools: the loop is
+      // single-shot, so a tool that returns data gives the model nothing it can
+      // act on. This is what lets it answer "what's still on my to-do list?".
+      const [todos, clipboard] = await Promise.all([
+        db.todos.where('planId').equals(plan.id).toArray(),
+        db.clipboard.where('planId').equals(plan.id).toArray(),
+      ]);
+
       const { text: assistantText, toolCalls } = await chatWithTools(
         [
-          { role: 'system', content: buildSystemPrompt(plan, activeTab) },
+          {
+            role: 'system',
+            content: buildSystemPrompt(plan, activeTab, { todos, clipboard }),
+          },
           ...history,
         ],
         AGENT_TOOLS,
@@ -64,14 +75,20 @@ export function useAgentChat(plan: Plan | undefined): AgentChat {
         return;
       }
 
+      // The plan is re-read from IndexedDB before each call. Every itinerary
+      // tool writes the whole `itinerary` array, so running two of them against
+      // the same snapshot would make the second silently discard the first's
+      // write — e.g. "add X and Y to Day 2" would land only Y.
+      let current = plan;
       for (const tc of toolCalls) {
         if (tc.malformed) {
           // The model returned unparseable arguments.
           reply("I couldn't complete that action — try rephrasing.");
           continue;
         }
-        const result = await executeAgentAction(plan, { name: tc.name, args: tc.args });
+        const result = await executeAgentAction(current, { name: tc.name, args: tc.args });
         reply(result.message);
+        if (result.ok) current = (await db.plans.get(plan.id)) ?? current;
       }
     } catch (err) {
       if (err instanceof MissingKeyError) {
