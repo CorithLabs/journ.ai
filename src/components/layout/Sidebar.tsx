@@ -33,7 +33,17 @@ function formatDateRange(start: string, end: string): string {
 export default function Sidebar() {
   const navigate = useNavigate();
   const { planId } = useParams<{ planId: string }>();
-  const [collapsed, setCollapsed] = useState(false);
+  /*
+   * Collapsed by default on phones.
+   *
+   * Below md the expanded sidebar is a 240px `fixed` overlay — on a 375px
+   * screen that covers most of the app and sits on top of it, so the page
+   * underneath cannot be read or tapped. Desktop keeps it open, where a
+   * 240px rail alongside the content is the point of it.
+   */
+  const [collapsed, setCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 768,
+  );
   const [contextMenu, setContextMenu] = useState<{
     planId: string;
     x: number;
@@ -178,7 +188,12 @@ export default function Sidebar() {
                 return (
                   <li key={plan.id}>
                     <button
-                      onClick={() => navigate(`/plan/${plan.id}/itinerary`)}
+                      onClick={() => {
+                        navigate(`/plan/${plan.id}/itinerary`);
+                        // On a phone the sidebar is an overlay, so leaving it
+                        // open would hide the plan the user just chose.
+                        if (window.innerWidth < 768) setCollapsed(true);
+                      }}
                       onContextMenu={(e) => handleContextMenu(e, plan.id)}
                       className={`
                         flex items-center gap-2 w-full rounded-xl px-3 py-2

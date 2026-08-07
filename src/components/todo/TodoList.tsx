@@ -124,7 +124,9 @@ function Row({ item, plan, onToggle, onDel, onUpd, onNavigateToDay }: RowProps) 
             </div>
         }
       </div>
-      <button onClick={onDel} className="shrink-0 p-1 rounded-lg text-ink-muted hover:text-status-danger opacity-0 group-hover:opacity-100 transition-all" aria-label={`Delete: ${item.title}`}>
+      {/* Visible on touch, revealed on hover for pointers — the hover-only
+          version was unreachable on a phone. */}
+      <button onClick={onDel} className="shrink-0 p-2.5 md:p-1 rounded-lg text-ink-muted hover:text-status-danger opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-all" aria-label={`Delete: ${item.title}`}>
         <Trash2 size={14} />
       </button>
     </div>

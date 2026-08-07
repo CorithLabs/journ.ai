@@ -156,9 +156,13 @@ export default function ItineraryView({ plan }: Props) {
                         onDel={() => delAct(day.dayIndex, act.id)}
                         onUpd={u => updAct(day.dayIndex, act.id, u)}
                         onPin={() => pinAct(day.dayIndex, act)} />
+                      {/* The only way to reorder on touch — HTML5 drag and drop
+                          does not fire on mobile — so these get real tap
+                          targets rather than the 16px-tall text links they
+                          were, which were effectively unhittable on a phone. */}
                       <div className="flex gap-1 mt-0.5 pl-6">
-                        <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, ai, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
-                        <button disabled={ai === day.activities.length - 1} onClick={() => moveAct(day.dayIndex, ai, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
+                        <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, ai, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
+                        <button disabled={ai === day.activities.length - 1} onClick={() => moveAct(day.dayIndex, ai, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
                       </div>
                     </div>
                   ))}
