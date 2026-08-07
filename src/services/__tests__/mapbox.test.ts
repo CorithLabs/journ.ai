@@ -99,6 +99,67 @@ describe('geocodeLocation', () => {
     const result = await geocodeLocation('Unknown', 'pk.test-token');
     expect(result).toBeNull();
   });
+
+  /**
+   * The reported bug: a Toronto plan produced pins in the US and Europe.
+   * Place names are not unique — Union Station, Chinatown and Victoria Park
+   * exist in dozens of countries — and an unbiased query returns whichever
+   * Mapbox ranks highest globally.
+   */
+  describe('disambiguation against same-named places elsewhere', () => {
+    const TORONTO: [number, number] = [-79.3832, 43.6532];
+    const respondWith = (center: [number, number]) =>
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ features: [{ center }] }),
+      } as Response);
+
+    const requestedUrl = () => String(vi.mocked(fetch).mock.calls[0][0]);
+
+    it('sends a proximity bias so nearby matches rank first', async () => {
+      respondWith(TORONTO);
+      await geocodeLocation('Union Station', 'pk.test', { proximity: TORONTO });
+      expect(requestedUrl()).toContain('proximity=-79.3832%2C43.6532');
+    });
+
+    it('appends the trip context to a bare place name', async () => {
+      respondWith(TORONTO);
+      await geocodeLocation('Union Station', 'pk.test', { context: 'Toronto, Canada' });
+      expect(decodeURIComponent(requestedUrl())).toContain('Union Station, Toronto, Canada');
+    });
+
+    it('does not repeat context the name already carries', async () => {
+      respondWith(TORONTO);
+      await geocodeLocation('Tsukiji, Tokyo', 'pk.test', { context: 'Tokyo, Japan' });
+      const url = decodeURIComponent(requestedUrl());
+      expect(url).not.toContain('Tokyo, Tokyo');
+    });
+
+    // Proximity only ranks; it does not filter. A name with no local match
+    // still returns the far-away one, which is what put pins on other
+    // continents even with a bias applied.
+    it('rejects a match on another continent', async () => {
+      respondWith([-87.6298, 41.8781]); // Chicago
+      const result = await geocodeLocation('Union Station', 'pk.test', {
+        proximity: TORONTO,
+      });
+      expect(result).toBeNull();
+    });
+
+    it('accepts a genuine day trip within range', async () => {
+      respondWith([-79.0849, 43.0896]); // Niagara Falls, ~130km
+      const result = await geocodeLocation('Niagara Falls', 'pk.test', {
+        proximity: TORONTO,
+      });
+      expect(result).toEqual([-79.0849, 43.0896]);
+    });
+
+    it('still returns a far result when no bias was supplied', async () => {
+      respondWith([-87.6298, 41.8781]);
+      const result = await geocodeLocation('Union Station', 'pk.test');
+      expect(result).toEqual([-87.6298, 41.8781]);
+    });
+  });
 });
 
 describe('getPinActivities', () => {

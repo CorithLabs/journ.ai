@@ -34,6 +34,15 @@ body,
   color: var(--color-ink-primary);
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /*
+   * The shell is fixed furniture: sidebar, tab bar and composer must never
+   * scroll away. Only the panes inside a tab scroll, each with its own
+   * overflow-y-auto. Without this the document itself scrolls as soon as any
+   * pane's content exceeds the viewport, dragging the whole chrome with it.
+   */
+  overflow: hidden;
+  /* Stops touch rubber-banding revealing the ground behind the shell. */
+  overscroll-behavior: none;
 }
 
 /* Custom scrollbar */
@@ -95,6 +104,28 @@ body,
   border: 1px solid rgba(255, 255, 255, 0.05);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   border-radius: 1rem;
+}
+
+/*
+ * Content cards — activities, tasks, clipboard items.
+ *
+ * These were solid surface-raised, only ~7% lighter than the page ground, and
+ * with the ambient light behind them they read as flat shapes dissolving into
+ * the background. Made translucent instead, so the drifting colour shows
+ * through, with a brighter edge and a shadow to lift them off the ground —
+ * the boundary is what separates one card from the next, not the fill.
+ *
+ * A single definition rather than three copies of the same utility string,
+ * because these three lists must stay visually identical.
+ */
+@layer components {
+  .card-surface {
+    @apply bg-surface-glass backdrop-blur-glass border border-white/10 shadow-card transition-colors;
+  }
+
+  .card-surface:hover {
+    @apply border-white/20 bg-surface-overlay/70;
+  }
 }
 
 /*

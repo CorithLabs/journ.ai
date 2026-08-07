@@ -8,17 +8,55 @@ export function getMapboxToken(): string | null {
 }
 
 /**
+ * How far from the trip's destination an activity may plausibly sit.
+ *
+ * Generous enough for a real day trip — Toronto to Niagara is ~130km, Tokyo to
+ * Nikko ~140km — but far short of another continent. Anything beyond this is
+ * the geocoder having matched a same-named place elsewhere in the world.
+ */
+export const MAX_ACTIVITY_DISTANCE_KM = 300;
+
+export interface GeocodeOptions {
+  /** Bias results toward this point — the trip's destination. */
+  proximity?: [number, number];
+  /**
+   * Appended to the query when the name doesn't already contain it, e.g.
+   * "Union Station" → "Union Station, Toronto, Canada".
+   */
+  context?: string;
+}
+
+/**
  * Geocode a location name to [lng, lat] coordinates using Mapbox Geocoding API.
  * Returns null if token missing, location empty, or request fails.
+ *
+ * Place names are not unique: Union Station, Chinatown, Little Italy and
+ * Victoria Park all exist in dozens of countries. An unbiased query returns
+ * whichever Mapbox ranks highest globally, which is how a Toronto itinerary
+ * ended up with pins in the US and Europe. Callers should pass the trip's
+ * location as `proximity` and `context` so results resolve near the trip.
  */
 export async function geocodeLocation(
   locationName: string,
   token: string,
+  options: GeocodeOptions = {},
 ): Promise<[number, number] | null> {
   if (!locationName.trim() || !token) return null;
   try {
-    const encoded = encodeURIComponent(locationName);
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${token}&limit=1`;
+    // Only add context the name doesn't already carry, so we don't send
+    // "Tsukiji, Tokyo, Tokyo, Japan".
+    const name = locationName.trim();
+    const ctx = options.context?.trim();
+    const query =
+      ctx && !name.toLowerCase().includes(ctx.split(',')[0].trim().toLowerCase())
+        ? `${name}, ${ctx}`
+        : name;
+
+    const params = new URLSearchParams({ access_token: token, limit: '1' });
+    if (options.proximity) {
+      params.set('proximity', `${options.proximity[0]},${options.proximity[1]}`);
+    }
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params}`;
     const resp = await fetch(url);
     if (!resp.ok) return null;
     const data = (await resp.json()) as {
@@ -26,7 +64,15 @@ export async function geocodeLocation(
     };
     const center = data.features?.[0]?.center;
     if (!center || center.length < 2) return null;
-    return [center[0], center[1]];
+    const coords: [number, number] = [center[0], center[1]];
+
+    // Proximity is only a ranking hint, not a filter — a name with no local
+    // match still returns the far-away one. Reject those outright rather than
+    // dropping a pin on the wrong continent.
+    if (options.proximity && haversineKm(options.proximity, coords) > MAX_ACTIVITY_DISTANCE_KM) {
+      return null;
+    }
+    return coords;
   } catch {
     return null;
   }
@@ -43,15 +89,27 @@ export async function geocodePlanActivities(
   onFail?: (activityName: string) => void,
 ): Promise<Set<string>> {
   const failed = new Set<string>();
-  let itinerary = plan.itinerary.map(d => ({ ...d, activities: [...d.activities] }));
+  const itinerary = plan.itinerary.map(d => ({ ...d, activities: [...d.activities] }));
   let changed = false;
+
+  // Resolve the trip's own location first and anchor every activity to it.
+  // The destination is unambiguous in a way an activity name is not — it
+  // carries its country, either from the picked suggestion or because the user
+  // typed "Toronto, Canada".
+  const contextName = plan.country
+    ? `${plan.destination.split(',')[0].trim()}, ${plan.country}`
+    : plan.destination;
+  const anchor = await geocodeLocation(contextName, token);
 
   for (const day of itinerary) {
     for (let i = 0; i < day.activities.length; i++) {
       const act = day.activities[i];
       if (act.coordinates || !act.locationName.trim()) continue;
 
-      const coords = await geocodeLocation(act.locationName, token);
+      const coords = await geocodeLocation(act.locationName, token, {
+        proximity: anchor ?? undefined,
+        context: contextName,
+      });
       if (coords) {
         day.activities[i] = { ...act, coordinates: coords };
         changed = true;
