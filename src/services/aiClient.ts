@@ -120,14 +120,20 @@ async function streamOpenAI(
   if (!reader) throw new Error('No response body');
   let fullText = '';
   const dec = new TextDecoder();
+  // Buffer across reads: an SSE `data:` line can be split between two network
+  // chunks. Splitting per-chunk (the old bug) dropped both halves of a split
+  // line, corrupting the streamed JSON. Keep the trailing partial line for the
+  // next read and only process complete lines.
+  let buffer = '';
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    for (const line of dec
-      .decode(value, { stream: true })
-      .split('\n')
-      .filter((l) => l.startsWith('data: '))) {
-      const data = line.slice(6);
+    buffer += dec.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
       if (data === '[DONE]') continue;
       try {
         const p = JSON.parse(data) as {
@@ -215,13 +221,17 @@ async function streamAnthropic(
   if (!reader) throw new Error('No response body');
   let fullText = '';
   const dec = new TextDecoder();
+  // Buffer across reads — an SSE `data:` line can split between two network
+  // chunks; per-chunk splitting dropped both halves and corrupted the stream.
+  let buffer = '';
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    for (const line of dec
-      .decode(value, { stream: true })
-      .split('\n')
-      .filter((l) => l.startsWith('data: '))) {
+    buffer += dec.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
       const data = line.slice(6).trim();
       if (!data || data === '[DONE]') continue;
       try {

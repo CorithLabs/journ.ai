@@ -95,6 +95,32 @@ describe('streamCompletion routing', () => {
     expect(tokens[tokens.length - 1]).toBe('Hello world');
   });
 
+  it('reconstructs a data line split across network chunks (no dropped text)', async () => {
+    setActiveProvider('openai');
+    await setApiKey('sk-test', OPENAI_KEY_STORAGE);
+    // Emit RAW chunks that break a `data:` line mid-JSON — the exact condition
+    // that used to drop both halves and corrupt the streamed output.
+    const full =
+      'data: {"choices":[{"delta":{"content":"Royal Ontario Museum"}}]}\n' +
+      'data: [DONE]\n';
+    const rawChunks = [full.slice(0, 40), full.slice(40, 75), full.slice(75)];
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        for (const c of rawChunks) controller.enqueue(encoder.encode(c));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body,
+      json: async () => ({}),
+    } as unknown as Response);
+    const out = await streamCompletion([{ role: 'user', content: 'hi' }]);
+    expect(out).toBe('Royal Ontario Museum');
+  });
+
   it('calls the Anthropic endpoint with the right headers and parses text deltas', async () => {
     setActiveProvider('anthropic');
     await setApiKey('sk-ant-test', ANTHROPIC_KEY_STORAGE);
