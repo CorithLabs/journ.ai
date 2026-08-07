@@ -76,7 +76,22 @@ export default function TabBar({ planId }: Props) {
 
   return (
     <nav
-      className="flex items-end border-b border-white/5 bg-surface-raised px-4 shrink-0"
+      /*
+       * Bottom on phones, top on desktop.
+       *
+       * `order-last` moves it below the content on small screens, where the
+       * tabs are the primary navigation and need to sit in thumb reach; on a
+       * desktop pointer that is unnecessary and bottom-anchored tabs read as
+       * unconventional, so it returns to the top at md.
+       *
+       * The active indicator and divider swap edges to match: a top-border
+       * indicator under a bottom bar would point away from the content it
+       * belongs to. Padding accounts for the home-indicator inset on phones.
+       */
+      className="order-last md:order-first flex items-end
+        border-t md:border-t-0 md:border-b border-white/5
+        bg-surface-raised/80 backdrop-blur-glass px-4 shrink-0
+        pb-[env(safe-area-inset-bottom)] md:pb-0"
       aria-label="Plan tabs"
       role="tablist"
       data-testid="tab-bar"
@@ -95,9 +110,10 @@ export default function TabBar({ planId }: Props) {
             onKeyDown={(e) => handleKeyDown(e, i)}
             tabIndex={isActive ? 0 : -1}
             className={`
-              flex items-center gap-1.5 px-4 py-3 text-sm font-medium
-              border-b-2 transition-colors
+              flex flex-1 md:flex-none items-center justify-center gap-1.5
+              px-4 py-3 text-sm font-medium transition-colors
               focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
+              border-t-2 border-b-0 md:border-t-0 md:border-b-2
               ${isActive
                 ? 'border-accent text-ink-primary'
                 : 'border-transparent text-ink-secondary hover:text-ink-primary'

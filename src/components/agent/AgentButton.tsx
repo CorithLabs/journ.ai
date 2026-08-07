@@ -17,7 +17,9 @@ export default function AgentButton() {
       onClick={toggle}
       data-testid="agent-fab"
       aria-label="Open AI agent"
-      className="fixed bottom-6 right-6 z-30 flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-3 rounded-full shadow-glow transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+      // Lifted clear of the bottom tab bar on phones — at bottom-6 it sat on
+      // top of the tabs. Back to the corner at md, where the bar is at the top.
+      className="fixed bottom-24 md:bottom-6 right-6 z-30 flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-3 rounded-full shadow-glow transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
     >
       <Sparkles size={18} aria-hidden="true" />
       AI

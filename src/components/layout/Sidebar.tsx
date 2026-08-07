@@ -140,7 +140,7 @@ export default function Sidebar() {
 
         {/* Plan List */}
         <nav
-          className="flex-1 overflow-y-auto px-2 pb-2"
+          className="flex-1 min-h-0 overflow-y-auto px-2 pb-2"
           aria-label="Your plans"
         >
           {!plans ? (

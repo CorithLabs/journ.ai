@@ -200,7 +200,7 @@ export default function TodoList({ planId }: Props) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-6">
         {total === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <CheckSquare size={36} className="text-accent-muted mb-3" aria-hidden="true" />

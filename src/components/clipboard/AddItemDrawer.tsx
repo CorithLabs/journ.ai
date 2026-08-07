@@ -82,7 +82,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
           </button>
         </div>
 
-        <form onSubmit={save} className="flex-1 overflow-y-auto px-5 py-5 space-y-5" data-testid="add-item-form">
+        <form onSubmit={save} className="flex-1 min-h-0 overflow-y-auto px-5 py-5 space-y-5" data-testid="add-item-form">
           {/* Type selector */}
           <div>
             <label htmlFor="clip-type" className="block text-sm text-ink-secondary mb-1.5">

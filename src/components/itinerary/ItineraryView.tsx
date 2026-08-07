@@ -121,7 +121,7 @@ export default function ItineraryView({ plan }: Props) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4" data-testid="itinerary-days">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4" data-testid="itinerary-days">
         {plan.itinerary.map(day => {
           const isCol = collapsed[day.dayIndex];
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
