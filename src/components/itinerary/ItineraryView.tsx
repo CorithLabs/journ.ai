@@ -27,7 +27,7 @@ function budgetLabel(
 function AddInline({
   onAdd, siblings, dayLabel, seedSlot = 'morning', variant = 'link', label = 'Add activity',
 }: {
-  onAdd: (n: string, t: string) => Promise<void>;
+  onAdd: (n: string, t: string, loc: string) => Promise<void>;
   siblings: Activity[];
   dayLabel: string;
   /** Which part of the day this button sits in. */
@@ -38,6 +38,7 @@ function AddInline({
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
+  const [loc, setLoc] = useState('');
   const [tm, setTm] = useState<string>(seedSlot);
   const [showExact, setShowExact] = useState(false);
 
@@ -55,8 +56,9 @@ function AddInline({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nm.trim()) return;
-    await onAdd(nm.trim(), tm);
+    await onAdd(nm.trim(), tm, loc.trim());
     setNm('');
+    setLoc('');
     setOpen(false);
   };
 
@@ -92,6 +94,13 @@ function AddInline({
   const fields = (
     <>
       <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
+        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
+
+      {/* Without this the activity can never reach the map: geocoding only
+          ever looks at the location, so every hand-added card was invisible
+          there with nothing to say why. */}
+      <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Location (for the map)"
+        aria-label="Location"
         className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
 
       {/* Part of the day first — that is what a plan is built in. The clock is
@@ -192,8 +201,8 @@ export default function ItineraryView({ plan }: Props) {
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
 
-  const addAct = async (di: number, name: string, time: string, afterId?: string) => {
-    const newAct: Activity = { id: uuidv4(), name, time, locationName: '', notes: '', pinnedToTodo: false };
+  const addAct = async (di: number, name: string, time: string, locationName: string, afterId?: string) => {
+    const newAct: Activity = { id: uuidv4(), name, time, locationName, notes: '', pinnedToTodo: false };
     const acts = plan.itinerary[di].activities;
     // Order within a part of the day is the array's, so an activity added from
     // a gap has to land in that gap rather than at the end of the day.
@@ -328,14 +337,14 @@ Change it anyway?`);
                           variant="gap"
                           label={`Add activity between ${act.name} and ${sorted[ai + 1].name}`}
                           seedSlot={seedSlotFor(act, sorted[ai + 1])}
-                          onAdd={(name, time) => addAct(day.dayIndex, name, time, act.id)}
+                          onAdd={(name, time, loc) => addAct(day.dayIndex, name, time, loc, act.id)}
                         />
                       )}
                     </div>
                   ))}
                   <AddInline siblings={day.activities} dayLabel={day.label}
                     seedSlot={seedSlotFor(sortByTime(day.activities).slice(-1)[0])}
-                    onAdd={(name, time) => addAct(day.dayIndex, name, time)} />
+                    onAdd={(name, time, loc) => addAct(day.dayIndex, name, time, loc)} />
                 </div>
               )}
             </section>
