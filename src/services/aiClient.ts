@@ -71,6 +71,17 @@ export interface StreamOptions {
   temperature?: number;
   /** Called with the full accumulated text each time a delta arrives. */
   onToken?: (full: string) => void;
+  /**
+   * Ask the provider to guarantee syntactically valid JSON.
+   *
+   * Instructions alone do not: a real itinerary came back with a day object
+   * closed twice, and one stray character made eight days unreadable. OpenAI
+   * can enforce this at the API; Anthropic has no equivalent for a plain text
+   * completion, so there the prompt and the local repair still carry it.
+   *
+   * OpenAI rejects the request unless the word "JSON" appears in the messages.
+   */
+  json?: boolean;
 }
 
 /** The active provider preference. Defaults to 'openai'. */
@@ -128,7 +139,7 @@ export async function streamCompletion(
 
   return provider === 'anthropic'
     ? streamAnthropic(apiKey, messages, maxTokens, temperature, onToken)
-    : streamOpenAI(apiKey, messages, maxTokens, temperature, onToken);
+    : streamOpenAI(apiKey, messages, maxTokens, temperature, onToken, options.json === true);
 }
 
 // ─── OpenAI ─────────────────────────────────────────────────────────────────
@@ -139,6 +150,7 @@ async function streamOpenAI(
   maxTokens: number,
   temperature: number,
   onToken: (full: string) => void,
+  json = false,
 ): Promise<string> {
   const resp = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -152,6 +164,10 @@ async function streamOpenAI(
       stream: true,
       temperature,
       max_tokens: maxTokens,
+      // Syntactically valid JSON becomes the API's problem rather than the
+      // model's good intentions. It also rules out the code fences and the
+      // "Here's your itinerary:" preamble the parser has to strip.
+      ...(json ? { response_format: { type: 'json_object' } } : {}),
     }),
   });
   if (!resp.ok) {
