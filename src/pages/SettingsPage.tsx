@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { requestOnboarding } from '../services/onboarding';
+import AboutJournai from '../components/onboarding/AboutJournai';
 import {
   Settings,
   ShieldCheck,
@@ -438,6 +439,13 @@ export default function SettingsPage() {
           </p>
         )}
       </section>
+      {/* The same definition the introduction shows, so the two cannot
+          disagree about what the app promises. */}
+      <section className="border-t border-white/5 pt-4 mt-4">
+        <h2 className="text-lg font-semibold text-ink-primary mb-3">About Journ.ai</h2>
+        <AboutJournai />
+      </section>
+
       {/* Anything the introduction offered can be reached from this page, so
           replaying it is a reminder rather than the only route back. */}
       <section className="border-t border-white/5 pt-4 mt-4">

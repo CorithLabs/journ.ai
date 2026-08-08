@@ -42,6 +42,28 @@ describe('tripCityContexts', () => {
     expect(geneva.context).toBe('Geneva, Switzerland');
   });
 
+  /*
+   * Copenhagen and Lund are 40km apart across a border. Stripping the typed
+   * qualifier and appending the trip's country turned "Lund, Sweden" into
+   * "Lund, Denmark", pinning a real day trip in the wrong country.
+   */
+  it('keeps a country the user typed into the city itself', () => {
+    const [, lund] = tripCityContexts({
+      destination: 'Copenhagen, Denmark', country: 'Denmark',
+      stops: [{ id: '1', city: 'Lund, Sweden' }],
+    });
+    expect(lund).toEqual({ city: 'Lund', context: 'Lund, Sweden' });
+  });
+
+  // The explicit field still wins over anything typed into the city.
+  it('prefers a country field on the stop itself', () => {
+    const [, lund] = tripCityContexts({
+      destination: 'Copenhagen, Denmark', country: 'Denmark',
+      stops: [{ id: '1', city: 'Lund', country: 'Sweden' }],
+    });
+    expect(lund.context).toBe('Lund, Sweden');
+  });
+
   it('does not repeat a country the city already carries', () => {
     expect(tripCityContexts({ destination: 'Toronto, Canada', country: 'Canada' })[0].context)
       .toBe('Toronto, Canada');

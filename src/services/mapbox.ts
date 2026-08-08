@@ -105,9 +105,21 @@ export function tripCityContexts(
   plan: Pick<Plan, 'destination' | 'country' | 'stops'>,
 ): Array<{ city: string; context: string }> {
   const withCountry = (city: string, country?: string) => {
-    const bare = city.split(',')[0].trim();
-    const land = country?.trim() || plan.country?.trim();
-    return { city: bare, context: land && !city.includes(land) ? `${bare}, ${land}` : city.trim() };
+    const raw = city.trim();
+    const bare = raw.split(',')[0].trim();
+    const own = country?.trim();
+    if (own) return { city: bare, context: raw.includes(own) ? raw : `${bare}, ${own}` };
+
+    /*
+     * A city typed with its own qualifier has already said where it is.
+     * Stripping it and appending the trip's country turned "Lund, Sweden"
+     * into "Lund, Denmark" on a Copenhagen plan — a cross-border day trip
+     * pinned in the wrong country.
+     */
+    if (raw.includes(',')) return { city: bare, context: raw };
+
+    const land = plan.country?.trim();
+    return { city: bare, context: land ? `${bare}, ${land}` : raw };
   };
 
   const out = [withCountry(plan.destination, plan.country)];
