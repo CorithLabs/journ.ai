@@ -22,6 +22,18 @@ export function travelModeLabel(mode: TravelMode | undefined): string {
   return TRAVEL_MODES.find((m) => m.id === mode)?.label ?? 'Travel';
 }
 
+/**
+ * What there is to book, as a noun — "train tickets", "flights".
+ *
+ * Null for a road trip, which is the point: the question "have you booked
+ * your flights?" has no answer when there are none.
+ */
+export function travelNoun(mode: TravelMode | undefined): string | null {
+  const found = TRAVEL_MODES.find((m) => m.id === mode);
+  if (found && found.booking === null) return null;
+  return found ? found.booking.replace(/^Book /, '') : 'travel';
+}
+
 /** The booking task for a mode, or null when there is nothing to book. */
 export function travelBookingTitle(mode: TravelMode | undefined, place: string): string | null {
   const found = TRAVEL_MODES.find((m) => m.id === mode);

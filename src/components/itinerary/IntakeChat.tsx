@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { travelNoun } from '../../utils/travel';
+import { autoGenerateTodos } from './generateTodos';
 import { Send, Sparkles } from 'lucide-react';
 import { db, type Plan } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
@@ -56,8 +58,10 @@ const STEP_SUGGESTIONS: Partial<Record<IntakeStep, { values: string[]; multi?: b
     multi: true,
     values: ['crowds', 'early starts', 'long walks', 'spicy food', 'museums', 'skip'],
   },
+  // Replaced at runtime — see bookingOptions(). A road trip has no tickets,
+  // so it is asked about accommodation alone.
   bookings: {
-    values: ['Both booked', 'Flights only', 'Accommodation only', 'Neither'],
+    values: ['Both booked', 'Travel only', 'Accommodation only', 'Neither'],
   },
   visa: { values: ['Yes', 'No', 'Not sure'] },
 };
@@ -72,11 +76,33 @@ const STEP_MESSAGES: Record<IntakeStep, string> = {
   dislikes:
     "Anything you'd like to avoid? (e.g. 'crowds, spicy food') — type 'skip' if none",
   budget: 'What is your budget range? (per person, per day)',
-  bookings: 'Have you already booked your flights and/or accommodation?',
+  // Replaced at runtime with the right noun — see bookingQuestion().
+  bookings: 'Have you already booked your travel and/or accommodation?',
   // Replaced at runtime with the country name — see visaQuestion().
   visa: 'Do you need a visa for this trip?',
   done: "Great — I have everything I need! Click below to generate your itinerary.",
 };
+
+/**
+ * Read a bookings answer whatever noun the chips happened to use.
+ *
+ * The chips differ by travel mode — "Train tickets only", "Flights only",
+ * plain "Booked" for a road trip — and the answer can also be typed freely.
+ */
+function parseBookings(value: string): { travel: boolean; accommodation: boolean } {
+  const v = value.toLowerCase().trim();
+  if (/both/.test(v)) return { travel: true, accommodation: true };
+  if (/neither|none|not yet|^no/.test(v)) return { travel: false, accommodation: false };
+
+  const accommodation = /accomm|hotel|stay/.test(v);
+  const travel = /flight|ticket|train|bus|ferry|travel|car/.test(v);
+  // "Booked" or "Yes" answers a question that only asked about one thing.
+  if (!accommodation && !travel) {
+    const yes = /^(yes|booked|done)/.test(v);
+    return { travel: yes, accommodation: yes };
+  }
+  return { travel, accommodation };
+}
 
 export default function IntakeChat({ plan }: Props) {
   const [messages, setMessages] = useState<Message[]>([
@@ -110,6 +136,28 @@ export default function IntakeChat({ plan }: Props) {
     plan.country
       ? `Last one — do you need a visa to visit ${plan.country}?`
       : 'Last one — do you need a visa for this trip?';
+
+  /*
+   * "Have you booked your flights?" has no answer on a road trip, and names
+   * the wrong thing on a train. Both the question and its chips follow the
+   * mode the user gave when the plan was created.
+   */
+  const travelThing = travelNoun(plan.arrival?.mode);
+
+  const bookingQuestion = () =>
+    travelThing
+      ? `Have you already booked your ${travelThing} and/or accommodation?`
+      : 'Have you already booked your accommodation?';
+
+  const bookingOptions = (): string[] => {
+    if (!travelThing) return ['Booked', 'Not yet'];
+    const only = travelThing.charAt(0).toUpperCase() + travelThing.slice(1);
+    return ['Both booked', `${only} only`, 'Accommodation only', 'Neither'];
+  };
+
+  // A trip that stays inside one country has no visa to discuss, so it is not
+  // asked about one — the question itself was part of the assumption.
+  const asksVisa = plan.international !== false;
   const [saving, setSaving] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -191,10 +239,18 @@ export default function IntakeChat({ plan }: Props) {
         break;
       }
       case 'bookings': {
-        const flightsBooked = /flight/i.test(value) || /both/i.test(value) || /yes/i.test(value);
-        const accommodationBooked = /hotel/i.test(value) || /accomm/i.test(value) || /both/i.test(value) || /yes/i.test(value);
-        setIntake((prev) => ({ ...prev, flightsBooked, accommodationBooked }));
-        advance('visa', visaQuestion());
+        const { travel, accommodation } = parseBookings(value);
+        const next = { ...intake, flightsBooked: travel, accommodationBooked: accommodation };
+        setIntake(next);
+        if (asksVisa) {
+          advance('visa', visaQuestion());
+        } else {
+          // Nothing left to ask: a domestic trip skips the visa question, so
+          // the intake is complete here.
+          const finalIntake = { ...next, needsVisa: false };
+          setIntake(finalIntake);
+          saveIntake(finalIntake);
+        }
         break;
       }
       case 'visa': {
@@ -215,7 +271,7 @@ export default function IntakeChat({ plan }: Props) {
     const budgetRange = val as 'budget' | 'mid' | 'premium' | 'luxury';
     addMessage('user', BUDGET_OPTIONS.find((o) => o.value === val)?.label ?? val);
     setIntake((prev) => ({ ...prev, budgetRange }));
-    advance('bookings');
+    advance('bookings', bookingQuestion());
   };
 
   const saveIntake = async (finalIntake: typeof intake) => {
@@ -226,52 +282,19 @@ export default function IntakeChat({ plan }: Props) {
         updatedAt: new Date().toISOString(),
       });
 
-      // Auto-create todo items for unbooked flights/accommodation
-      const todoItems = [];
-      if (!finalIntake.flightsBooked) {
-        todoItems.push({
-          id: uuidv4(),
-          planId: plan.id,
-          title: `Book flights to ${plan.destination}`,
-          category: 'Booking' as const,
-          status: 'todo' as const,
-          autoGenerated: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      if (!finalIntake.accommodationBooked) {
-        todoItems.push({
-          id: uuidv4(),
-          planId: plan.id,
-          title: 'Book accommodation for each night',
-          category: 'Booking' as const,
-          status: 'todo' as const,
-          autoGenerated: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      if (todoItems.length > 0) {
-        await db.todos.bulkAdd(todoItems);
+      /*
+       * One place decides what a trip needs. This used to build its own copy
+       * of the booking tasks so it could name them in the chat, and the copy
+       * drifted: it said "Book flights" whatever the mode, and checked child
+       * entry requirements against the city rather than the country, with no
+       * regard for whether the trip crossed a border at all.
+       */
+      const added = await autoGenerateTodos({ ...plan, intake: finalIntake });
+      if (added.length > 0) {
         addMessage(
           'assistant',
-          `I'll add booking tasks to your To-Do list. ${todoItems.map((t) => `"${t.title}"`).join(' and ')} ${todoItems.length > 1 ? 'have' : 'has'} been added.`,
+          `I'll add these to your To-Do list: ${added.map((t) => `"${t}"`).join(', ')}.`,
         );
-      }
-
-      if (finalIntake.kids) {
-        const kidTask = {
-          id: uuidv4(),
-          planId: plan.id,
-          title: `Check child entry requirements for ${plan.destination}`,
-          category: 'Document' as const,
-          status: 'todo' as const,
-          autoGenerated: true,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await db.todos.add(kidTask);
       }
 
       setStep('done');
@@ -334,7 +357,9 @@ export default function IntakeChat({ plan }: Props) {
         {/* Suggestion chips for the current question */}
         {STEP_SUGGESTIONS[step] && (
           <div className="flex flex-wrap gap-2 pl-8" data-testid="intake-suggestions">
-            {STEP_SUGGESTIONS[step]!.values.map((value) => (
+            {/* The bookings chips name what there is to book, which depends on
+                how they are getting there. */}
+            {(step === 'bookings' ? bookingOptions() : STEP_SUGGESTIONS[step]!.values).map((value) => (
               <button
                 key={value}
                 type="button"

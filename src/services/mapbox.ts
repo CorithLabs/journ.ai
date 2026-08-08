@@ -18,8 +18,17 @@ export function getMapboxToken(): string | null {
 export const MAX_ACTIVITY_DISTANCE_KM = 300;
 
 export interface GeocodeOptions {
-  /** Bias results toward this point — the trip's destination. */
+  /** Bias results toward this point — the city this activity belongs to. */
   proximity?: [number, number];
+  /**
+   * Every city the trip visits. A result is kept if it is near ANY of them,
+   * because on a multi-city trip a Nara temple is 40km from Kyoto and 500km
+   * from Tokyo — measuring only from the primary destination threw away the
+   * correct answer.
+   *
+   * Defaults to `proximity` alone when not given.
+   */
+  anchors?: Array<[number, number]>;
   /**
    * Appended to the query when the name doesn't already contain it, e.g.
    * "Union Station" → "Union Station, Toronto, Canada".
@@ -70,13 +79,42 @@ export async function geocodeLocation(
     // Proximity is only a ranking hint, not a filter — a name with no local
     // match still returns the far-away one. Reject those outright rather than
     // dropping a pin on the wrong continent.
-    if (options.proximity && haversineKm(options.proximity, coords) > MAX_ACTIVITY_DISTANCE_KM) {
+    const anchors = options.anchors?.length
+      ? options.anchors
+      : options.proximity
+        ? [options.proximity]
+        : [];
+    if (anchors.length && !anchors.some((a) => haversineKm(a, coords) <= MAX_ACTIVITY_DISTANCE_KM)) {
       return null;
     }
     return coords;
   } catch {
     return null;
   }
+}
+
+/**
+ * Each city of the trip, paired with the fullest name we can build for it.
+ *
+ * The country matters: "Nara" alone matches places in three countries, while
+ * "Nara, Japan" does not. A stop with no country of its own borrows the
+ * trip's, which is right far more often than it is wrong — a stop is usually
+ * in the same country as the destination.
+ */
+export function tripCityContexts(
+  plan: Pick<Plan, 'destination' | 'country' | 'stops'>,
+): Array<{ city: string; context: string }> {
+  const withCountry = (city: string, country?: string) => {
+    const bare = city.split(',')[0].trim();
+    const land = country?.trim() || plan.country?.trim();
+    return { city: bare, context: land && !city.includes(land) ? `${bare}, ${land}` : city.trim() };
+  };
+
+  const out = [withCountry(plan.destination, plan.country)];
+  for (const stop of plan.stops ?? []) {
+    if (stop.city?.trim()) out.push(withCountry(stop.city, stop.country));
+  }
+  return out;
 }
 
 /**
@@ -93,23 +131,40 @@ export async function geocodePlanActivities(
   const itinerary = plan.itinerary.map(d => ({ ...d, activities: [...d.activities] }));
   let changed = false;
 
-  // Resolve the trip's own location first and anchor every activity to it.
-  // The destination is unambiguous in a way an activity name is not — it
-  // carries its country, either from the picked suggestion or because the user
-  // typed "Toronto, Canada".
-  const contextName = plan.country
-    ? `${plan.destination.split(',')[0].trim()}, ${plan.country}`
-    : plan.destination;
-  const anchor = await geocodeLocation(contextName, token);
+  /*
+   * Resolve every city the trip visits, not just the destination.
+   *
+   * The trip's own location is unambiguous in a way an activity name is not —
+   * it carries its country, either from the picked suggestion or because the
+   * user typed "Toronto, Canada". On a multi-city trip each further city needs
+   * the same treatment, or a Nara temple is judged by its distance from Tokyo
+   * and thrown away.
+   */
+  const cityNames = tripCityContexts(plan);
+  const anchored: Array<{ city: string; context: string; coords: [number, number] }> = [];
+  for (const { city, context } of cityNames) {
+    const coords = await geocodeLocation(context, token);
+    if (coords) anchored.push({ city, context, coords });
+  }
+
+  const allAnchors = anchored.map((a) => a.coords);
+  const primary = anchored[0];
 
   for (const day of itinerary) {
     for (let i = 0; i < day.activities.length; i++) {
       const act = day.activities[i];
       if (act.coordinates || !act.locationName.trim()) continue;
 
+      // Bias toward the city the activity names, so "Todai-ji, Nara" resolves
+      // near Nara rather than wherever the trip happens to start.
+      const haystack = `${act.locationName} ${act.name}`.toLowerCase();
+      const owner =
+        anchored.find((a) => haystack.includes(a.city.toLowerCase())) ?? primary;
+
       const coords = await geocodeLocation(act.locationName, token, {
-        proximity: anchor ?? undefined,
-        context: contextName,
+        proximity: owner?.coords,
+        anchors: allAnchors,
+        context: owner?.context,
       });
       if (coords) {
         day.activities[i] = { ...act, coordinates: coords };
