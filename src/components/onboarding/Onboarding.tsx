@@ -4,6 +4,7 @@ import { Compass, Sparkles, Map, Check, ArrowRight, ShieldCheck } from 'lucide-r
 import { setApiKey, OPENAI_KEY_STORAGE, ANTHROPIC_KEY_STORAGE } from '../../services/aiKey';
 import { setActiveProvider, type AiProvider } from '../../services/aiClient';
 import { setOnboarded } from '../../services/onboarding';
+import AboutJournai from './AboutJournai';
 
 const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
 
@@ -14,8 +15,8 @@ const KEY_URL: Record<AiProvider, string> = {
   anthropic: 'https://console.anthropic.com/settings/keys',
 };
 
-type Step = 'welcome' | 'ai' | 'map' | 'ready';
-const ORDER: Step[] = ['welcome', 'ai', 'map', 'ready'];
+type Step = 'welcome' | 'about' | 'ai' | 'map' | 'ready';
+const ORDER: Step[] = ['welcome', 'about', 'ai', 'map', 'ready'];
 
 interface Props {
   onClose: () => void;
@@ -137,13 +138,37 @@ export default function Onboarding({ onClose }: Props) {
             </div>
             <div className="flex gap-2 pt-1">
               <button
-                onClick={() => setStep('ai')}
+                onClick={() => setStep('about')}
                 className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
                 data-testid="onboarding-next"
               >
                 Get started <ArrowRight size={16} aria-hidden="true" />
               </button>
               <button onClick={() => finish()} className="px-4 py-2.5 rounded-xl text-sm text-ink-muted hover:text-ink-primary" data-testid="onboarding-skip">
+                Skip
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'about' && (
+          <div className="space-y-4" data-testid="onboarding-about">
+            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
+              Before you start
+            </h2>
+            {/* The second list is the point. Every line in it is something a
+                traveller could reasonably assume a travel app does, and being
+                wrong about any of them costs more than the app is worth. */}
+            <AboutJournai />
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setStep('ai')}
+                className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
+                data-testid="onboarding-about-next"
+              >
+                Got it <ArrowRight size={16} aria-hidden="true" />
+              </button>
+              <button onClick={() => finish()} className="px-4 py-2.5 rounded-xl text-sm text-ink-muted hover:text-ink-primary" data-testid="onboarding-skip-about">
                 Skip
               </button>
             </div>

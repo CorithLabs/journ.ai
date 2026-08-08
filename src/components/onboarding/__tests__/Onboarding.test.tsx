@@ -62,6 +62,7 @@ describe('the optional keys', () => {
   const toKeyStep = () => {
     show();
     fireEvent.click(screen.getByTestId('onboarding-next'));
+    fireEvent.click(screen.getByTestId('onboarding-about-next'));
   };
 
   /*
@@ -110,9 +111,43 @@ describe('finishing', () => {
   it('hands over to the new-plan form', () => {
     show();
     fireEvent.click(screen.getByTestId('onboarding-next'));
+    fireEvent.click(screen.getByTestId('onboarding-about-next'));
     fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
     fireEvent.click(screen.getByTestId('onboarding-skip-map'));
     fireEvent.click(screen.getByTestId('onboarding-create-plan'));
+    expect(hasOnboarded()).toBe(true);
+    expect(onClose).toHaveBeenCalled();
+  });
+});
+
+/*
+ * The second list is the point of showing this at all. Every line in it is
+ * something a traveller could reasonably assume a travel app does — book
+ * things, know the visa rules, keep a backup — and being wrong about any of
+ * them costs more than the app is worth.
+ */
+describe('what the app is and is not', () => {
+  it('says both, before any key is asked for', () => {
+    show();
+    fireEvent.click(screen.getByTestId('onboarding-next'));
+    const about = screen.getByTestId('onboarding-about');
+    expect(about).toHaveTextContent('What Journ.ai is');
+    expect(about).toHaveTextContent('What Journ.ai is not');
+  });
+
+  it('is honest about the things that would cost the user most', () => {
+    show();
+    fireEvent.click(screen.getByTestId('onboarding-next'));
+    const about = screen.getByTestId('onboarding-about');
+    expect(about).toHaveTextContent(/never buys anything/i);
+    expect(about).toHaveTextContent(/does not know them/i);
+    expect(about).toHaveTextContent(/no account to restore them from/i);
+  });
+
+  it('can be skipped like every other screen', () => {
+    show();
+    fireEvent.click(screen.getByTestId('onboarding-next'));
+    fireEvent.click(screen.getByTestId('onboarding-skip-about'));
     expect(hasOnboarded()).toBe(true);
     expect(onClose).toHaveBeenCalled();
   });

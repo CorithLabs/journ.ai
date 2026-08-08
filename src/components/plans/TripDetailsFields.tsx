@@ -108,7 +108,7 @@ export function StopsFields({
             type="text"
             value={stop.city}
             onChange={(e) => update(stop.id, { city: e.target.value })}
-            placeholder="City"
+            placeholder="City, Country"
             aria-label={`City ${i + 2}`}
             className={input}
             data-testid={`stop-city-${i}`}
