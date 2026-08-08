@@ -11,7 +11,7 @@
  * Schema strings below. Keep the schema in sync with `validateAndParseDays`.
  */
 import type { Plan } from '../../db';
-import { describeLeg, tripCities, travelModeLabel } from '../../utils/travel';
+import { describeLeg, tripRoute, travelModeLabel } from '../../utils/travel';
 
 /** Human-readable budget-tier labels, shared with the component's budget badge. */
 export const BUDGET_RANGES: Record<string, string> = {
@@ -30,12 +30,21 @@ export const BUDGET_RANGES: Record<string, string> = {
 function tripLines(plan: Plan): string[] {
   const lines: string[] = [];
 
-  const cities = tripCities(plan);
-  if (cities.length > 1) {
-    const detail = (plan.stops ?? [])
-      .map((s) => (s.nights ? `${s.city} (${s.nights} night${s.nights === 1 ? '' : 's'})` : s.city))
-      .join(', ');
-    lines.push(`- Multi-city trip, in order: ${plan.destination}, ${detail}`);
+  const route = tripRoute(plan);
+  if (route.length > 1) {
+    const nights = new Map(
+      (plan.stops ?? [])
+        .filter((s) => s.nights)
+        .map((s) => [s.city.split(',')[0].trim().toLowerCase(), s.nights as number]),
+    );
+    const labelled = route.map((city) => {
+      const n = nights.get(city.split(',')[0].trim().toLowerCase());
+      return n ? `${city} (${n} night${n === 1 ? '' : 's'})` : city;
+    });
+    lines.push(`- Route, in this order: ${labelled.join(' → ')}`);
+    lines.push(
+      `- The trip starts in ${route[0]} and ends in ${route[route.length - 1]}. Do not reorder it.`,
+    );
   }
 
   const arrival = describeLeg(plan.arrival, plan.destination);

@@ -156,3 +156,37 @@ describe('geocoding a multi-city plan', () => {
     expect(written.itinerary[0].activities[0].coordinates).toEqual(NARA);
   });
 });
+
+/*
+ * On a Montreal → Percé road trip Montreal appeared in no list at all: it is
+ * neither the destination nor a stop, only an arrival city. A Montreal
+ * activity therefore sat ~900km from every anchor, failed the distance guard
+ * meant to stop pins landing on other continents, and never reached the map.
+ */
+describe('the city a road trip starts from', () => {
+  const roadTrip = {
+    destination: 'Percé', country: 'Canada',
+    arrival: { city: 'Montreal', mode: 'car' as const },
+    departure: { city: 'Montreal', mode: 'car' as const },
+    stops: [{ id: '1', city: 'Matane' }, { id: '2', city: 'Percé' }],
+  };
+
+  it('is an anchor like any other city of the trip', () => {
+    expect(tripCityContexts(roadTrip).map(c => c.context)).toEqual([
+      'Montreal, Canada', 'Matane, Canada', 'Percé, Canada',
+    ]);
+  });
+
+  // A round trip names its start twice; it only needs geocoding once.
+  it('is resolved once, not twice', () => {
+    expect(tripCityContexts(roadTrip).filter(c => c.city === 'Montreal')).toHaveLength(1);
+  });
+
+  it('keeps a country given on the leg itself', () => {
+    const [first] = tripCityContexts({
+      destination: 'Percé', country: 'Canada',
+      arrival: { city: 'Burlington', country: 'United States' },
+    });
+    expect(first.context).toBe('Burlington, United States');
+  });
+});

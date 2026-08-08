@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import type { TravelMode, TripLeg, TripStop } from '../../db';
 import { TRAVEL_MODES } from '../../utils/travel';
@@ -100,10 +100,20 @@ export function StopsFields({
   const update = (id: string, patch: Partial<TripStop>) =>
     onChange(stops.map((s) => (s.id === id ? { ...s, ...patch } : s)));
 
+  // The order is the route, so getting it wrong should not mean deleting a
+  // city and typing it again further down.
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= stops.length) return;
+    const next = [...stops];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange(next);
+  };
+
   return (
     <div className="space-y-2">
       {stops.map((stop, i) => (
-        <div key={stop.id} className="flex gap-2 items-start">
+        <div key={stop.id} className="flex gap-1 items-start">
           <input
             type="text"
             value={stop.city}
@@ -123,6 +133,26 @@ export function StopsFields({
             className={`${input} w-24`}
             data-testid={`stop-nights-${i}`}
           />
+          <button
+            type="button"
+            onClick={() => move(i, -1)}
+            disabled={i === 0}
+            className="p-2 rounded-lg text-ink-muted hover:text-ink-primary disabled:opacity-30 shrink-0"
+            aria-label={`Move ${stop.city || `city ${i + 2}`} earlier`}
+            data-testid={`stop-up-${i}`}
+          >
+            <ArrowUp size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => move(i, 1)}
+            disabled={i === stops.length - 1}
+            className="p-2 rounded-lg text-ink-muted hover:text-ink-primary disabled:opacity-30 shrink-0"
+            aria-label={`Move ${stop.city || `city ${i + 2}`} later`}
+            data-testid={`stop-down-${i}`}
+          >
+            <ArrowDown size={14} />
+          </button>
           <button
             type="button"
             onClick={() => onChange(stops.filter((s) => s.id !== stop.id))}
