@@ -1,4 +1,5 @@
 import { type Activity, type Plan, db } from '../db';
+import { sortByTime } from '../utils/activityTime';
 
 /** localStorage key for the Mapbox access token */
 export const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
@@ -145,7 +146,9 @@ export function getPinActivities(plan: Plan): PinActivity[] {
   const pins: PinActivity[] = [];
   for (const day of plan.itinerary) {
     let seq = 1;
-    for (const activity of day.activities) {
+    // The same order the itinerary renders in, so pin 3 is card 3. Walking the
+    // raw array numbered them by however the day happened to be stored.
+    for (const activity of sortByTime(day.activities)) {
       if (activity.coordinates) {
         pins.push({
           activity,

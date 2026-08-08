@@ -29,13 +29,8 @@ interface MapboxLngLatBounds {
 
 interface MapboxMarker {
   setLngLat(coords: [number, number]): this;
-  setPopup(popup: MapboxPopup): this;
   addTo(map: MapboxGLMap): this;
   remove(): void;
-}
-
-interface MapboxPopup {
-  setHTML(html: string): this;
 }
 
 interface MapboxGLLib {
@@ -46,7 +41,6 @@ interface MapboxGLLib {
     zoom?: number;
   }) => MapboxGLMap;
   Marker: new (element?: HTMLElement) => MapboxMarker;
-  Popup: new (opts?: { closeButton?: boolean; closeOnClick?: boolean; offset?: number; maxWidth?: string }) => MapboxPopup;
   LngLatBounds: new () => MapboxLngLatBounds;
   accessToken: string;
 }
@@ -63,6 +57,8 @@ interface Props {
   pins: PinActivity[];
   onDistanceChange: (km: number | null) => void;
   onPinClick: (pin: PinActivity) => void;
+  /** The pin whose card is open, drawn with a ring so the link is obvious. */
+  selectedActivityId?: string | null;
   /** Called when Mapbox GL emits an error. kind distinguishes an auth failure
    * (invalid/expired token → HTTP 401 from tile servers) from any other error. */
   onMapError?: (kind: 'auth' | 'other') => void;
@@ -88,6 +84,7 @@ function isAuthError(e: unknown): boolean {
 function createPinElement(
   sequenceNumber: number,
   color: string,
+  label: string,
 ): HTMLElement {
   const el = document.createElement('div');
   el.style.cssText = `
@@ -108,7 +105,8 @@ function createPinElement(
   `;
   el.textContent = String(sequenceNumber);
   el.setAttribute('role', 'button');
-  el.setAttribute('aria-label', `Pin ${sequenceNumber}`);
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `Pin ${sequenceNumber}: ${label}`);
   el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; });
   el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
   return el;
@@ -121,11 +119,13 @@ export default function MapboxMap({
   pins,
   onDistanceChange,
   onPinClick,
+  selectedActivityId,
   onMapError,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxGLMap | null>(null);
   const markersRef = useRef<MapboxMarker[]>([]);
+  const pinElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const onMapErrorRef = useRef(onMapError);
   onMapErrorRef.current = onMapError;
 
@@ -133,6 +133,7 @@ export default function MapboxMap({
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
+    pinElementsRef.current.clear();
   }, []);
 
   // Remove route layers and source
@@ -224,32 +225,32 @@ export default function MapboxMap({
 
     for (const pin of pinsToRender) {
       const coords = pin.activity.coordinates!;
-      const el = createPinElement(pin.sequenceNumber, pin.dayColor);
-
-      const popup = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, offset: 16, maxWidth: '220px' })
-        .setHTML(`
-          <!-- Colours come from the palette custom properties in index.css.
-               The popup is injected as raw HTML so Tailwind classes are not
-               available, but CSS variables resolve normally in the document —
-               so this stays in step with the theme instead of drifting from
-               copied hex values. -->
-          <div style="font-family: system-ui; color: var(--color-ink-primary); background: var(--color-surface-overlay); padding: 8px; border-radius: 8px; min-width: 160px;">
-            <div style="font-size: 12px; color: var(--color-ink-secondary); margin-bottom: 2px;">${pin.dayLabel}</div>
-            <div style="font-weight: 600; font-size: 13px; margin-bottom: 4px;">${pin.activity.name}</div>
-            <div style="font-size: 11px; color: var(--color-ink-secondary); margin-bottom: 4px;">${pin.activity.time} · ${pin.activity.locationName}</div>
-            ${pin.activity.notes ? `<div style="font-size: 11px; color: var(--color-ink-secondary);">${pin.activity.notes}</div>` : ''}
-          </div>
-        `);
+      const el = createPinElement(pin.sequenceNumber, pin.dayColor, pin.activity.name);
 
       const marker = new mapboxgl.Marker(el)
         .setLngLat(coords)
-        .setPopup(popup)
         .addTo(map);
 
+      /*
+       * The pin opens the real activity card, not a popup built from raw HTML.
+       *
+       * The popup that used to live here could never open: Mapbox toggles a
+       * marker popup from a click handler on the MAP, reached by the event
+       * bubbling up from the marker element — and the stopPropagation below
+       * cut that bubble before it arrived. It also has to stay: without it a
+       * pin tap reaches the map underneath and closes the card again.
+       */
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         onPinClick(pin);
       });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onPinClick(pin);
+        }
+      });
+      pinElementsRef.current.set(pin.activity.id, el);
 
       markersRef.current.push(marker);
       bounds.extend(coords);
@@ -263,6 +264,21 @@ export default function MapboxMap({
       }
     }
   }, [clearMarkers, onPinClick]);
+
+  /*
+   * Applied straight to the element rather than by re-rendering the markers:
+   * re-rendering refits the camera, so the map would jump every time a card
+   * was opened.
+   */
+  useEffect(() => {
+    for (const [id, el] of pinElementsRef.current) {
+      const on = id === selectedActivityId;
+      el.style.boxShadow = on
+        ? '0 0 0 4px rgba(255,255,255,0.85), 0 2px 8px rgba(0,0,0,0.4)'
+        : '0 2px 8px rgba(0,0,0,0.4)';
+      el.style.zIndex = on ? '1' : '';
+    }
+  }, [selectedActivityId, pins]);
 
   // Initialise the map once
   useEffect(() => {

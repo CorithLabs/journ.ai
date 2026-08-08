@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Map, Settings, MapPin } from 'lucide-react';
+import { Map, Settings, MapPin, X } from 'lucide-react';
 import { db } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import {
@@ -12,6 +12,13 @@ import {
 import { useAppStore } from '../../store';
 import Toast from '../ui/Toast';
 import MapboxMap from '../map/MapboxMap';
+import ActivityCard from '../itinerary/ActivityCard';
+import {
+  patchActivity,
+  removeActivity,
+  saveItinerary,
+  togglePinnedTodo,
+} from '../../services/activityEdits';
 import RouteOptimisation from './RouteOptimisation';
 
 interface Props {
@@ -30,6 +37,7 @@ export default function MapTab({ planId }: Props) {
   const [toast, setToast] = useState<{ msg: string } | null>(null);
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [openPin, setOpenPin] = useState<PinActivity | null>(null);
   const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
 
@@ -43,6 +51,8 @@ export default function MapTab({ planId }: Props) {
 
   // Debounce day selection for camera re-fit (300ms)
   const handleDaySelect = (dayIndex: number | null) => {
+    // Its pin is about to leave the map.
+    setOpenPin(null);
     setSelectedDayIndex(dayIndex);
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
@@ -143,9 +153,20 @@ export default function MapTab({ planId }: Props) {
     selectedDay.activities.some(a => a.locationName) &&
     selectedDay.activities.every(a => !a.locationName || !a.coordinates);
 
+  const openDay = openPin ? plan.itinerary.find(d => d.dayIndex === openPin.dayIndex) : null;
+  const openAct = openDay?.activities.find(a => a.id === openPin!.activity.id);
+  // The pin carries a snapshot; the card has to show what is in the plan now,
+  // or an edit made through it would be undone by the next render.
+  const openCard = openPin && openDay && openAct
+    ? { act: openAct, siblings: openDay.activities }
+    : null;
+
   const hasAnyCoordinates = pins.length > 0;
   const allActivities = plan.itinerary.flatMap(d => d.activities);
   const hasUnresolved = allActivities.some(a => a.locationName && !a.coordinates);
+  // An activity with no location name is never geocoded, so it can never be
+  // pinned — which used to be invisible rather than merely disappointing.
+  const unlocated = allActivities.filter(a => !a.locationName?.trim()).length;
 
   return (
     <div className="flex flex-col h-full" data-testid="map-tab">
@@ -230,10 +251,51 @@ export default function MapTab({ planId }: Props) {
           selectedDayIndex={debouncedDayIndex}
           pins={selectedDayPins}
           onDistanceChange={setDistance}
-          onPinClick={(_pin: PinActivity) => {
-            // Handled by Mapbox popup
-          }}
+          onPinClick={setOpenPin}
+          selectedActivityId={openPin?.activity.id ?? null}
         />
+
+        {/* The card the pin belongs to, with the actions it has in the
+            itinerary — a card that looked the same but did nothing would be
+            worse than no card. Anchored to the bottom on a phone, out of the
+            way in the corner where there is room for it. */}
+        {openCard && (
+          <div
+            className="absolute z-20 left-3 right-3 bottom-3 md:left-auto md:right-4 md:bottom-4 md:w-80"
+            data-testid="map-activity-card"
+          >
+            <div className="flex items-center justify-between mb-1 px-1">
+              <span className="text-xs text-ink-secondary">{openPin!.dayLabel}</span>
+              <button
+                onClick={() => setOpenPin(null)}
+                className="p-1 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-white/5"
+                aria-label="Close activity card"
+                data-testid="close-map-card"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <ActivityCard
+              act={openCard.act}
+              plan={plan}
+              siblings={openCard.siblings}
+              onDel={async () => {
+                await saveItinerary(plan.id, removeActivity(plan.itinerary, openPin!.dayIndex, openCard.act.id));
+                setOpenPin(null);
+                setToast({ msg: 'Activity deleted' });
+              }}
+              onUpd={(u) =>
+                saveItinerary(plan.id, patchActivity(plan.itinerary, openPin!.dayIndex, openCard.act.id, u))
+              }
+              onPin={async () => {
+                const result = await togglePinnedTodo(plan, openPin!.dayIndex, openCard.act, () =>
+                  window.confirm('Remove from To-Do?'),
+                );
+                if (result?.pinned) setToast({ msg: `"${openCard.act.name}" pinned to To-Do` });
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Info strip */}
@@ -268,8 +330,14 @@ export default function MapTab({ planId }: Props) {
           </>
         ) : (
           <span className="text-ink-muted" data-testid="all-days-summary">
-            {pins.length} location{pins.length !== 1 ? 's' : ''} across{' '}
+            {pins.length} of {allActivities.length} activit{allActivities.length === 1 ? 'y' : 'ies'} on the map
+            {' · '}
             {plan.itinerary.length} day{plan.itinerary.length !== 1 ? 's' : ''}
+          </span>
+        )}
+        {unlocated > 0 && !geocoding && (
+          <span className="text-ink-muted ml-auto" data-testid="unlocated-count">
+            {unlocated} without a location
           </span>
         )}
         {geocodeError && (
