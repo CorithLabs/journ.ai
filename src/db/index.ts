@@ -2,6 +2,41 @@ import Dexie, { type Table } from 'dexie';
 
 // ─── Entity types ──────────────────────────────────────────────────────────
 
+/**
+ * How a traveller reaches the trip, or leaves it.
+ *
+ * Not everything is a flight. A road trip has no ticket to book, a train
+ * crosses a border without an airport, and a domestic bus needs no visa at
+ * all — assuming otherwise produced to-dos that were simply wrong.
+ */
+export type TravelMode = 'flight' | 'train' | 'bus' | 'car' | 'ferry' | 'other';
+
+/** One end of the trip: getting there, or getting home. */
+export interface TripLeg {
+  /** Where the traveller actually lands, which need not be the destination —
+   *  flying into Osaka for a Kyoto trip is ordinary. */
+  city?: string;
+  country?: string;
+  /** ISO date. May sit outside the trip's own dates for an overnight leg. */
+  date?: string;
+  /**
+   * 'HH:MM'. One of the few things in this app that genuinely has a clock
+   * time: a 22:40 arrival rules out a full first day, and the itinerary
+   * should know that.
+   */
+  time?: string;
+  mode?: TravelMode;
+}
+
+/** A further city on a multi-city trip, in the order it is visited. */
+export interface TripStop {
+  id: string;
+  city: string;
+  country?: string;
+  /** Nights spent here — enough to apportion days without exact dates. */
+  nights?: number;
+}
+
 export interface Plan {
   id: string;          // UUID v4
   name: string;        // Display name / destination
@@ -16,6 +51,29 @@ export interface Plan {
   country?: string;
   startDate: string;   // ISO 8601 date string e.g. '2025-03-14'
   endDate: string;
+  /**
+   * Arrival and departure, when the user has said. Both optional: a plan is
+   * useful long before the travel is worked out, and every plan created
+   * before these existed has neither.
+   */
+  arrival?: TripLeg;
+  departure?: TripLeg;
+  /**
+   * Cities beyond the destination, in visit order. The destination stays the
+   * trip's first and primary city rather than becoming stops[0], so nothing
+   * that already reads plan.destination has to change.
+   */
+  stops?: TripStop[];
+  /**
+   * Whether the trip crosses a border.
+   *
+   * The only honest basis for an entry-requirement to-do. It cannot be
+   * inferred from the transport mode — a train can cross a border and a
+   * flight can be domestic — and the app never learns where the traveller
+   * lives. `null` means unsure, which asks them to check rather than assuming
+   * either way.
+   */
+  international?: boolean | null;
   createdAt: string;   // ISO 8601 datetime
   updatedAt: string;
   deleted: boolean;    // soft-delete flag

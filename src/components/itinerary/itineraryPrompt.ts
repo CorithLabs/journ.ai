@@ -11,6 +11,7 @@
  * Schema strings below. Keep the schema in sync with `validateAndParseDays`.
  */
 import type { Plan } from '../../db';
+import { describeLeg, tripCities, travelModeLabel } from '../../utils/travel';
 
 /** Human-readable budget-tier labels, shared with the component's budget badge. */
 export const BUDGET_RANGES: Record<string, string> = {
@@ -19,6 +20,39 @@ export const BUDGET_RANGES: Record<string, string> = {
   premium: 'premium ($300–$600/person/day)',
   luxury: 'luxury ($600+/person/day)',
 };
+
+/**
+ * The lines describing how the trip is actually travelled.
+ *
+ * Only what the user has said: an absent arrival time should leave the model
+ * planning a normal first day, not defending against a guess.
+ */
+function tripLines(plan: Plan): string[] {
+  const lines: string[] = [];
+
+  const cities = tripCities(plan);
+  if (cities.length > 1) {
+    const detail = (plan.stops ?? [])
+      .map((s) => (s.nights ? `${s.city} (${s.nights} night${s.nights === 1 ? '' : 's'})` : s.city))
+      .join(', ');
+    lines.push(`- Multi-city trip, in order: ${plan.destination}, ${detail}`);
+  }
+
+  const arrival = describeLeg(plan.arrival, plan.destination);
+  if (arrival) lines.push(`- Arrival: ${arrival}`);
+  const departure = describeLeg(plan.departure, plan.destination);
+  if (departure) lines.push(`- Departure: ${departure}`);
+
+  // Worth stating plainly: a road trip can stop anywhere, which a
+  // flight-shaped itinerary never suggests.
+  if (plan.arrival?.mode === 'car') {
+    lines.push('- Travelling by car, so stops along the route are possible.');
+  } else if (plan.arrival?.mode) {
+    lines.push(`- Travelling by ${travelModeLabel(plan.arrival.mode).toLowerCase()}.`);
+  }
+
+  return lines;
+}
 
 export function buildItineraryPrompt(plan: Plan): string {
   const intake = plan.intake;
@@ -40,6 +74,7 @@ export function buildItineraryPrompt(plan: Plan): string {
     'Trip details:',
     `- Destination: ${plan.destination}`,
     `- Dates: ${plan.startDate} to ${plan.endDate}`,
+    ...tripLines(plan),
     `- Travellers: ${intake?.numTravellers ?? 1}`,
     `- Kids: ${intake?.kids ? 'yes, ages: ' + (intake.kidAges?.join(', ') ?? 'unknown (generate general family-friendly, age-appropriate activities)') : 'no'}`,
     `- Likes: ${intake?.likes?.join(', ') || 'general sightseeing'}`,
@@ -47,6 +82,15 @@ export function buildItineraryPrompt(plan: Plan): string {
     `- Budget: ${budgetLabel}`,
     '',
     'Content rules:',
+    // The first and last days are the ones a generic itinerary always gets
+    // wrong: a full programme on a day the traveller lands at 22:40, and a
+    // museum on a morning they are already at the station.
+    '- Respect the arrival and departure above. Leave the first day light if the',
+    '  traveller arrives late, and the last day light if they leave early; plan',
+    '  nothing before an arrival or after a departure.',
+    '- If more cities are listed, visit them in the order given and spend roughly',
+    '  the stated nights in each. Put travel between cities in the itinerary as an',
+    '  activity of its own.',
     '- Keep activities within the stated budget tier. Set "budgetWarning": true on any',
     '  activity that may borderline or exceed the budget (err on the side of warning).',
     '- If kids are present, every activity must be age-appropriate.',

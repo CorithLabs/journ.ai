@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db';
-import type { Plan } from '../../db';
-import { X, MapPin, AlertTriangle } from 'lucide-react';
+import type { Plan, TripLeg, TripStop } from '../../db';
+import { X, MapPin, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { hasAnyAiKey, NO_AI_KEY_MESSAGE } from '../../services/aiKeyStatus';
 import {
   MAX_TRIP_DAYS,
@@ -11,6 +11,7 @@ import {
   exceedsMaxTripDays,
   maxEndDate,
 } from '../../utils/tripDuration';
+import { LegFields, StopsFields, BorderPicker } from './TripDetailsFields';
 import {
   searchDestinations,
   isPlausibleDestination,
@@ -35,6 +36,16 @@ export default function NewPlanModal({ onClose }: Props) {
   const needsKey = !hasAnyAiKey();
 
   const [country, setCountry] = useState<string | null>(null);
+
+  // Everything below the destination and dates is optional, and collapsed so
+  // the simple case stays three fields. A trip is worth creating long before
+  // the travel is worked out.
+  const [showTravel, setShowTravel] = useState(false);
+  const [showStops, setShowStops] = useState(false);
+  const [arrival, setArrival] = useState<TripLeg>({});
+  const [departure, setDeparture] = useState<TripLeg>({});
+  const [stops, setStops] = useState<TripStop[]>([]);
+  const [international, setInternational] = useState<boolean | null>(null);
   const [suggestions, setSuggestions] = useState<DestinationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlighted, setHighlighted] = useState(-1);
@@ -128,6 +139,20 @@ export default function NewPlanModal({ onClose }: Props) {
     setSaving(true);
     try {
       const now = new Date().toISOString();
+      // An untouched section should leave nothing behind, so empty legs and
+      // blank stop rows are dropped rather than stored as empty shapes.
+      const cleanLeg = (leg: TripLeg): TripLeg | undefined => {
+        const kept = Object.fromEntries(
+          Object.entries(leg).filter(([, v]) => v !== undefined && v !== ''),
+        ) as TripLeg;
+        return Object.keys(kept).length ? kept : undefined;
+      };
+      const cleanArrival = cleanLeg(arrival);
+      const cleanDeparture = cleanLeg(departure);
+      const cleanStops = stops
+        .filter((s) => s.city.trim())
+        .map((s) => ({ ...s, city: s.city.trim() }));
+
       const plan: Plan = {
         id: uuidv4(),
         name: destination.trim(),
@@ -135,6 +160,10 @@ export default function NewPlanModal({ onClose }: Props) {
         ...(country ? { country } : {}),
         startDate: startDate || now.split('T')[0],
         endDate: endDate || now.split('T')[0],
+        ...(cleanArrival ? { arrival: cleanArrival } : {}),
+        ...(cleanDeparture ? { departure: cleanDeparture } : {}),
+        ...(cleanStops.length ? { stops: cleanStops } : {}),
+        ...(international !== null ? { international } : {}),
         createdAt: now,
         updatedAt: now,
         deleted: false,
@@ -157,7 +186,7 @@ export default function NewPlanModal({ onClose }: Props) {
 
   return (
     <div
-      className="w-full max-w-md bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
+      className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-plan-title"
@@ -347,6 +376,70 @@ export default function NewPlanModal({ onClose }: Props) {
               Up to {MAX_TRIP_DAYS} days supported
               {startDate ? ` — latest ${maxEndDate(startDate)}.` : '.'}
             </p>
+          )}
+        </div>
+
+        <div>
+          <p className="block text-sm text-ink-secondary mb-1.5">Trip type</p>
+          {/* Drives the entry-requirement to-dos. A domestic trip needs none,
+              and nothing else in the app can work that out — a train crosses
+              borders, a flight often does not, and the app never learns where
+              the traveller lives. */}
+          <BorderPicker value={international} onChange={setInternational} />
+        </div>
+
+        <div className="border-t border-white/5 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowTravel((v) => !v)}
+            className="w-full flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary"
+            aria-expanded={showTravel}
+            data-testid="toggle-travel"
+          >
+            {showTravel ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            Getting there and back
+            <span className="text-xs text-ink-muted ml-auto">Optional</span>
+          </button>
+          {showTravel && (
+            <div className="space-y-4 mt-3">
+              <LegFields
+                id="arrival"
+                legend="Arrival"
+                value={arrival}
+                onChange={setArrival}
+                cityPlaceholder={destination.trim() || 'City you arrive in'}
+                dateHint="A late arrival means a lighter first day — the itinerary will take it into account."
+              />
+              <LegFields
+                id="departure"
+                legend="Departure"
+                value={departure}
+                onChange={setDeparture}
+                cityPlaceholder={destination.trim() || 'City you leave from'}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-white/5 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowStops((v) => !v)}
+            className="w-full flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary"
+            aria-expanded={showStops}
+            data-testid="toggle-stops"
+          >
+            {showStops ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            More cities
+            {stops.length > 0 && (
+              <span className="text-xs text-accent">{stops.length}</span>
+            )}
+            <span className="text-xs text-ink-muted ml-auto">Optional</span>
+          </button>
+          {showStops && (
+            <div className="mt-3">
+              <StopsFields stops={stops} onChange={setStops} />
+            </div>
           )}
         </div>
 
