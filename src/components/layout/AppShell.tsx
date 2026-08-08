@@ -1,8 +1,21 @@
+import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import AmbientBackdrop from './AmbientBackdrop';
+import Onboarding from '../onboarding/Onboarding';
+import { hasOnboarded, SHOW_ONBOARDING_EVENT } from '../../services/onboarding';
 
 export default function AppShell() {
+  // Read once on mount: re-reading would tear the flow down mid-step the
+  // moment the flag is written.
+  const [showIntro, setShowIntro] = useState(() => !hasOnboarded());
+
+  useEffect(() => {
+    const open = () => setShowIntro(true);
+    window.addEventListener(SHOW_ONBOARDING_EVENT, open);
+    return () => window.removeEventListener(SHOW_ONBOARDING_EVENT, open);
+  }, []);
+
   return (
     <div
       // Transparent rather than bg-surface-base: the ground colour is painted
@@ -26,6 +39,7 @@ export default function AppShell() {
       >
         <Outlet />
       </main>
+      {showIntro && <Onboarding onClose={() => setShowIntro(false)} />}
     </div>
   );
 }

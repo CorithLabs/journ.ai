@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { requestOnboarding } from '../services/onboarding';
 import {
   Settings,
   ShieldCheck,
@@ -436,6 +437,21 @@ export default function SettingsPage() {
             {mapboxMsg.text}
           </p>
         )}
+      </section>
+      {/* Anything the introduction offered can be reached from this page, so
+          replaying it is a reminder rather than the only route back. */}
+      <section className="border-t border-white/5 pt-4 mt-4">
+        <h2 className="text-sm font-semibold text-ink-primary mb-1">Introduction</h2>
+        <p className="text-xs text-ink-secondary mb-3">
+          Walk through what Journ.ai does and what the optional keys are for.
+        </p>
+        <button
+          onClick={requestOnboarding}
+          className="text-xs px-3 py-2 rounded-xl border border-white/10 text-ink-secondary hover:text-ink-primary transition-colors"
+          data-testid="replay-onboarding"
+        >
+          Show the introduction again
+        </button>
       </section>
     </div>
   );
