@@ -30,9 +30,9 @@ import { travelBookingTitle, tripCountries } from '../../utils/travel';
  * autoGenerateTodos multiple times (e.g. after itinerary regeneration) is
  * fully safe.
  */
-export async function autoGenerateTodos(plan: Plan): Promise<void> {
+export async function autoGenerateTodos(plan: Plan): Promise<string[]> {
   const intake = plan.intake;
-  if (!intake) return;
+  if (!intake) return [];
 
   const existing = await db.todos.where('planId').equals(plan.id).toArray();
   const existingTitles = new Set(existing.map((t) => t.title));
@@ -123,4 +123,8 @@ export async function autoGenerateTodos(plan: Plan): Promise<void> {
   if (toAdd.length > 0) {
     await db.todos.bulkAdd(toAdd);
   }
+  // Returned so a caller can name what it created. The intake used to build
+  // its own copies of these tasks in order to do that, which is how the
+  // "Book flights" wording and a city-scoped child-entry check survived here.
+  return toAdd.map((t) => t.title);
 }

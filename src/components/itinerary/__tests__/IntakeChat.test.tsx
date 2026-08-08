@@ -49,7 +49,7 @@ describe('IntakeChat visa question', () => {
     await sendAnswer('skip');
     await screen.findByText(/budget range/i);
     fireEvent.click(screen.getByText(/Mid-range/));
-    await screen.findByText(/booked your flights/i);
+    await screen.findByText(/already booked your/i);
     fireEvent.click(screen.getByTestId('intake-suggestion-Both booked'));
   };
 
