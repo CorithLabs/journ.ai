@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { extractJson } from '../../utils/jsonRepair';
 import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
@@ -73,18 +74,22 @@ function validateAndParseDays(raw: unknown): Day[] | null {
  * 0. Strip any surrounding markdown code fences (```json ... ```) — models
  *    frequently wrap their JSON response in fences despite the "no markdown"
  *    instruction, and the repair prompt's response is often fenced too.
- * 1. Extract the first JSON object.
- * 2. Parse directly.
- * 3. On failure, apply a local trailing-comma repair and retry.
+ * 1. Take the first balanced JSON value, repairing a misplaced closer or an
+ *    output that stopped mid-structure.
+ * 2. Fall back to the older regex slices, then the raw text.
+ * 3. Try each with a trailing-comma repair too.
  * Returns null if the text cannot be coerced into a valid itinerary.
  */
 function tryParseItinerary(text: string): Day[] | null {
   // Strip ALL code-fence markers anywhere (```json / ```), not just anchored ones —
   // models wrap JSON in fences and sometimes add prose around it.
   const cleaned = text.replace(/```(?:json)?/gi, '').trim();
-  // Candidate JSON slices, widest first: the outermost object, the outermost
-  // array (model may return a bare [...] of days), then the whole cleaned text.
   const candidates: string[] = [];
+  // First choice: a balanced scan. The regexes below match greedily from the
+  // first brace to the last, so a model that closed a day object twice took
+  // the stray character with it and nothing parsed.
+  const balanced = extractJson(cleaned);
+  if (balanced) candidates.push(balanced);
   const obj = cleaned.match(/\{[\s\S]*\}/);
   if (obj) candidates.push(obj[0]);
   const arr = cleaned.match(/\[[\s\S]*\]/);
@@ -134,7 +139,7 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       const prompt = buildItineraryPrompt(plan);
       const fullText = await streamCompletion(
         [{ role: 'user', content: prompt }],
-        { onToken: setStreamText },
+        { onToken: setStreamText, json: true },
       );
 
       // First attempt: extract + local repair.
@@ -155,7 +160,7 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
                 'Reply again with ONLY the corrected JSON object — no markdown, no prose, no code fences.',
             },
           ],
-          { onToken: setStreamText },
+          { onToken: setStreamText, json: true },
         );
         lastRaw = repaired;
         days = tryParseItinerary(repaired);

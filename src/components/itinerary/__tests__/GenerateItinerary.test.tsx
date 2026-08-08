@@ -232,3 +232,85 @@ describe('GenerateItinerary', () => {
     fetchSpy.mockRestore();
   });
 });
+const onGeneratedSpy = vi.fn();
+
+/*
+ * A real eight-day Kyoto/Osaka itinerary arrived with a day object closed
+ * twice — `..."budgetWarning":true}]}},{"dayIndex":6` — and the whole trip was
+ * rejected over one stray character. The old extractor matched greedily from
+ * the first brace to the last, so the bad character came along with it.
+ */
+const DOUBLE_CLOSED_JSON =
+  '{"days":[' +
+  '{"dayIndex":0,"label":"Day 1","activities":[{"id":"x1","name":"Fushimi Inari","time":"09:00","locationName":"Kyoto","notes":"","budgetWarning":false}]}},' +
+  '{"dayIndex":1,"label":"Day 2","activities":[{"id":"x2","name":"Himeji Castle","time":"09:00","locationName":"Himeji","notes":"","budgetWarning":false}]}},' +
+  '{"dayIndex":2,"label":"Day 3","activities":[{"id":"x3","name":"Osaka Castle","time":"10:00","locationName":"Osaka","notes":"","budgetWarning":false}]}' +
+  ']}';
+
+describe('malformed model output', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    seedApiKey();
+  });
+
+  it('salvages an itinerary whose day objects were closed twice', async () => {
+    const update = vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockStreamResponse(DOUBLE_CLOSED_JSON)));
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGeneratedSpy} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    const written = update.mock.calls[0][1] as { itinerary: Plan['itinerary'] };
+    // All three days, not the prefix that happened to parse.
+    expect(written.itinerary).toHaveLength(3);
+    expect(written.itinerary[2].activities[0].name).toBe('Osaka Castle');
+  });
+
+  // One request, not two: the local repair means the model is not asked to
+  // fix output that was already recoverable.
+  it('does not spend a second request repairing it', async () => {
+    vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+    const fetchMock = vi.fn().mockResolvedValue(mockStreamResponse(DOUBLE_CLOSED_JSON));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGeneratedSpy} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the days it got when the response was cut off mid-activity', async () => {
+    const update = vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+    const truncated =
+      '{"days":[{"dayIndex":0,"label":"Day 1","activities":[' +
+      '{"id":"x1","name":"Fushimi Inari","time":"09:00","locationName":"Kyoto","notes":"","budgetWarning":false},' +
+      '{"id":"x2","name":"Nishiki Mark';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockStreamResponse(truncated)));
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGeneratedSpy} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => expect(update).toHaveBeenCalled());
+    const written = update.mock.calls[0][1] as { itinerary: Plan['itinerary'] };
+    expect(written.itinerary[0].activities[0].name).toBe('Fushimi Inari');
+  });
+
+  // OpenAI rejects the request unless "JSON" appears in the messages; the
+  // itinerary prompt says it throughout.
+  it('asks OpenAI to guarantee valid JSON', async () => {
+    vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+    const fetchMock = vi.fn().mockResolvedValue(mockStreamResponse(DOUBLE_CLOSED_JSON));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGeneratedSpy} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(JSON.stringify(body.messages)).toContain('JSON');
+  });
+});
