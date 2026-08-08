@@ -94,6 +94,31 @@ describe('multi-city', () => {
     expect(created().stops?.[0].nights).toBe(2);
   });
 
+  // The order is the route, so getting it wrong should not mean deleting a
+  // city and typing it again further down.
+  it('lets the cities be reordered', async () => {
+    show();
+    fill();
+    fireEvent.click(screen.getByTestId('toggle-stops'));
+    fireEvent.click(screen.getByTestId('add-stop'));
+    fireEvent.change(screen.getByTestId('stop-city-0'), { target: { value: 'Matane' } });
+    fireEvent.click(screen.getByTestId('add-stop'));
+    fireEvent.change(screen.getByTestId('stop-city-1'), { target: { value: 'Rimouski' } });
+    fireEvent.click(screen.getByTestId('stop-up-1'));
+
+    fireEvent.click(screen.getByTestId('create-plan-btn'));
+    await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
+    expect(created().stops?.map(s => s.city)).toEqual(['Rimouski', 'Matane']);
+  });
+
+  it('cannot move the ends off either edge', () => {
+    show();
+    fireEvent.click(screen.getByTestId('toggle-stops'));
+    fireEvent.click(screen.getByTestId('add-stop'));
+    expect(screen.getByTestId('stop-up-0')).toBeDisabled();
+    expect(screen.getByTestId('stop-down-0')).toBeDisabled();
+  });
+
   it('drops a row left blank', async () => {
     show();
     fill();
@@ -147,7 +172,22 @@ describe('what the itinerary prompt is told', () => {
     const out = buildItineraryPrompt(plan({
       stops: [{ id: '1', city: 'Osaka', nights: 2 }, { id: '2', city: 'Nara', nights: 1 }],
     }));
-    expect(out).toContain('Kyoto, Osaka (2 nights), Nara (1 night)');
+    expect(out).toContain('Kyoto → Osaka (2 nights) → Nara (1 night)');
+  });
+
+  /*
+   * A Montreal → Percé road trip was sent as "in order: Percé, Matane,
+   * Rimouski, Percé", so the itinerary started and ended at the far point.
+   */
+  it('sends a road trip out and back, not from the far end', () => {
+    const out = buildItineraryPrompt(plan({
+      destination: 'Percé',
+      arrival: { city: 'Montreal', mode: 'car' },
+      departure: { city: 'Montreal', mode: 'car' },
+      stops: [{ id: '1', city: 'Matane' }, { id: '2', city: 'Percé' }],
+    }));
+    expect(out).toContain('Montreal → Matane → Percé → Montreal');
+    expect(out).toContain('starts in Montreal and ends in Montreal');
   });
 
   // A flight-shaped itinerary never suggests stopping somewhere on the way.

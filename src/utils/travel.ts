@@ -68,6 +68,46 @@ export function tripCountries(plan: Pick<Plan, 'country' | 'stops' | 'arrival'>)
   return out;
 }
 
+/** Two city names are the same place if their first part matches. */
+export function sameCity(a: string, b: string): boolean {
+  const bare = (c: string) => c.split(',')[0].trim().toLowerCase();
+  return bare(a) === bare(b) && bare(a) !== '';
+}
+
+/**
+ * The cities of the trip, in the order they are actually visited.
+ *
+ * The destination is where a trip is *about*, which is not always where it
+ * begins. Flying to Tokyo, Tokyo is the first city. Driving from Montreal to
+ * Percé and back, Percé is the far end — and listing it first produced a route
+ * that started and ended there, with the outbound leg driven in reverse.
+ *
+ * So: entering the trip somewhere other than the destination makes the
+ * destination the far point. And a destination the user has already listed as
+ * a stop is not added twice, which is what put Percé at both ends.
+ */
+export function tripRoute(
+  plan: Pick<Plan, 'destination' | 'stops' | 'arrival' | 'departure'>,
+): string[] {
+  const stops = (plan.stops ?? []).map((s) => s.city?.trim()).filter((c): c is string => !!c);
+  const dest = plan.destination?.trim() ?? '';
+  const start = plan.arrival?.city?.trim();
+  const end = plan.departure?.city?.trim();
+
+  const middle = stops.some((c) => sameCity(c, dest))
+    ? stops
+    : start && !sameCity(start, dest)
+      ? [...stops, dest]
+      : [dest, ...stops];
+
+  const route = [...(start ? [start] : []), ...middle, ...(end ? [end] : [])]
+    .filter(Boolean);
+
+  // Only consecutive repeats collapse. Starting and ending in Montreal is a
+  // round trip, not a duplicate.
+  return route.filter((c, i) => i === 0 || !sameCity(c, route[i - 1]));
+}
+
 /** Every city the trip visits, in order — the destination first. */
 export function tripCities(plan: Pick<Plan, 'destination' | 'stops'>): string[] {
   return [plan.destination, ...(plan.stops ?? []).map((s) => s.city)].filter((c) => c?.trim());

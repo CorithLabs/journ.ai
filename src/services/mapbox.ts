@@ -1,5 +1,6 @@
 import { type Activity, type Plan, db } from '../db';
 import { sortByTime } from '../utils/activityTime';
+import { tripRoute, sameCity } from '../utils/travel';
 
 /** localStorage key for the Mapbox access token */
 export const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
@@ -96,19 +97,39 @@ export async function geocodeLocation(
 /**
  * Each city of the trip, paired with the fullest name we can build for it.
  *
- * The country matters: "Nara" alone matches places in three countries, while
- * "Nara, Japan" does not. A stop with no country of its own borrows the
- * trip's, which is right far more often than it is wrong — a stop is usually
- * in the same country as the destination.
+ * Built from the route rather than the destination and stops alone, so the
+ * city the traveller starts and ends in is included. On a Montreal → Percé
+ * road trip Montreal was in no list at all: a Montreal activity sat ~900km
+ * from every anchor, failed the distance guard meant to stop pins landing on
+ * other continents, and never reached the map.
+ *
+ * The country matters too: "Nara" alone matches places in three of them,
+ * while "Nara, Japan" does not. A city that names no country of its own
+ * borrows the trip's, which is right far more often than it is wrong.
  */
 export function tripCityContexts(
-  plan: Pick<Plan, 'destination' | 'country' | 'stops'>,
+  plan: Pick<Plan, 'destination' | 'country' | 'stops' | 'arrival' | 'departure'>,
 ): Array<{ city: string; context: string }> {
-  const withCountry = (city: string, country?: string) => {
-    const raw = city.trim();
-    const bare = raw.split(',')[0].trim();
-    const own = country?.trim();
-    if (own) return { city: bare, context: raw.includes(own) ? raw : `${bare}, ${own}` };
+  // Where each city's own country was given, if anywhere.
+  const declared = new Map<string, string>();
+  for (const entry of [
+    { city: plan.destination, country: plan.country },
+    ...(plan.stops ?? []),
+    ...(plan.arrival ? [{ city: plan.arrival.city, country: plan.arrival.country }] : []),
+    ...(plan.departure ? [{ city: plan.departure.city, country: plan.departure.country }] : []),
+  ]) {
+    const city = entry.city?.trim();
+    const country = entry.country?.trim();
+    if (city && country && !declared.has(city.split(',')[0].trim().toLowerCase())) {
+      declared.set(city.split(',')[0].trim().toLowerCase(), country);
+    }
+  }
+
+  const withCountry = (raw: string) => {
+    const city = raw.trim();
+    const bare = city.split(',')[0].trim();
+    const own = declared.get(bare.toLowerCase());
+    if (own) return { city: bare, context: city.includes(own) ? city : `${bare}, ${own}` };
 
     /*
      * A city typed with its own qualifier has already said where it is.
@@ -116,15 +137,17 @@ export function tripCityContexts(
      * into "Lund, Denmark" on a Copenhagen plan — a cross-border day trip
      * pinned in the wrong country.
      */
-    if (raw.includes(',')) return { city: bare, context: raw };
+    if (city.includes(',')) return { city: bare, context: city };
 
     const land = plan.country?.trim();
-    return { city: bare, context: land ? `${bare}, ${land}` : raw };
+    return { city: bare, context: land ? `${bare}, ${land}` : city };
   };
 
-  const out = [withCountry(plan.destination, plan.country)];
-  for (const stop of plan.stops ?? []) {
-    if (stop.city?.trim()) out.push(withCountry(stop.city, stop.country));
+  // A round trip names its start twice; it only needs geocoding once.
+  const out: Array<{ city: string; context: string }> = [];
+  for (const city of tripRoute(plan)) {
+    const entry = withCountry(city);
+    if (!out.some((o) => sameCity(o.city, entry.city))) out.push(entry);
   }
   return out;
 }
