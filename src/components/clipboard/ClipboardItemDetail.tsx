@@ -38,6 +38,14 @@ export default function ClipboardItemDetail({ planId }: Props) {
    * on a read-only page after pressing a pencil is the bug this replaces.
    */
   const wantsEdit = searchParams.get('edit') === '1';
+
+  /*
+   * Back returns to wherever this was opened from. A clipboard item linked to
+   * a day is reachable from the itinerary, and landing in the clipboard after
+   * following it there loses the user's place in a trip they were reading.
+   */
+  const cameFrom = searchParams.get('from') === 'itinerary' ? 'itinerary' : 'clipboard';
+  const backLabel = cameFrom === 'itinerary' ? 'Back to itinerary' : 'Back to clipboard';
   useEffect(() => {
     if (wantsEdit && item) {
       setTitle(item.title);
@@ -154,9 +162,11 @@ export default function ClipboardItemDetail({ planId }: Props) {
     <div className="flex flex-col h-full" data-testid="clipboard-detail">
       <div className="px-4 py-3 border-b border-white/5 shrink-0 flex items-center gap-2">
         <button
-          onClick={() => navigate(`/plan/${planId}/clipboard`)}
+          onClick={() => navigate(`/plan/${planId}/${cameFrom}`)}
           className="p-1 rounded-lg text-ink-muted hover:text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          aria-label="Back to clipboard"
+          aria-label={backLabel}
+          title={backLabel}
+          data-testid="detail-back-btn"
         >
           <ArrowLeft size={20} />
         </button>

@@ -137,3 +137,42 @@ describe('ClipboardTab', () => {
     expect(screen.getByLabelText('Loading')).toBeInTheDocument();
   });
 });
+
+/*
+ * A check-in time is known as the confirmation is being saved. Offering it
+ * only when editing means going back to add it afterwards, which is a step
+ * nobody takes — and the item then shows on its linked day with no time.
+ */
+describe('AddItemDrawer — when it happens', () => {
+  const save = () => {
+    vi.mocked(db.clipboard.add).mockResolvedValue('new-id');
+    render(<AddItemDrawer planId="plan-1" onClose={vi.fn()} onSaved={vi.fn()} />);
+  };
+  const written = () =>
+    vi.mocked(db.clipboard.add).mock.calls.slice(-1)[0][0] as { time?: string };
+
+  it('saves an exact time', async () => {
+    save();
+    fireEvent.change(screen.getByTestId('add-exact-time'), { target: { value: '15:00' } });
+    fireEvent.click(screen.getByTestId('save-item-btn'));
+    await waitFor(() => expect(db.clipboard.add).toHaveBeenCalled());
+    expect(written().time).toBe('15:00');
+  });
+
+  it('saves a part of the day', async () => {
+    save();
+    fireEvent.click(screen.getByTestId('slot-evening'));
+    fireEvent.click(screen.getByTestId('save-item-btn'));
+    await waitFor(() => expect(db.clipboard.add).toHaveBeenCalled());
+    expect(written().time).toBe('evening');
+  });
+
+  // Most clipboard items have no time at all, and inventing one would put
+  // them somewhere arbitrary on the day.
+  it('stores none when none was given', async () => {
+    save();
+    fireEvent.click(screen.getByTestId('save-item-btn'));
+    await waitFor(() => expect(db.clipboard.add).toHaveBeenCalled());
+    expect(written().time).toBeUndefined();
+  });
+});

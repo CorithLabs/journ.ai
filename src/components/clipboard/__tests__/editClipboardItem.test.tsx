@@ -121,3 +121,46 @@ describe('an item with no notes', () => {
     expect(screen.getByTestId('detail-body-input')).toBeInTheDocument();
   });
 });
+
+/*
+ * A clipboard item linked to a day is reachable from the itinerary. Landing
+ * back in the clipboard after following it there loses the user's place in a
+ * trip they were reading.
+ */
+describe('going back', () => {
+  it('returns to the itinerary when that is where it was opened from', () => {
+    show('?from=itinerary');
+    expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to itinerary');
+  });
+
+  it('returns to the clipboard otherwise', () => {
+    show();
+    expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to clipboard');
+  });
+
+  it('keeps the itinerary origin while editing', () => {
+    show('?from=itinerary&edit=1');
+    expect(screen.getByTestId('detail-editor')).toBeInTheDocument();
+    expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to itinerary');
+  });
+});
+
+describe('setting a time', () => {
+  it('offers one, and saves it', async () => {
+    show();
+    fireEvent.click(screen.getByTestId('detail-edit-btn'));
+    fireEvent.change(screen.getByTestId('detail-exact-time'), { target: { value: '15:00' } });
+    fireEvent.click(screen.getByTestId('detail-save-btn'));
+    await waitFor(() => expect(db.clipboard.update).toHaveBeenCalled());
+    expect(written().time).toBe('15:00');
+  });
+
+  it('clears one that no longer applies', async () => {
+    show('', { time: '15:00' });
+    fireEvent.click(screen.getByTestId('detail-edit-btn'));
+    fireEvent.click(screen.getByTestId('detail-clear-time'));
+    fireEvent.click(screen.getByTestId('detail-save-btn'));
+    await waitFor(() => expect(db.clipboard.update).toHaveBeenCalled());
+    expect(written().time).toBeUndefined();
+  });
+});
