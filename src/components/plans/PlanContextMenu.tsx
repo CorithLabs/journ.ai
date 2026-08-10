@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Pencil, Copy, Trash2 } from 'lucide-react';
-import { db } from '../../db';
+import { db, type Plan } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import Toast from '../ui/Toast';
+import TripDetailsPanel from './TripDetailsPanel';
 
 interface Props {
   planId: string;
@@ -18,6 +19,7 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
   const { planId: activePlanId } = useParams<{ planId: string }>();
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editing, setEditing] = useState<Plan | null>(null);
   const [deletedPlanId, setDeletedPlanId] = useState<string | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -38,18 +40,17 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
     };
   }, [onClose]);
 
-  const handleRename = async () => {
+  /*
+   * Renaming used to be a window.prompt writing straight to `destination`,
+   * which is what the map's anchors and the visa to-do are built from — so
+   * renaming "Percé" to "Gaspésie road trip" quietly repointed both at a
+   * place that does not geocode. Everything about a trip is editable in one
+   * place now, with the destination re-resolved to a country properly.
+   */
+  const handleEdit = async () => {
     onClose();
     const plan = await db.plans.get(planId);
-    if (!plan) return;
-    const newName = window.prompt('Rename plan:', plan.destination);
-    if (newName && newName.trim()) {
-      await db.plans.update(planId, {
-        destination: newName.trim(),
-        name: newName.trim(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
+    if (plan) setEditing(plan);
   };
 
   const handleDuplicate = async () => {
@@ -109,6 +110,11 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
     setToast(null);
   };
 
+  // Rendered outside the menu, which closes the moment the panel opens.
+  if (editing) {
+    return <TripDetailsPanel plan={editing} onClose={() => setEditing(null)} />;
+  }
+
   return (
     <>
       <div
@@ -123,10 +129,10 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
             <button
               role="menuitem"
               className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary hover:bg-surface-raised transition-colors"
-              onClick={handleRename}
+              onClick={handleEdit}
             >
               <Pencil size={14} aria-hidden="true" />
-              Rename
+              Trip details
             </button>
             <button
               role="menuitem"

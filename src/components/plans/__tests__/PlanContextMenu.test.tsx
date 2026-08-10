@@ -28,7 +28,9 @@ describe('PlanContextMenu', () => {
         <PlanContextMenu planId="plan-1" x={100} y={100} onClose={onClose} />
       </MemoryRouter>,
     );
-    expect(screen.getByRole('menuitem', { name: /Rename/i })).toBeInTheDocument();
+    // Renaming is now part of editing the whole trip, since the name IS the
+    // destination and changing it alone left the country stale.
+    expect(screen.getByRole('menuitem', { name: /Trip details/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Duplicate/i })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Delete/i })).toBeInTheDocument();
   });
