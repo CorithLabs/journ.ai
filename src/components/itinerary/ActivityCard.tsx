@@ -11,6 +11,7 @@ import {
   nextFreeTime,
 } from '../../utils/activityTime';
 import { mapsUrlFor } from '../../utils/mapsLink';
+import { CardActionRail, CardAction } from '../ui/CardActionRail';
 
 /** Morning / Noon / Evening / Night, with the current one lit. */
 export function SlotPicker({ value, onPick }: { value: string; onPick: (t: string) => void }) {
@@ -182,11 +183,8 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
         )}
       </div>
 
-      {/* Binder edge: a rail of actions down the card's right side. */}
-      <div
-        className="shrink-0 flex flex-col justify-center gap-0.5 px-1 py-1 border-l border-white/10 bg-surface-base/30"
-        data-testid="activity-actions"
-      >
+      {/* The same rail the to-do and clipboard cards use. */}
+      <CardActionRail testId="activity-actions">
         {mapsUrl && (
           <a
             href={mapsUrl}
@@ -200,31 +198,15 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
             <MapPin size={16} />
           </a>
         )}
-        <button
+        <CardAction
+          icon={<Pin size={16} />}
+          label={act.pinnedToTodo ? 'Unpin from to-do' : 'Pin to to-do'}
           onClick={onPin}
-          className={`p-2 rounded-lg hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${act.pinnedToTodo ? 'text-accent' : 'text-ink-muted hover:text-ink-primary'}`}
-          aria-label={act.pinnedToTodo ? 'Unpin from to-do' : 'Pin to to-do'}
-          title={act.pinnedToTodo ? 'Unpin' : 'Pin to to-do'}
-        >
-          <Pin size={16} />
-        </button>
-        <button
-          onClick={() => setEd(true)}
-          className="p-2 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          aria-label="Edit activity"
-          title="Edit"
-        >
-          <Pencil size={16} />
-        </button>
-        <button
-          onClick={onDel}
-          className="p-2 rounded-lg text-ink-muted hover:text-status-danger hover:bg-status-danger/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          aria-label="Delete activity"
-          title="Delete"
-        >
-          <Trash2 size={16} />
-        </button>
-      </div>
+          active={act.pinnedToTodo}
+        />
+        <CardAction icon={<Pencil size={16} />} label="Edit activity" onClick={() => setEd(true)} />
+        <CardAction icon={<Trash2 size={16} />} label="Delete activity" onClick={onDel} tone="danger" />
+      </CardActionRail>
     </div>
   );
 }

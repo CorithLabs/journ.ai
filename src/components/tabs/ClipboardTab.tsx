@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useConfirm } from '../ui/ConfirmDialog';
+import LinkItineraryPicker from '../clipboard/LinkItineraryPicker';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { Paperclip, PlusCircle, Search, X } from 'lucide-react';
@@ -26,11 +28,14 @@ const FILTER_CHIPS: TypeFilter[] = [ALL_FILTER, ...CLIPBOARD_TYPES];
  */
 export default function ClipboardTab({ planId }: Props) {
   const [showAdd, setShowAdd] = useState(false);
+  const [linking, setLinking] = useState<ClipboardItem | null>(null);
+  const confirm = useConfirm();
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>(ALL_FILTER);
   const debouncedQuery = useDebounce(query, 200);
   const navigate = useNavigate();
 
+  const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
   const items = useLiveQuery(
     () => db.clipboard.where('planId').equals(planId).sortBy('createdAt'),
     [planId],
@@ -49,6 +54,44 @@ export default function ClipboardTab({ planId }: Props) {
 
   const openDetail = (item: ClipboardItem) =>
     navigate(`/plan/${planId}/clipboard/${item.id}`);
+
+  const stamp = () => new Date().toISOString();
+
+  /**
+   * Link a confirmation to the day it belongs to, or take the link off again.
+   *
+   * Unlinking asks first because nothing else records which day a voucher
+   * was for, and re-finding it means opening every day in turn.
+   */
+  const togglePin = async (item: ClipboardItem) => {
+    if (item.linkedDayIndex === undefined) {
+      setLinking(item);
+      return;
+    }
+    const ok = await confirm({
+      title: `Unlink "${item.title}" from the itinerary?`,
+      body: 'The item stays in your clipboard; only the link to the day is removed.',
+      confirmLabel: 'Unlink',
+    });
+    if (!ok) return;
+    await db.clipboard.update(item.id, {
+      linkedDayIndex: undefined,
+      linkedActivityId: undefined,
+      updatedAt: stamp(),
+    });
+  };
+
+  const removeItem = async (item: ClipboardItem) => {
+    const ok = await confirm({
+      title: `Delete "${item.title}"?`,
+      body: item.fileName
+        ? `The attached file (${item.fileName}) is deleted with it. This cannot be undone.`
+        : 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (ok) await db.clipboard.delete(item.id);
+  };
 
   const filtered = filterClipboard(items, debouncedQuery, typeFilter);
   const isSearching = debouncedQuery.trim() !== '' || typeFilter !== ALL_FILTER;
@@ -151,13 +194,37 @@ export default function ClipboardTab({ planId }: Props) {
               </h3>
               <div className="space-y-2">
                 {group.map((item) => (
-                  <ClipboardCard key={item.id} item={item} onClick={() => openDetail(item)} />
+                  <ClipboardCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => openDetail(item)}
+                    onEdit={() => openDetail(item)}
+                    onPin={() => togglePin(item)}
+                    onDelete={() => removeItem(item)}
+                  />
                 ))}
               </div>
             </section>
           );
         })}
       </div>
+
+      {/* The picker needs the itinerary to choose a day from, so a plan with
+          no days yet simply has nothing to link to. */}
+      {linking && plan && (
+        <LinkItineraryPicker
+          plan={plan}
+          onClose={() => setLinking(null)}
+          onLink={async (dayIndex, activityId) => {
+            await db.clipboard.update(linking.id, {
+              linkedDayIndex: dayIndex,
+              linkedActivityId: activityId,
+              updatedAt: stamp(),
+            });
+            setLinking(null);
+          }}
+        />
+      )}
 
       {showAdd && (
         <AddItemDrawer
