@@ -5,6 +5,8 @@ import { ArrowLeft, FileText, Link2, Unlink, Pencil } from 'lucide-react';
 import { db, type ClipboardItem } from '../../db';
 import { TYPE_BORDER, CLIPBOARD_TYPES, formatFileSize, isImageMime } from './clipboardConstants';
 import LinkItineraryPicker from './LinkItineraryPicker';
+import { SlotPicker } from '../itinerary/ActivityCard';
+import { exactTime } from '../../utils/activityTime';
 
 interface Props {
   planId: string;
@@ -24,6 +26,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [type, setType] = useState<ClipboardItem['type']>('Note');
+  const [time, setTime] = useState('');
   const [err, setErr] = useState('');
   const [fileUrl, setFileUrl] = useState<string | null>(null);
 
@@ -40,6 +43,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
       setTitle(item.title);
       setBody(item.body ?? '');
       setType(item.type);
+      setTime(item.time ?? '');
       setEditing(true);
     }
     // Only on arrival: re-running would drag the user back into the editor
@@ -125,6 +129,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
     setTitle(item.title);
     setBody(item.body ?? '');
     setType(item.type);
+    setTime(item.time ?? '');
     setErr('');
     setEditing(true);
   };
@@ -139,6 +144,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
       title: trimmed,
       body: body.trim() || undefined,
       type,
+      time: time || undefined,
       updatedAt: new Date().toISOString(),
     });
     setEditing(false);
@@ -201,6 +207,29 @@ export default function ClipboardItemDetail({ planId }: Props) {
               className="w-full bg-surface-overlay border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none resize-none"
               data-testid="detail-body-input"
             />
+            {/* Optional, and only meaningful once the item is linked to a
+                day — an exact time is normalised to its part of the day the
+                same way an activity's is. */}
+            <div className="space-y-1.5" data-testid="detail-time">
+              <p className="text-xs text-ink-secondary">When, if it has a time</p>
+              <SlotPicker value={time} onPick={setTime} />
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={exactTime(time) ?? ''}
+                  onChange={(e) => setTime(e.target.value)}
+                  aria-label="Exact time"
+                  className="bg-surface-overlay border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary focus:outline-none"
+                  data-testid="detail-exact-time"
+                />
+                {time && (
+                  <button type="button" onClick={() => setTime('')} className="text-xs text-ink-muted hover:underline" data-testid="detail-clear-time">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {err && <p role="alert" className="text-xs text-status-danger" data-testid="detail-edit-error">{err}</p>}
             {/* The attachment is deliberately untouched: re-uploading a
                 boarding pass to fix a typo in its title would be absurd. */}

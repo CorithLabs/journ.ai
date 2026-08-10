@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles, CalendarCheck } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { type Plan, type Activity, db } from '../../db';
+import { type Plan, type Activity, type ClipboardItem, db } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import Toast from '../ui/Toast';
 import GenerateItinerary from './GenerateItinerary';
 import ActivityCard, { SlotPicker } from './ActivityCard';
+import LinkedClipboardCard from './LinkedClipboardCard';
 import { scrollBehavior } from '../../utils/motion';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { sortByTime, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
+import { sortByTime, sortBySlot, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, slotIndex, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 import { tripTiming, relativeDayLabel } from '../../utils/tripDay';
 import { useConfirm } from '../ui/ConfirmDialog';
@@ -198,6 +201,27 @@ function seedSlotFor(before?: Activity, after?: Activity): TimeSlotId {
 export default function ItineraryView({ plan }: Props) {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
   const confirm = useConfirm();
+  const navigate = useNavigate();
+
+  /*
+   * Clipboard items linked to a day belong on that day. Linking a hotel
+   * confirmation to day three used to record the link and show it nowhere,
+   * so the itinerary said nothing about a check-in and the only way to find
+   * it was to remember it existed.
+   */
+  const linked = useLiveQuery(
+    () => db.clipboard.where('planId').equals(plan.id).toArray(),
+    [plan.id],
+  );
+  const linkedByDay = new Map<number, ClipboardItem[]>();
+  // Undefined while the query is in flight, and the itinerary is worth
+  // rendering before the clipboard has loaded.
+  for (const c of Array.isArray(linked) ? linked : []) {
+    if (c.linkedDayIndex === undefined) continue;
+    const list = linkedByDay.get(c.linkedDayIndex) ?? [];
+    list.push(c);
+    linkedByDay.set(c.linkedDayIndex, list);
+  }
   const timing = tripTiming(plan);
   const todayIndex = timing.todayIndex;
   // Once per plan: scrolling back to today every render would fight the user
@@ -375,6 +399,7 @@ export default function ItineraryView({ plan }: Props) {
           const isCol = collapsed[day.dayIndex];
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
           const isToday = day.dayIndex === todayIndex;
+          const dayClips = sortBySlot(linkedByDay.get(day.dayIndex) ?? [], c => c.time);
           const near = relativeDayLabel(plan.startDate, day.dayIndex);
 
           return (
@@ -409,7 +434,21 @@ export default function ItineraryView({ plan }: Props) {
 
               {!isCol && (
                 <div className={`space-y-2 ml-4 border-l-2 pl-3 pb-2 border-white/5`}>
-                  {day.activities.length === 0 && <p className="text-xs text-ink-muted py-2">No activities yet.</p>}
+                  {day.activities.length === 0 && dayClips.length === 0 && (
+                    <p className="text-xs text-ink-muted py-2">No activities yet.</p>
+                  )}
+
+                  {/* Items with no time of their own sit at the head of the
+                      day rather than being interleaved by a slot they never
+                      claimed. */}
+                  {dayClips.filter(c => !c.time).map(c => (
+                    <LinkedClipboardCard
+                      key={c.id}
+                      item={c}
+                      onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                    />
+                  ))}
+
                   {sortByTime(day.activities).map((act, ai, sorted) => (
                     <div key={act.id}>
                       <ActivityCard act={act} plan={plan} siblings={day.activities}
@@ -424,6 +463,19 @@ export default function ItineraryView({ plan }: Props) {
                         <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, act.id, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
                         <button disabled={ai === sorted.length - 1} onClick={() => moveAct(day.dayIndex, act.id, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
                       </div>
+                      {/* Anything booked for this part of the day, shown
+                          where it happens rather than in a list apart. */}
+                      {dayClips
+                        .filter(c => c.time && slotIndex(c.time) === slotIndex(act.time)
+                          && (ai === sorted.length - 1 || slotIndex(c.time) !== slotIndex(sorted[ai + 1].time)))
+                        .map(c => (
+                          <LinkedClipboardCard
+                            key={c.id}
+                            item={c}
+                            onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                          />
+                        ))}
+
                       {ai < sorted.length - 1 && (
                         <AddInline
                           siblings={day.activities}
@@ -436,6 +488,16 @@ export default function ItineraryView({ plan }: Props) {
                       )}
                     </div>
                   ))}
+                  {dayClips
+                    .filter(c => c.time && !day.activities.some(a => slotIndex(a.time) === slotIndex(c.time)))
+                    .map(c => (
+                      <LinkedClipboardCard
+                        key={c.id}
+                        item={c}
+                        onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                      />
+                    ))}
+
                   <AddInline siblings={day.activities} dayLabel={day.label}
                     seedSlot={seedSlotFor(sortByTime(day.activities).slice(-1)[0])}
                     onAdd={(name, time, loc) => addAct(day.dayIndex, name, time, loc)} />
