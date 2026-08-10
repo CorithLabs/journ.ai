@@ -198,7 +198,7 @@ export default function ClipboardTab({ planId }: Props) {
                     key={item.id}
                     item={item}
                     onClick={() => openDetail(item)}
-                    onEdit={() => openDetail(item)}
+                    onEdit={() => navigate(`/plan/${planId}/clipboard/${item.id}?edit=1`)}
                     onPin={() => togglePin(item)}
                     onDelete={() => removeItem(item)}
                   />
