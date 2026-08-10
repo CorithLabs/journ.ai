@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles, CalendarCheck } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { type Plan, type Activity, db } from '../../db';
 import { getDayColor } from '../../constants/colors';
@@ -10,6 +10,7 @@ import { scrollBehavior } from '../../utils/motion';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { sortByTime, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
+import { tripTiming, relativeDayLabel } from '../../utils/tripDay';
 
 interface Props { plan: Plan; }
 
@@ -195,8 +196,34 @@ function seedSlotFor(before?: Activity, after?: Activity): TimeSlotId {
 
 export default function ItineraryView({ plan }: Props) {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  const timing = tripTiming(plan);
+  const todayIndex = timing.todayIndex;
+  // Once per plan: scrolling back to today every render would fight the user
+  // the moment they looked at any other day.
+  const scrolledFor = useRef<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; undo?: () => void } | null>(null);
   const [showGen, setShowGen] = useState(false);
+
+  /*
+   * A trip in progress opens on today rather than day one.
+   *
+   * Someone standing in Percé on day four had to scroll past three days that
+   * had already happened — the app knew the date and the dates of the trip,
+   * and used neither.
+   */
+  useEffect(() => {
+    if (todayIndex === null || scrolledFor.current === plan.id) return;
+    const el = document.getElementById(`day-${todayIndex}`);
+    if (!el) return;
+    scrolledFor.current = plan.id;
+    el.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
+  }, [plan.id, todayIndex, plan.itinerary]);
+
+  const goToToday = () => {
+    if (todayIndex === null) return;
+    setCollapsed((prev) => ({ ...prev, [todayIndex]: false }));
+    document.getElementById(`day-${todayIndex}`)?.scrollIntoView({ behavior: scrollBehavior() });
+  };
 
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
@@ -298,25 +325,70 @@ Change it anyway?`);
             {d.label.split(' \u2014 ')[0]}
           </button>
         ))}
+        {todayIndex !== null && (
+          <button
+            onClick={goToToday}
+            className="shrink-0 flex items-center gap-1 text-xs px-3 py-1 rounded-full bg-accent text-ink-inverse font-semibold"
+            data-testid="jump-to-today"
+          >
+            <CalendarCheck size={12} aria-hidden="true" /> Today
+          </button>
+        )}
         <button onClick={() => setShowGen(true)} className="shrink-0 flex items-center gap-1 text-xs px-3 py-1 rounded-full border border-white/10 text-accent hover:bg-accent/10 ml-auto">
           <Sparkles size={12} /> Regenerate
         </button>
       </div>
 
+      {/* The one line a traveller wants on opening: is this trip happening,
+          and how much of it is left. */}
+      {timing.status !== 'unknown' && (
+        <p className="px-4 pt-2 text-xs text-ink-muted shrink-0" data-testid="trip-timing">
+          {timing.status === 'upcoming' && (
+            timing.daysUntil === 0 ? 'Starts today' :
+            timing.daysUntil === 1 ? 'Starts tomorrow' :
+            `Starts in ${timing.daysUntil} days`
+          )}
+          {timing.status === 'active' && (
+            `Day ${(todayIndex ?? 0) + 1} of your trip` +
+            (timing.daysRemaining ? ` · ${timing.daysRemaining} day${timing.daysRemaining === 1 ? '' : 's'} to go` : '')
+          )}
+          {timing.status === 'past' && 'This trip has ended'}
+        </p>
+      )}
+
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4" data-testid="itinerary-days">
         {plan.itinerary.map(day => {
           const isCol = collapsed[day.dayIndex];
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
+          const isToday = day.dayIndex === todayIndex;
+          const near = relativeDayLabel(plan.startDate, day.dayIndex);
 
           return (
-            <section key={day.dayIndex} id={`day-${day.dayIndex}`}
-              aria-label={day.label}>
+            <section
+              key={day.dayIndex}
+              id={`day-${day.dayIndex}`}
+              aria-label={isToday ? `${day.label} (today)` : day.label}
+              data-testid={isToday ? 'today-section' : undefined}
+              // A rail rather than a filled background: the day has to stand
+              // out among the others without the cards inside it changing.
+              className={isToday ? 'border-l-2 border-accent -ml-3 pl-3 rounded-l' : undefined}
+            >
               <button
                 className="w-full flex items-center gap-2 py-2 text-left"
                 onClick={() => setCollapsed(p => ({ ...p, [day.dayIndex]: !p[day.dayIndex] }))}
                 aria-expanded={!isCol}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getDayColor(day.dayIndex) }} aria-hidden="true" />
                 <span className="text-base font-semibold text-ink-primary flex-1">{day.label}</span>
+                {near && (
+                  <span
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                      near === 'Today' ? 'bg-accent text-ink-inverse' : 'bg-white/5 text-ink-secondary'
+                    }`}
+                    data-testid={`day-relative-${day.dayIndex}`}
+                  >
+                    {near}
+                  </span>
+                )}
                 {bb && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bb.warn ? 'text-status-warning bg-status-warning/10' : 'text-accent bg-accent/10'}`}>{bb.text}</span>}
                 {isCol ? <ChevronRight size={16} className="text-ink-muted" /> : <ChevronDown size={16} className="text-ink-muted" />}
               </button>

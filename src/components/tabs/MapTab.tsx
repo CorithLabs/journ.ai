@@ -10,6 +10,7 @@ import {
   type PinActivity,
 } from '../../services/mapbox';
 import { useAppStore } from '../../store';
+import { todayDayIndex } from '../../utils/tripDay';
 import Toast from '../ui/Toast';
 import MapboxMap from '../map/MapboxMap';
 import ActivityCard from '../itinerary/ActivityCard';
@@ -41,11 +42,15 @@ export default function MapTab({ planId }: Props) {
   const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
 
-  // Auto-select Day 1 on plan open
+  // Open on today when the trip is running, otherwise on its first day. On
+  // day four of a trip, day one is the least useful thing to be shown.
   useEffect(() => {
     if (plan?.itinerary?.length) {
-      setSelectedDayIndex(0);
-      setDebouncedDayIndex(0);
+      const day = todayDayIndex(plan) ?? 0;
+      const exists = plan.itinerary.some((d) => d.dayIndex === day);
+      const start = exists ? day : 0;
+      setSelectedDayIndex(start);
+      setDebouncedDayIndex(start);
     }
   }, [planId]); // eslint-disable-line react-hooks/exhaustive-deps
 
