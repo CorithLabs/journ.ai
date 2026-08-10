@@ -22,6 +22,19 @@ export default function StartManualButton({
   const [busy, setBusy] = useState(false);
 
   const start = async () => {
+    /*
+     * Scaffolding writes a fresh set of empty days over whatever is there. On
+     * a plan the user has already filled in by hand that is their whole trip
+     * gone, with no undo — so it is only silent when there is nothing to lose.
+     */
+    const activities = (plan.itinerary ?? []).reduce((n, d) => n + d.activities.length, 0);
+    if (activities > 0) {
+      const ok = window.confirm(
+        `This clears the ${activities} activit${activities === 1 ? 'y' : 'ies'} already in this plan and starts from empty days. Continue?`,
+      );
+      if (!ok) return;
+    }
+
     setBusy(true);
     try {
       await db.plans.update(plan.id, {
@@ -33,7 +46,8 @@ export default function StartManualButton({
     }
   };
 
-  const label = busy ? 'Setting up…' : 'Build it myself';
+  const hasDays = (plan.itinerary ?? []).some((d) => d.activities.length > 0);
+  const label = busy ? 'Setting up…' : hasDays ? 'Start over by hand' : 'Build it myself';
 
   if (variant === 'button') {
     return (
