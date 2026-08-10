@@ -55,9 +55,12 @@ export function CardAction({
    * that looks like every other control until you hover it tells a user
    * nothing at the moment they are deciding where to press — and on a phone
    * there is no hover at all.
+   *
+   * At full strength, not dimmed: at 70% it measured 2.64 : 1 on an overlay,
+   * under the 3:1 an icon needs to be seen as a control.
    */
   const base =
-    tone === 'danger' ? 'text-status-danger/70' : active ? 'text-accent' : 'text-ink-muted';
+    tone === 'danger' ? 'text-status-danger' : active ? 'text-accent' : 'text-ink-muted';
   const hover =
     tone === 'danger'
       ? 'hover:text-status-danger hover:bg-status-danger/10'

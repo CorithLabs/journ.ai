@@ -90,7 +90,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 onClick={() => settle(true)}
                 className={`flex-1 font-semibold py-2 rounded-xl text-sm transition-colors ${
                   pending.tone === 'danger'
-                    ? 'bg-status-danger hover:opacity-90 text-ink-primary'
+                    ? 'bg-status-danger hover:opacity-90 text-ink-inverse'
                     : 'bg-accent hover:bg-accent-light text-ink-inverse'
                 }`}
                 data-testid="confirm-accept"
