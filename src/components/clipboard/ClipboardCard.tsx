@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
-import { FileText, Paperclip } from 'lucide-react';
+import { FileText, Paperclip, Pin, Pencil, Trash2 } from 'lucide-react';
 import type { ClipboardItem } from '../../db';
 import { TYPE_BORDER, formatFileSize, isImageMime } from './clipboardConstants';
+import { CardActionRail, CardAction } from '../ui/CardActionRail';
 
 interface Props {
   item: ClipboardItem;
   onClick?: () => void;
+  onEdit?: () => void;
+  /** Link to a day or activity, or unlink when already linked. */
+  onPin?: () => void;
+  onDelete?: () => void;
 }
 
 /**
@@ -13,7 +18,7 @@ interface Props {
  * Shows an image thumbnail for image blobs, a PDF/document icon otherwise,
  * plus the filename and human-readable file size for file items.
  */
-export default function ClipboardCard({ item, onClick }: Props) {
+export default function ClipboardCard({ item, onClick, onEdit, onPin, onDelete }: Props) {
   const border = TYPE_BORDER[item.type] ?? 'border-l-category-slate';
   const mime = item.fileBlob?.type;
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
@@ -31,11 +36,18 @@ export default function ClipboardCard({ item, onClick }: Props) {
 
   const hasFile = !!item.fileName;
 
+  const isLinked = item.linkedDayIndex !== undefined;
+
   return (
+    // A div wrapping a button, not a button: the rail's controls cannot be
+    // nested inside the card's own button.
+    <div
+      className={`card-surface w-full flex items-stretch border-l-2 ${border} rounded-card overflow-hidden`}
+      data-testid="clipboard-card"
+    >
     <button
       onClick={onClick}
-      className={`card-surface w-full text-left flex gap-3 items-start border-l-2 ${border} rounded-card p-3 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none`}
-      data-testid="clipboard-card"
+      className="flex-1 min-w-0 text-left flex gap-3 items-start p-3 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
       aria-label={`${item.type}: ${item.title}`}
     >
       {hasFile && (
@@ -78,5 +90,28 @@ export default function ClipboardCard({ item, onClick }: Props) {
         )}
       </div>
     </button>
+
+    {/* Everything you could do to a clipboard item was a screen deep in the
+        detail view — a card had no actions on it at all. */}
+    {(onEdit || onPin || onDelete) && (
+      <CardActionRail testId="clipboard-actions">
+        {onPin && (
+          <CardAction
+            icon={<Pin size={16} />}
+            label={isLinked ? `Unlink ${item.title} from the itinerary` : `Link ${item.title} to the itinerary`}
+            onClick={onPin}
+            active={isLinked}
+            testId="clipboard-pin"
+          />
+        )}
+        {onEdit && (
+          <CardAction icon={<Pencil size={16} />} label={`Edit ${item.title}`} onClick={onEdit} testId="clipboard-edit" />
+        )}
+        {onDelete && (
+          <CardAction icon={<Trash2 size={16} />} label={`Delete ${item.title}`} onClick={onDelete} tone="danger" testId="clipboard-delete" />
+        )}
+      </CardActionRail>
+    )}
+    </div>
   );
 }
