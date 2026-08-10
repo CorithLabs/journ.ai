@@ -86,6 +86,7 @@ describe('GenerateItinerary', () => {
   });
 
   it('renders generate button', () => {
+    seedApiKey();
     render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
     expect(screen.getByTestId('start-generate-btn')).toBeInTheDocument();
     expect(screen.getByText('Generate Itinerary')).toBeInTheDocument();
@@ -116,6 +117,7 @@ describe('GenerateItinerary', () => {
     });
 
     it('still allows a trip of exactly 14 days', () => {
+      seedApiKey();
       const exactly14: Plan = { ...mockPlan, startDate: '2025-07-01', endDate: '2025-07-14' };
       render(<MemoryRouter><GenerateItinerary plan={exactly14} onGenerated={onGenerated} /></MemoryRouter>);
       expect(screen.getByTestId('start-generate-btn')).toBeInTheDocument();
@@ -133,16 +135,22 @@ describe('GenerateItinerary', () => {
     expect(screen.getByText(/Budget/i)).toBeInTheDocument();
   });
 
-  it('shows error when no API key configured', async () => {
+  /*
+   * This used to be discovered by clicking Generate and reading the failure.
+   * On a regenerate that error was a dead end, with the user's own itinerary
+   * behind it — so the missing key is now stated before the button, and the
+   * button that could only fail is not offered at all.
+   */
+  it('says a key is missing before offering to generate', () => {
     // localStorage is cleared — no api key
     render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
-    fireEvent.click(screen.getByTestId('start-generate-btn'));
-    await waitFor(() => {
-      expect(screen.getByText(/No API key configured/i)).toBeInTheDocument();
-    });
+    expect(screen.getByTestId('generate-needs-key')).toBeInTheDocument();
+    expect(screen.queryByTestId('start-generate-btn')).not.toBeInTheDocument();
   });
 
   it('shows retry button on error', async () => {
+    seedApiKey();
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
     render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('start-generate-btn'));
     await waitFor(() => {

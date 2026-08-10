@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { hasAnyAiKey, NO_AI_KEY_MESSAGE } from '../../services/aiKeyStatus';
 import { extractJson } from '../../utils/jsonRepair';
 import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
@@ -16,6 +19,12 @@ import {
 interface Props {
   plan: Plan;
   onGenerated: () => void;
+  /**
+   * Return to the itinerary untouched. Only passed when there is one to go
+   * back to — without it, a plan built by hand could be regenerated into a
+   * screen with no exit.
+   */
+  onCancel?: () => void;
 }
 
 
@@ -109,7 +118,7 @@ function tryParseItinerary(text: string): Day[] | null {
   return null;
 }
 
-export default function GenerateItinerary({ plan, onGenerated }: Props) {
+export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props) {
   const [status, setStatus] = useState<'idle' | 'generating' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [streamText, setStreamText] = useState('');
@@ -121,6 +130,12 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
   // cap shipped — or duplicated from one — can still be over. Generating from it
   // would blow the token budget and fail mid-JSON, so block it up front with a
   // message that says what to do instead of burning a request first.
+  // Checked up front rather than discovered by failing: without a key the
+  // Generate button could only ever produce an error, and on a regenerate
+  // that error was a dead end with the user's own itinerary behind it.
+  const needsKey = !hasAnyAiKey();
+  const isRegenerate = Boolean(onCancel);
+
   const tooLong = exceedsMaxTripDays(plan.startDate, plan.endDate);
   const tooLongMessage = tooLongForGenerationMessage(
     tripDayCount(plan.startDate, plan.endDate),
@@ -204,10 +219,32 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 text-center" data-testid="generate-itinerary">
       <Sparkles size={40} className="text-accent mb-4" aria-hidden="true" />
-      <h2 className="text-lg font-semibold text-ink-primary mb-2">Ready to generate your itinerary</h2>
+      <h2 className="text-lg font-semibold text-ink-primary mb-2">
+        {isRegenerate ? 'Regenerate your itinerary' : 'Ready to generate your itinerary'}
+      </h2>
       <p className="text-sm text-ink-secondary mb-6 max-w-sm">
-        The AI will create a personalised day-by-day plan for <strong className="text-ink-primary">{plan.destination}</strong> based on your preferences.
+        {isRegenerate
+          ? <>Generating again replaces the days currently in this plan for <strong className="text-ink-primary">{plan.destination}</strong>. Nothing changes until you choose to.</>
+          : <>The AI will create a personalised day-by-day plan for <strong className="text-ink-primary">{plan.destination}</strong> based on your preferences.</>}
       </p>
+
+      {/* Said before the button rather than after a failed request, with the
+          way to fix it and the way out both to hand. */}
+      {needsKey && (
+        <div
+          role="status"
+          className="flex items-start gap-2 mb-4 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl max-w-sm text-left"
+          data-testid="generate-needs-key"
+        >
+          <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm text-status-warning">{NO_AI_KEY_MESSAGE}</p>
+            <Link to="/settings" className="mt-1.5 inline-block text-xs text-accent hover:underline" data-testid="generate-goto-settings">
+              Go to Settings →
+            </Link>
+          </div>
+        </div>
+      )}
       {plan.intake?.budgetRange && (
         <div className="mb-4 text-xs text-accent bg-accent/10 px-3 py-1.5 rounded-full">
           Budget: {BUDGET_RANGES[plan.intake.budgetRange]}
@@ -237,6 +274,16 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
           </div>
         </div>
       )}
+      {onCancel && status !== 'generating' && (
+        <button
+          onClick={onCancel}
+          className="mt-4 flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary transition-colors"
+          data-testid="cancel-generate-btn"
+        >
+          <ArrowLeft size={14} aria-hidden="true" /> Back to my itinerary
+        </button>
+      )}
+
       {tooLong ? (
         <div
           role="alert"
@@ -249,9 +296,11 @@ export default function GenerateItinerary({ plan, onGenerated }: Props) {
       ) : (
         status !== 'generating' && (
           <div className="flex flex-col items-center gap-3">
-            <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
-              <Sparkles size={16} aria-hidden="true" /> Generate Itinerary
-            </button>
+            {!needsKey && (
+              <button onClick={generate} className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-6 py-2.5 rounded-xl transition-colors" data-testid="start-generate-btn">
+                <Sparkles size={16} aria-hidden="true" /> {isRegenerate ? 'Regenerate with AI' : 'Generate Itinerary'}
+              </button>
+            )}
             {/* Also the way out when generation keeps failing — the day
                 skeletons are written locally and need no provider. */}
             <StartManualButton plan={plan} />

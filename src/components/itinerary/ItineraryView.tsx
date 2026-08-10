@@ -277,8 +277,16 @@ export default function ItineraryView({ plan }: Props) {
 Change it anyway?`);
   };
 
+  // onCancel only when there is an itinerary to return to. A plan with no
+  // days has nothing behind this screen, so a Back button would go nowhere.
   if (showGen || !plan.itinerary?.length)
-    return <GenerateItinerary plan={plan} onGenerated={() => setShowGen(false)} />;
+    return (
+      <GenerateItinerary
+        plan={plan}
+        onGenerated={() => setShowGen(false)}
+        onCancel={showGen && plan.itinerary?.length ? () => setShowGen(false) : undefined}
+      />
+    );
 
   return (
     <div className="flex flex-col h-full" data-testid="itinerary-view">
