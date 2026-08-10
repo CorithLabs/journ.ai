@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import TabBar from '../TabBar';
 
@@ -37,5 +37,22 @@ describe('TabBar', () => {
     expect(screen.getByText('To-Do')).toBeInTheDocument();
     expect(screen.getByText('Map')).toBeInTheDocument();
     expect(screen.getByText('Clipboard')).toBeInTheDocument();
+  });
+});
+
+describe('the order of the tabs', () => {
+  it('runs itinerary, to-do, clipboard, map', () => {
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    expect(screen.getAllByRole('tab').map(t => t.textContent))
+      .toEqual(['Itinerary', 'To-Do', 'Clipboard', 'Map']);
+  });
+
+  // Arrow-key traversal walks the same array, so the two cannot disagree.
+  it('moves the keyboard focus in that order too', () => {
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    const tabs = screen.getAllByRole('tab');
+    tabs[0].focus();
+    fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(tabs[1]);
   });
 });

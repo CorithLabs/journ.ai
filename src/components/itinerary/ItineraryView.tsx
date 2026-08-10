@@ -81,7 +81,7 @@ function AddInline({
           onClick={start}
           aria-label={label}
           data-testid="add-activity-gap"
-          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-white/10 bg-surface-raised text-ink-muted hover:text-accent hover:border-accent/40 transition-colors"
+          className="shrink-0 flex items-center justify-center w-7 h-7 rounded-full border border-status-success/40 bg-surface-raised text-status-success hover:bg-status-success/10 hover:border-status-success transition-colors"
         >
           <Plus size={14} aria-hidden="true" />
         </button>
@@ -91,7 +91,7 @@ function AddInline({
   }
 
   if (!open) return (
-    <button onClick={start} className="flex items-center gap-1 text-xs text-ink-muted hover:text-accent py-2">
+    <button onClick={start} className="flex items-center gap-1 text-xs text-status-success hover:brightness-125 py-2">
       <PlusCircle size={12} /> Add activity
     </button>
   );

@@ -124,3 +124,26 @@ describe('clipboard cards carry theirs too', () => {
     expect(screen.queryByTestId('clipboard-actions')).not.toBeInTheDocument();
   });
 });
+
+/*
+ * A delete that looks like every other control until you hover it tells a
+ * user nothing at the moment they are deciding where to press — and on a
+ * phone there is no hover at all.
+ */
+describe('what the colours say', () => {
+  it('marks delete as destructive at rest', () => {
+    showTodos([todo()]);
+    expect(screen.getByTestId('task-delete').className).toContain('text-status-danger');
+  });
+
+  it('leaves the other controls neutral until used', () => {
+    showTodos([todo()]);
+    expect(screen.getByTestId('task-edit').className).toContain('text-ink-muted');
+    expect(screen.getByTestId('task-edit').className).not.toContain('text-status-danger');
+  });
+
+  it('still lights an action that is already on', () => {
+    showTodos([todo({ pinned: true })]);
+    expect(screen.getByTestId('task-pin').className).toContain('text-accent');
+  });
+});
