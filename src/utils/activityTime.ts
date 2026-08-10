@@ -93,10 +93,19 @@ export function slotIndex(time: string | undefined | null): number {
  * to change anything.
  */
 export function sortByTime(activities: Activity[]): Activity[] {
-  return [...activities]
-    .map((a, i) => ({ a, i, s: slotIndex(a.time) }))
+  return sortBySlot(activities, (a) => a.time);
+}
+
+/**
+ * The same ordering for anything with a time, so a clipboard item linked to a
+ * day can be interleaved with the activities rather than listed apart from
+ * them — a 3pm check-in belongs among the afternoon, not in a footnote.
+ */
+export function sortBySlot<T>(items: T[], timeOf: (item: T) => string | undefined | null): T[] {
+  return [...items]
+    .map((item, i) => ({ item, i, s: slotIndex(timeOf(item)) }))
     .sort((x, y) => (x.s === y.s ? x.i - y.i : x.s - y.s))
-    .map((e) => e.a);
+    .map((e) => e.item);
 }
 
 /** Lift `id` out and drop it back beside `otherId`, above it or below it. */

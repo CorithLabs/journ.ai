@@ -150,6 +150,12 @@ export interface ClipboardItem {
   fileSize?: number;   // bytes
   linkedDayIndex?: number;
   linkedActivityId?: string;
+  /**
+   * When this happens, for an item linked to a day — a 3pm check-in, a 06:40
+   * boarding time. Stored in the same field shape as an activity's, so it is
+   * either a slot id or 'HH:MM' and shows up under the right part of the day.
+   */
+  time?: string;
   createdAt: string;
   updatedAt: string;
 }
