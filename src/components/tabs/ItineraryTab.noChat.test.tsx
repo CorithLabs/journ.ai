@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen } from '../../test/render';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ItineraryTab from './ItineraryTab';

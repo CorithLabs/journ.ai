@@ -6,12 +6,13 @@ import SettingsPage from './pages/SettingsPage';
 import NewPlanPage from './pages/NewPlanPage';
 import OfflineBanner from './components/layout/OfflineBanner';
 import { useOfflineDetection } from './hooks/useOfflineDetection';
+import { ConfirmProvider } from './components/ui/ConfirmDialog';
 
 export default function App() {
   useOfflineDetection();
 
   return (
-    <>
+    <ConfirmProvider>
       <OfflineBanner />
       <Routes>
         <Route path="/" element={<AppShell />}>
@@ -22,6 +23,6 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
-    </>
+    </ConfirmProvider>
   );
 }

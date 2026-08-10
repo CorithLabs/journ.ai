@@ -11,6 +11,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { sortByTime, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
 import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
 import { tripTiming, relativeDayLabel } from '../../utils/tripDay';
+import { useConfirm } from '../ui/ConfirmDialog';
 
 interface Props { plan: Plan; }
 
@@ -196,6 +197,7 @@ function seedSlotFor(before?: Activity, after?: Activity): TimeSlotId {
 
 export default function ItineraryView({ plan }: Props) {
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+  const confirm = useConfirm();
   const timing = tripTiming(plan);
   const todayIndex = timing.todayIndex;
   // Once per plan: scrolling back to today every render would fight the user
@@ -261,7 +263,17 @@ export default function ItineraryView({ plan }: Props) {
   const pinAct = async (di: number, act: Activity) => {
     if (act.pinnedToTodo) {
       const items = await db.todos.where('sourceActivityId').equals(act.id).toArray();
-      if (items.length && !window.confirm('Remove from To-Do?')) return;
+      if (items.length) {
+        const ok = await confirm({
+          title: `Remove "${act.name}" from your to-do list?`,
+          body: items.length === 1
+            ? 'The task it created will be deleted.'
+            : `The ${items.length} tasks it created will be deleted.`,
+          confirmLabel: 'Remove',
+          tone: 'danger',
+        });
+        if (!ok) return;
+      }
       await db.todos.bulkDelete(items.map(t => t.id));
       await updAct(di, act.id, { pinnedToTodo: false });
     } else {
@@ -299,9 +311,11 @@ export default function ItineraryView({ plan }: Props) {
   const confirmTimeChange = async (act: Activity): Promise<boolean> => {
     const bookings = await findActivityBookings(plan.id, act.id);
     if (!bookings.length) return true;
-    return window.confirm(`${bookingWarning(bookings)}
-
-Change it anyway?`);
+    return confirm({
+      title: 'You have a booking for this',
+      body: bookingWarning(bookings),
+      confirmLabel: 'Change it anyway',
+    });
   };
 
   // onCancel only when there is an itinerary to return to. A plan with no

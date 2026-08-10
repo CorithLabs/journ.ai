@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useConfirm } from '../ui/ConfirmDialog';
 import { PencilLine } from 'lucide-react';
 import { db, type Plan } from '../../db';
 import { scaffoldDays } from '../../utils/scaffoldDays';
@@ -20,6 +21,7 @@ export default function StartManualButton({
   variant?: 'link' | 'button';
 }) {
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const start = async () => {
     /*
@@ -29,9 +31,12 @@ export default function StartManualButton({
      */
     const activities = (plan.itinerary ?? []).reduce((n, d) => n + d.activities.length, 0);
     if (activities > 0) {
-      const ok = window.confirm(
-        `This clears the ${activities} activit${activities === 1 ? 'y' : 'ies'} already in this plan and starts from empty days. Continue?`,
-      );
+      const ok = await confirm({
+        title: 'Start over with empty days?',
+        body: `This clears the ${activities} activit${activities === 1 ? 'y' : 'ies'} already in this plan. It cannot be undone.`,
+        confirmLabel: 'Clear and start over',
+        tone: 'danger',
+      });
       if (!ok) return;
     }
 
