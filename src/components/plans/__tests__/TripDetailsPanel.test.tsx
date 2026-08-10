@@ -132,3 +132,31 @@ describe('changing the dates of a plan that has days', () => {
     expect(screen.queryByTestId('td-dates-warning')).not.toBeInTheDocument();
   });
 });
+
+/*
+ * It opens from the plan name in the tab bar, which carries backdrop-blur —
+ * and backdrop-filter creates a stacking context, so a fixed child is confined
+ * to it however high its z-index goes. The panel painted underneath the
+ * itinerary, because the bar paints before the tab content that follows it.
+ */
+describe('escaping the bar it opens from', () => {
+  it('renders into the body, not where it was called from', () => {
+    const { container } = show();
+    expect(container).toBeEmptyDOMElement();
+    expect(document.body).toContainElement(screen.getByTestId('trip-details-panel'));
+  });
+
+  it('sits over the page rather than in it', () => {
+    show();
+    const overlay = screen.getByTestId('trip-details-panel');
+    expect(overlay.className).toContain('fixed');
+    expect(overlay.className).toContain('inset-0');
+    expect(overlay.className).toContain('items-center');
+    expect(overlay.className).toContain('justify-center');
+  });
+
+  it('blurs what is behind it', () => {
+    show();
+    expect(screen.getByTestId('trip-details-panel').className).toContain('backdrop-blur');
+  });
+});
