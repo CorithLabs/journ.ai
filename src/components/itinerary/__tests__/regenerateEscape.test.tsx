@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '../../../test/render';
 import { MemoryRouter } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ItineraryView from '../ItineraryView';
@@ -86,19 +86,21 @@ describe('a plan with no days yet', () => {
  * sat on the same screen they were already stuck on.
  */
 describe('starting over by hand', () => {
-  it('asks first when there is something to lose', () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  it('asks first, naming what is about to go', async () => {
     toRegenerate(built);
     fireEvent.click(screen.getByTestId('start-manual-btn'));
-    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/clears the 1 activity/i));
+    expect(await screen.findByTestId('confirm-dialog')).toHaveTextContent(/clears the 1 activity/i);
+
+    fireEvent.click(screen.getByTestId('confirm-cancel'));
+    await waitFor(() => expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument());
     expect(db.plans.update).not.toHaveBeenCalled();
   });
 
   it('goes ahead once agreed', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.spyOn(db.plans, 'update').mockResolvedValue(1);
     toRegenerate(built);
     fireEvent.click(screen.getByTestId('start-manual-btn'));
+    fireEvent.click(await screen.findByTestId('confirm-accept'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
   });
 

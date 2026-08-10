@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '../../../test/render';
 import { MemoryRouter } from 'react-router-dom';
 import ItineraryView from '../ItineraryView';
 import type { Plan } from '../../../db';
@@ -149,8 +149,6 @@ describe('ItineraryView', () => {
   });
 
   it('unpinning a pinned activity removes its todo items', async () => {
-    // Mock window.confirm to return true
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     vi.mocked(db.todos.where).mockReturnValue({
       equals: vi.fn().mockReturnThis(),
       toArray: vi.fn().mockResolvedValue([{ id: 'todo-pinned' }]),
@@ -159,6 +157,9 @@ describe('ItineraryView', () => {
     render(<MemoryRouter><ItineraryView plan={mockPlanWithPinned} /></MemoryRouter>);
     const unpinBtn = screen.getByLabelText('Unpin from to-do');
     fireEvent.click(unpinBtn);
+    // Asked in the app's own dialog rather than a browser one, which an
+    // installed PWA may suppress entirely.
+    fireEvent.click(await screen.findByTestId('confirm-accept'));
     await waitFor(() => {
       expect(db.todos.bulkDelete).toHaveBeenCalledWith(['todo-pinned']);
     });

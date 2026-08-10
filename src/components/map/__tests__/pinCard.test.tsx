@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '../../../test/render';
 import { useLiveQuery } from 'dexie-react-hooks';
 import MapTab from '../../tabs/MapTab';
 import { getPinActivities } from '../../../services/mapbox';

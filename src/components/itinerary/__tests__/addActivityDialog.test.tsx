@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '../../../test/render';
 import { useLiveQuery } from 'dexie-react-hooks';
 import ItineraryView from '../ItineraryView';
 import type { Plan } from '../../../db';

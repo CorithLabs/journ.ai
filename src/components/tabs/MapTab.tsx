@@ -11,6 +11,7 @@ import {
 } from '../../services/mapbox';
 import { useAppStore } from '../../store';
 import { todayDayIndex } from '../../utils/tripDay';
+import { useConfirm } from '../ui/ConfirmDialog';
 import Toast from '../ui/Toast';
 import MapboxMap from '../map/MapboxMap';
 import ActivityCard from '../itinerary/ActivityCard';
@@ -39,6 +40,7 @@ export default function MapTab({ planId }: Props) {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [openPin, setOpenPin] = useState<PinActivity | null>(null);
+  const confirm = useConfirm();
   const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
 
@@ -293,8 +295,21 @@ export default function MapTab({ planId }: Props) {
                 saveItinerary(plan.id, patchActivity(plan.itinerary, openPin!.dayIndex, openCard.act.id, u))
               }
               onPin={async () => {
-                const result = await togglePinnedTodo(plan, openPin!.dayIndex, openCard.act, () =>
-                  window.confirm('Remove from To-Do?'),
+                // togglePinnedTodo takes a synchronous callback, so the
+                // question is asked first and its answer handed over.
+                const confirmedUnpin = !openCard.act.pinnedToTodo || await confirm({
+                  title: `Remove "${openCard.act.name}" from your to-do list?`,
+                  body: 'The task it created will be deleted.',
+                  confirmLabel: 'Remove',
+                  tone: 'danger',
+                });
+                const result = await togglePinnedTodo(
+                  plan,
+                  openPin!.dayIndex,
+                  openCard.act,
+                  // Answered before the toggle runs, so the callback it takes
+                  // only has to report the decision.
+                  () => confirmedUnpin,
                 );
                 if (result?.pinned) setToast({ msg: `"${openCard.act.name}" pinned to To-Do` });
               }}
