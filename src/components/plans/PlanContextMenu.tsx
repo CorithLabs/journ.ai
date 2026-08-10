@@ -157,7 +157,7 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
             <p className="text-sm text-ink-primary mb-2">Delete this plan?</p>
             <div className="flex gap-2">
               <button
-                className="flex-1 py-1 rounded-lg bg-status-danger text-white text-xs font-semibold"
+                className="flex-1 py-1 rounded-lg bg-status-danger text-ink-inverse text-xs font-semibold"
                 onClick={handleDeleteConfirm}
               >
                 Delete

@@ -9,15 +9,29 @@
   --color-surface-overlay: #1a2235;
   --color-accent: #06b6d4;
   --color-accent-light: #67e8f9;
-  --color-accent-muted: #0e7490;
+  /* Was #0e7490 — 2.96 on an overlay, under the 3:1 a border or icon needs
+     to be seen as a control at all. */
+  --color-accent-muted: #0891b2;
   --color-accent-sky: #0ea5e9;
   --color-ink-primary: #f1f5f9;
   --color-ink-secondary: #94a3b8;
-  --color-ink-muted: #475569;
+  /*
+   * Was #475569, which measured 2.53 : 1 on the base surface and 2.09 on an
+   * overlay — under the 3:1 floor for a UI component, never mind the 4.5
+   * needed for body text, and it carries 115 labels across the app. This
+   * clears 4.5 on all three surfaces while staying a visible step below
+   * ink-secondary, so the three tiers still read as three.
+   */
+  --color-ink-muted: #7c8b9f;
   --color-ink-inverse: #0a0f1a;
   --color-status-success: #10b981;
   --color-status-warning: #f59e0b;
-  --color-status-danger: #ef4444;
+  /*
+   * Was #ef4444: 4.21 on an overlay, so small error text sat under AA, and a
+   * label on a solid danger button managed only 3.44. Lighter reads better on
+   * a dark ground anyway, and solid fills now take ink-inverse.
+   */
+  --color-status-danger: #f87171;
 }
 
 * {
