@@ -1,5 +1,18 @@
 import { v4 as uuidv4 } from 'uuid';
-import { db, type Plan, type Activity, type ClipboardItem, type TodoItem } from '../../db';
+import {
+  db,
+  type Plan,
+  type Activity,
+  type ClipboardItem,
+  type TodoItem,
+  type TravelMode,
+  type TripLeg,
+  type TripStop,
+} from '../../db';
+import { TRAVEL_MODES, describeLeg, tripRoute } from '../../utils/travel';
+
+/** Accepted values for the mode argument, straight from the shared list. */
+const TRAVEL_MODE_IDS: string[] = TRAVEL_MODES.map((m) => m.id);
 
 /**
  * Tool definitions exposed to the AI provider. The model returns one of these
@@ -180,6 +193,51 @@ export const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'set_travel_leg',
+      description:
+        "Record how and where the trip begins or ends — the city the traveller sets off from or returns to, and how they are travelling. Use this when they say something like \"we're driving up from Montreal\" or \"we fly home from Osaka on the 20th\". This is what tells the itinerary which end of the route the trip starts at; without it a road trip is planned from its furthest point.",
+      parameters: {
+        type: 'object',
+        properties: {
+          which: { type: 'string', enum: ['arrival', 'departure'], description: 'arrival = setting off / getting there; departure = heading home' },
+          city: { type: 'string', description: 'The city they leave from or return to, e.g. "Montreal"' },
+          mode: { type: 'string', enum: ['flight', 'train', 'bus', 'car', 'ferry', 'other'] },
+          date: { type: 'string', description: 'Optional ISO date, e.g. 2025-08-01' },
+          time: { type: 'string', description: 'Optional 24h clock time, e.g. 22:40' },
+        },
+        required: ['which'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_trip_stops',
+      description:
+        'Set the cities the trip passes through, IN THE ORDER THEY ARE VISITED. This REPLACES the whole list, so include every city, not just a new one. Use it when the user describes or corrects their route. Do not include the city they set off from — that is set_travel_leg.',
+      parameters: {
+        type: 'object',
+        properties: {
+          stops: {
+            type: 'array',
+            description: 'Cities in visit order',
+            items: {
+              type: 'object',
+              properties: {
+                city: { type: 'string' },
+                nights: { type: 'number', description: 'Optional nights spent here' },
+              },
+              required: ['city'],
+            },
+          },
+        },
+        required: ['stops'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_clipboard',
       description: 'Save a note to the clipboard for the current plan.',
       parameters: {
@@ -344,6 +402,63 @@ export async function executeAgentAction(
           return { ok: true, message: `Done — I've moved "${act.name}"${where}${when}.` };
         }
         return { ok: false, message: `I couldn't find an activity matching "${call.args.nameMatch}".` };
+      }
+
+      case 'set_travel_leg': {
+        const which = call.args.which === 'departure' ? 'departure' : 'arrival';
+        const city = typeof call.args.city === 'string' ? call.args.city.trim() : '';
+        const mode = TRAVEL_MODE_IDS.includes(String(call.args.mode))
+          ? (String(call.args.mode) as TravelMode)
+          : undefined;
+        const date = typeof call.args.date === 'string' ? call.args.date.trim() : '';
+        const time = typeof call.args.time === 'string' ? call.args.time.trim() : '';
+        if (!city && !mode && !date && !time) {
+          return { ok: false, message: 'What should I record — which city, and how are you travelling?' };
+        }
+
+        // Merged, not replaced: told the mode now and the city later, the
+        // second answer should not erase the first.
+        const leg: TripLeg = {
+          ...(plan[which] ?? {}),
+          ...(city ? { city } : {}),
+          ...(mode ? { mode } : {}),
+          ...(date ? { date } : {}),
+          ...(time ? { time } : {}),
+        };
+        await db.plans.update(plan.id, { [which]: leg, updatedAt: new Date().toISOString() });
+
+        const said = describeLeg(leg, plan.destination) ?? city;
+        const verb = which === 'arrival' ? 'starts' : 'ends';
+        return {
+          ok: true,
+          message: `Noted — the trip ${verb} with ${said}. Regenerate the itinerary to plan it in that order.`,
+        };
+      }
+
+      case 'set_trip_stops': {
+        const raw = Array.isArray(call.args.stops) ? call.args.stops : null;
+        if (!raw) return { ok: false, message: 'Which cities, and in what order?' };
+
+        const stops: TripStop[] = [];
+        for (const entry of raw) {
+          const item = entry as { city?: unknown; nights?: unknown };
+          const city = typeof item.city === 'string' ? item.city.trim() : '';
+          if (!city) continue;
+          const nights = Number(item.nights);
+          stops.push({
+            id: uuidv4(),
+            city,
+            ...(Number.isFinite(nights) && nights > 0 ? { nights } : {}),
+          });
+        }
+        if (!stops.length) return { ok: false, message: 'I did not catch any city names there.' };
+
+        await db.plans.update(plan.id, { stops, updatedAt: new Date().toISOString() });
+        const route = tripRoute({ ...plan, stops });
+        return {
+          ok: true,
+          message: `Noted — the route is now ${route.join(' \u2192 ')}. Regenerate the itinerary to plan it in that order.`,
+        };
       }
 
       case 'add_todo': {
@@ -541,6 +656,23 @@ export async function executeAgentAction(
  * about has to be in the prompt up front. Clipboard bodies are omitted — titles
  * and types are enough to answer "what have I saved?" without bloating context.
  */
+/** What the assistant needs to know about the shape of the journey. */
+function routeLines(plan: Plan): string[] {
+  const lines: string[] = [];
+  const route = tripRoute(plan);
+  if (route.length > 1) lines.push(`Route, in visit order: ${route.join(' \u2192 ')}`);
+
+  const arrival = describeLeg(plan.arrival, plan.destination);
+  lines.push(
+    arrival
+      ? `Getting there: ${arrival}`
+      : 'Getting there: not recorded — if the user says where they set off from, call set_travel_leg so the itinerary can be planned in the right order.',
+  );
+  const departure = describeLeg(plan.departure, plan.destination);
+  if (departure) lines.push(`Heading home: ${departure}`);
+  return lines;
+}
+
 export function buildSystemPrompt(
   plan: Plan,
   activeTab: string,
@@ -567,6 +699,7 @@ export function buildSystemPrompt(
     'Choose between an activity and a to-do by what the user is describing: an ACTIVITY is something they do at a time and place on a specific day (use add_activity); a TO-DO is something to arrange or remember beforehand, with no slot in the day (use add_todo). "Book the train" is a to-do; "take the 9am train to Kyoto" is an activity.',
     'Use move_activity to change which day or time an existing activity sits at — do not remove and re-add it, which loses its notes and location.',
     'Use pin_activity_to_todo when the user wants to track booking or preparing for something already in the itinerary.',
+    'The destination is what the trip is ABOUT, not necessarily where it starts. If the user says they set off from somewhere else — "we drive up from Montreal" — record it with set_travel_leg rather than adding an activity for it, or the next generated itinerary will still start at the far end. Use set_trip_stops to set or correct the cities in between, in visit order.',
     'The to-do and clipboard lists below are the current state — use them to answer questions directly rather than calling a tool.',
     'For detail they do NOT contain — an activity\'s location or notes, or the saved text inside a clipboard item — call find_activities or read_clipboard_item first, then answer from what comes back. You will get the results and a turn to reply.',
     'To REPLACE one activity with another (e.g. "swap the museum for the aquarium"), call edit_activity with nameMatch set to the current activity and newName (and locationName) set to the replacement — this keeps its time slot. Use remove_activity only when the user wants it gone with nothing in its place.',
@@ -576,6 +709,9 @@ export function buildSystemPrompt(
     `Today's date: ${today}`,
     `Active tab: ${activeTab}`,
     `Plan: ${plan.destination} (${plan.startDate} to ${plan.endDate})`,
+    // Without this the assistant cannot tell whether the trip already knows
+    // it starts in Montreal, and would answer as though it did not.
+    ...routeLines(plan),
     'Itinerary summary:',
     summary || '(no days yet)',
     'To-do list:',
