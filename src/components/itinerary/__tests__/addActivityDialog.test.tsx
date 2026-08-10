@@ -138,3 +138,18 @@ describe('inserting between two cards', () => {
     expect(screen.getByLabelText('Exact time')).toBeInTheDocument();
   });
 });
+
+// Adding reads as "make something" against the red of removing one.
+describe('what the add controls say', () => {
+  it('colours the + between cards as an addition', () => {
+    setViewport(DESKTOP);
+    render(<ItineraryView plan={threeActs} />);
+    expect(screen.getAllByTestId('add-activity-gap')[0].className).toContain('text-status-success');
+  });
+
+  it('colours the add link the same way', () => {
+    setViewport(DESKTOP);
+    render(<ItineraryView plan={plan} />);
+    expect(screen.getByText('Add activity').className).toContain('text-status-success');
+  });
+});

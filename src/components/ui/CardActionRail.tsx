@@ -50,6 +50,14 @@ export function CardAction({
   active?: boolean;
   testId?: string;
 }) {
+  /*
+   * Destructive actions are red at rest, not only under a cursor. A delete
+   * that looks like every other control until you hover it tells a user
+   * nothing at the moment they are deciding where to press — and on a phone
+   * there is no hover at all.
+   */
+  const base =
+    tone === 'danger' ? 'text-status-danger/70' : active ? 'text-accent' : 'text-ink-muted';
   const hover =
     tone === 'danger'
       ? 'hover:text-status-danger hover:bg-status-danger/10'
@@ -64,9 +72,7 @@ export function CardAction({
       aria-pressed={active ? true : undefined}
       // p-2 keeps every one of these a real touch target; the hover-revealed
       // versions these replace were unhittable on a phone.
-      className={`p-2 rounded-lg focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none transition-colors ${
-        active ? 'text-accent' : 'text-ink-muted'
-      } ${hover}`}
+      className={`p-2 rounded-lg focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none transition-colors ${base} ${hover}`}
       data-testid={testId}
     >
       {icon}

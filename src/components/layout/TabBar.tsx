@@ -27,16 +27,16 @@ const TABS: Tab[] = [
     icon: <CheckSquare size={16} aria-hidden="true" />,
   },
   {
-    key: 'map',
-    label: 'Map',
-    path: 'map',
-    icon: <Map size={16} aria-hidden="true" />,
-  },
-  {
     key: 'clipboard',
     label: 'Clipboard',
     path: 'clipboard',
     icon: <Paperclip size={16} aria-hidden="true" />,
+  },
+  {
+    key: 'map',
+    label: 'Map',
+    path: 'map',
+    icon: <Map size={16} aria-hidden="true" />,
   },
 ];
 
