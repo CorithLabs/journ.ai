@@ -94,3 +94,45 @@ describe('opening the trip settings', () => {
     expect(screen.queryByTestId('trip-details-panel')).not.toBeInTheDocument();
   });
 });
+
+/*
+ * Styled as plain text with a hover colour it read as neither label nor
+ * control: nothing said it could be pressed, and on a phone there is no hover
+ * to discover it with.
+ */
+describe('looking like a control', () => {
+  beforeEach(() => vi.mocked(useLiveQuery).mockReturnValue(plan));
+
+  it('is drawn as a pill, the shape the tabs beside it use', () => {
+    render(<MemoryRouter><PlanBreadcrumb planId="p1" /></MemoryRouter>);
+    const btn = screen.getByTestId('breadcrumb-plan-btn');
+    expect(btn.className).toContain('rounded-full');
+    expect(btn.className).toContain('border');
+  });
+
+  // The affordance cannot depend on hover, since a phone has none.
+  it('carries its affordance without being hovered', () => {
+    render(<MemoryRouter><PlanBreadcrumb planId="p1" /></MemoryRouter>);
+    const btn = screen.getByTestId('breadcrumb-plan-btn');
+    expect(btn.className).toContain('border-white/10');
+    expect(btn.querySelectorAll('svg')).toHaveLength(2); // the pin, and the chevron
+  });
+
+  it('announces that it opens a dialog', () => {
+    render(<MemoryRouter><PlanBreadcrumb planId="p1" /></MemoryRouter>);
+    expect(screen.getByTestId('breadcrumb-plan-btn')).toHaveAttribute('aria-haspopup', 'dialog');
+  });
+
+  it('says while it is open', () => {
+    render(<MemoryRouter><PlanBreadcrumb planId="p1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('breadcrumb-plan-btn'));
+    expect(screen.getByTestId('breadcrumb-plan-btn')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  // A long name must not push the tabs off the bar.
+  it('lets a long plan name truncate rather than grow', () => {
+    render(<MemoryRouter><PlanBreadcrumb planId="p1" /></MemoryRouter>);
+    const label = screen.getByText('Ottawa, Canada');
+    expect(label.className).toContain('truncate');
+  });
+});
