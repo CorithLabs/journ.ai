@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, MapPin } from 'lucide-react';
 import { db, type Plan, type TripLeg, type TripStop } from '../../db';
 import { LegFields, StopsFields, BorderPicker } from './TripDetailsFields';
@@ -106,8 +107,20 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" data-testid="trip-details-panel">
+  /*
+   * Rendered into the body rather than where it is called from.
+   *
+   * This opens from the plan name in the tab bar, which carries
+   * backdrop-blur — and backdrop-filter creates a stacking context, so a
+   * fixed child is confined to it however high its z-index goes. The panel
+   * was painting underneath the itinerary because the bar paints before the
+   * tab content that follows it. A portal leaves that context entirely.
+   */
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass"
+      data-testid="trip-details-panel"
+    >
       <div
         role="dialog"
         aria-modal="true"
@@ -213,6 +226,7 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
