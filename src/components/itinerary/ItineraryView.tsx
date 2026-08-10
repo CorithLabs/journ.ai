@@ -445,7 +445,7 @@ export default function ItineraryView({ plan }: Props) {
                     <LinkedClipboardCard
                       key={c.id}
                       item={c}
-                      onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                      onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}?from=itinerary`)}
                     />
                   ))}
 
@@ -472,7 +472,7 @@ export default function ItineraryView({ plan }: Props) {
                           <LinkedClipboardCard
                             key={c.id}
                             item={c}
-                            onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                            onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}?from=itinerary`)}
                           />
                         ))}
 
@@ -494,7 +494,7 @@ export default function ItineraryView({ plan }: Props) {
                       <LinkedClipboardCard
                         key={c.id}
                         item={c}
-                        onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}`)}
+                        onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}?from=itinerary`)}
                       />
                     ))}
 

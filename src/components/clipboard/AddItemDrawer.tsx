@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { SlotPicker } from '../itinerary/ActivityCard';
+import { exactTime } from '../../utils/activityTime';
 import { X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { db, type ClipboardItem } from '../../db';
@@ -27,6 +29,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [file, setFile] = useState<SelectedFile | null>(null);
+  const [time, setTime] = useState('');
   const [saving, setSaving] = useState(false);
 
   const overLimit = body.length > BODY_MAX;
@@ -45,6 +48,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
         // Empty title → fall back to the file name, then the type as a default.
         title: title.trim() || file?.fileName || type,
         body: body.trim() ? body : undefined,
+        time: time || undefined,
         fileBlob: file?.blob,
         fileName: file?.fileName,
         fileSize: file?.fileSize,
@@ -126,6 +130,30 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
 
           {/* Body */}
           <div>
+            {/* Set here rather than only when editing: a check-in time is
+                known as the confirmation is being saved, and going back to
+                add it afterwards is a step nobody takes. It shows on the
+                itinerary once the item is linked to a day. */}
+            <div className="mb-4 space-y-1.5" data-testid="add-time">
+              <p className="block text-sm text-ink-secondary">When, if it has a time</p>
+              <SlotPicker value={time} onPick={setTime} />
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={exactTime(time) ?? ''}
+                  onChange={(e) => setTime(e.target.value)}
+                  aria-label="Exact time"
+                  className="bg-surface-overlay border border-white/10 rounded-xl px-3 py-1.5 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  data-testid="add-exact-time"
+                />
+                {time && (
+                  <button type="button" onClick={() => setTime('')} className="text-xs text-ink-muted hover:underline" data-testid="add-clear-time">
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             <label htmlFor="clip-body" className="block text-sm text-ink-secondary mb-1.5">
               Notes
             </label>
