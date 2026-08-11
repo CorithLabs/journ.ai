@@ -116,3 +116,60 @@ describe('a clipboard item linked to a day', () => {
     expect(screen.getByTestId('itinerary-view')).toBeInTheDocument();
   });
 });
+
+/*
+ * A hotel confirmation attached to "Check in at the auberge" is part of that
+ * plan. Listed separately in the day, the two could be read — and moved —
+ * apart, which is exactly what linking them was meant to prevent.
+ */
+describe('an item linked to a particular activity', () => {
+  const linkedToA1 = () => clip({ linkedDayIndex: 0, linkedActivityId: 'a1', time: '15:00' });
+
+  it('is drawn as part of that card, not as another card in the day', () => {
+    show([linkedToA1()]);
+    expect(screen.getByTestId('attached-clipboard-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('linked-clipboard-card')).not.toBeInTheDocument();
+  });
+
+  it('sits with its own activity rather than anywhere in the day', () => {
+    show([linkedToA1()]);
+    const attached = screen.getByTestId('attached-clipboard-card');
+    const cards = screen.getAllByTestId('activity-card');
+    // Immediately after the first card, and before the second.
+    expect(cards[0].compareDocumentPosition(attached) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(cards[1].compareDocumentPosition(attached) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it('says it is attached, for anyone who cannot see that it is', () => {
+    show([linkedToA1()]);
+    expect(screen.getByLabelText(/attached to this activity/i)).toBeInTheDocument();
+  });
+
+  it('is drawn joined to the card above it', () => {
+    show([linkedToA1()]);
+    const cls = screen.getByTestId('attached-clipboard-card').className;
+    expect(cls).toContain('rounded-t-none');
+    expect(cls).toContain('border-t-0');
+  });
+
+  it('stays a day-level card when it names no activity', () => {
+    show([clip({ linkedDayIndex: 0, time: '15:00' })]);
+    expect(screen.getByTestId('linked-clipboard-card')).toBeInTheDocument();
+    expect(screen.queryByTestId('attached-clipboard-card')).not.toBeInTheDocument();
+  });
+
+  // A confirmation must not vanish because the activity it described was
+  // deleted from under it.
+  it('falls back to the day when its activity is gone', () => {
+    show([clip({ linkedDayIndex: 0, linkedActivityId: 'deleted-long-ago', time: '15:00' })]);
+    expect(screen.getByTestId('linked-clipboard-card')).toBeInTheDocument();
+  });
+
+  it('shows several attached to the same activity', () => {
+    show([
+      clip({ id: 'c1', title: 'Booking', linkedDayIndex: 0, linkedActivityId: 'a1' }),
+      clip({ id: 'c2', title: 'Receipt', linkedDayIndex: 0, linkedActivityId: 'a1' }),
+    ]);
+    expect(screen.getAllByTestId('attached-clipboard-card')).toHaveLength(2);
+  });
+});

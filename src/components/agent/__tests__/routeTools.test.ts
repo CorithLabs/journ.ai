@@ -123,3 +123,42 @@ describe('what the assistant is told about the journey', () => {
     expect(out).toContain('set_travel_leg');
   });
 });
+
+/*
+ * The itinerary draws attachments by activity, so they follow it on screen
+ * either way — but the clipboard shows "linked to Day 2" from the stored
+ * index, and left alone it would go on naming the day the activity used to
+ * be on.
+ */
+describe('moving an activity that has confirmations attached', () => {
+  const twoDays: Plan = {
+    ...plan,
+    itinerary: [
+      { dayIndex: 0, label: 'Day 1', activities: [{ id: 'a1', name: 'Auberge check-in', time: 'evening', locationName: '', notes: '', pinnedToTodo: false }] },
+      { dayIndex: 1, label: 'Day 2', activities: [] },
+    ],
+  };
+
+  it('takes them to the new day', async () => {
+    vi.spyOn(db.clipboard, 'where').mockReturnValue({
+      equals: () => ({ toArray: async () => [
+        { id: 'c1', planId: 'p1', type: 'Hotel', title: 'Booking', linkedActivityId: 'a1', linkedDayIndex: 0, createdAt: '', updatedAt: '' },
+      ] }),
+    } as never);
+    const update = vi.spyOn(db.clipboard, 'update').mockResolvedValue(1);
+
+    await executeAgentAction(twoDays, {
+      id: '1', name: 'move_activity', args: { nameMatch: 'auberge', toDayIndex: 1 },
+    });
+
+    expect(update).toHaveBeenCalledWith('c1', expect.objectContaining({ linkedDayIndex: 1 }));
+  });
+
+  it('leaves them alone when the activity only changes time', async () => {
+    const update = vi.spyOn(db.clipboard, 'update').mockResolvedValue(1);
+    await executeAgentAction(twoDays, {
+      id: '1', name: 'move_activity', args: { nameMatch: 'auberge', time: 'night' },
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
