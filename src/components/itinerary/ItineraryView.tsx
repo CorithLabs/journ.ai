@@ -265,11 +265,32 @@ export default function ItineraryView({ plan }: Props) {
     Array.isArray(todos) ? todos : [],
   );
 
+  /*
+   * Attachments are found by activity, across the whole plan, rather than by
+   * the day the item recorded when it was linked. Move the activity to another
+   * day and its confirmation goes with it — which is what linking the two was
+   * for. Keyed off linkedDayIndex it would have stayed behind on the old day.
+   */
+  const attachedByActivity = new Map<string, ClipboardItem[]>();
+  const activityDay = new Map<string, number>();
+  for (const d of plan.itinerary) {
+    for (const a of d.activities) activityDay.set(a.id, d.dayIndex);
+  }
+  for (const c of Array.isArray(linked) ? linked : []) {
+    if (c.linkedActivityId && activityDay.has(c.linkedActivityId)) {
+      const list = attachedByActivity.get(c.linkedActivityId) ?? [];
+      list.push(c);
+      attachedByActivity.set(c.linkedActivityId, list);
+    }
+  }
+
   const linkedByDay = new Map<number, ClipboardItem[]>();
   // Undefined while the query is in flight, and the itinerary is worth
   // rendering before the clipboard has loaded.
   for (const c of Array.isArray(linked) ? linked : []) {
     if (c.linkedDayIndex === undefined) continue;
+    // Anything attached to an activity is drawn with that activity instead.
+    if (c.linkedActivityId && activityDay.has(c.linkedActivityId)) continue;
     const list = linkedByDay.get(c.linkedDayIndex) ?? [];
     list.push(c);
     linkedByDay.set(c.linkedDayIndex, list);
@@ -379,6 +400,7 @@ export default function ItineraryView({ plan }: Props) {
     await persist(plan.itinerary.map((d, i) => (i === di ? { ...d, activities: next } : d)));
   };
 
+
   /**
    * A booked activity is one the user has already committed to — a linked
    * clipboard confirmation, or a to-do they ticked off. Changing its time may
@@ -465,6 +487,12 @@ export default function ItineraryView({ plan }: Props) {
           const isCol = collapsed[day.dayIndex];
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
           const isToday = day.dayIndex === todayIndex;
+          /*
+           * Whatever is pinned to the day itself. A link to an activity that
+           * is no longer anywhere in the plan lands here too, so a
+           * confirmation cannot disappear because the activity it described
+           * was deleted from under it.
+           */
           const dayClips = sortBySlot(linkedByDay.get(day.dayIndex) ?? [], c => c.time);
           const dayDate = dateForDayIndex(plan.startDate, day.dayIndex);
           const dayWeather = dayDate ? weatherByDate?.[dayDate] : undefined;
@@ -555,6 +583,19 @@ export default function ItineraryView({ plan }: Props) {
                         onDel={() => delAct(day.dayIndex, act.id)}
                         onUpd={u => updAct(day.dayIndex, act.id, u)}
                         onPin={() => pinAct(day.dayIndex, act)} />
+
+                      {/* Joined to the card above rather than listed after it:
+                          the confirmation and the plan it belongs to are one
+                          thing, and they move together because the link is to
+                          the activity itself. */}
+                      {(attachedByActivity.get(act.id) ?? []).map(c => (
+                        <LinkedClipboardCard
+                          key={c.id}
+                          item={c}
+                          attached
+                          onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}?from=itinerary`)}
+                        />
+                      ))}
                       {/* The only way to reorder on touch — HTML5 drag and drop
                           does not fire on mobile — so these get real tap
                           targets rather than the 16px-tall text links they

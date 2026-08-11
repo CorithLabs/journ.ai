@@ -21,19 +21,36 @@ import { TYPE_BORDER } from '../clipboard/clipboardConstants';
 export default function LinkedClipboardCard({
   item,
   onOpen,
+  /**
+   * Tied to the card above it, rather than standing on its own in the day.
+   *
+   * Drawn as one piece with it: no gap, no top corners, and indented so the
+   * card's own edge continues through. A confirmation and the plan it belongs
+   * to are one thing, and looking like two invited them to be read apart.
+   */
+  attached = false,
 }: {
   item: ClipboardItem;
   onOpen: () => void;
+  attached?: boolean;
 }) {
   const border = TYPE_BORDER[item.type] ?? 'border-l-category-slate';
   const clock = exactTime(item.time);
 
+  const shape = attached
+    ? `-mt-px ml-3 rounded-t-none rounded-b-card border-t-0`
+    : 'rounded-card';
+
   return (
     <button
       onClick={onOpen}
-      className={`w-full text-left flex items-center gap-2 border-l-2 ${border} border-y border-r border-dashed border-white/10 rounded-card px-3 py-2 bg-surface-base/40 hover:bg-surface-raised/60 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none`}
-      data-testid="linked-clipboard-card"
-      aria-label={`${item.type}: ${item.title} — open in clipboard`}
+      className={`w-full text-left flex items-center gap-2 border-l-2 ${border} border-y border-r border-dashed border-white/10 ${shape} px-3 py-2 bg-surface-base/40 hover:bg-surface-raised/60 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none`}
+      data-testid={attached ? 'attached-clipboard-card' : 'linked-clipboard-card'}
+      aria-label={
+        attached
+          ? `${item.type}: ${item.title} — attached to this activity, open in clipboard`
+          : `${item.type}: ${item.title} — open in clipboard`
+      }
     >
       <Paperclip size={13} className="shrink-0 text-ink-muted" aria-hidden="true" />
 

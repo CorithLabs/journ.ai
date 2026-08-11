@@ -397,6 +397,24 @@ export async function executeAgentAction(
             return { ...day, activities: without };
           });
           await db.plans.update(plan.id, { itinerary, updatedAt: new Date().toISOString() });
+
+          /*
+           * Confirmations attached to this activity go with it.
+           *
+           * The itinerary draws them by activity so they follow it on screen
+           * either way, but the clipboard shows "linked to Day 2" from the
+           * stored index — left alone it would go on naming the day the
+           * activity used to be on.
+           */
+          if (dest !== d.dayIndex) {
+            const attached = await db.clipboard.where('planId').equals(plan.id).toArray();
+            for (const c of attached) {
+              if (c.linkedActivityId === act.id) {
+                await db.clipboard.update(c.id, { linkedDayIndex: dest, updatedAt: new Date().toISOString() });
+              }
+            }
+          }
+
           const where = dest !== d.dayIndex ? ` to Day ${dest + 1}` : '';
           const when = newTime ? ` at ${newTime}` : '';
           return { ok: true, message: `Done — I've moved "${act.name}"${where}${when}.` };
