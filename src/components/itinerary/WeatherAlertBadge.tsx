@@ -26,6 +26,11 @@ interface Props {
    * it displays.
    */
   plan?: Plan;
+  /**
+   * Days already committed to — a reserved table, a tour that starts that
+   * morning. They cannot take another day's activities.
+   */
+  bookedDays?: Set<number>;
   intake?: {
     likes: string[];
     dislikes: string[];
@@ -76,6 +81,7 @@ export default function WeatherAlertBadge({
   allWeather,
   planStartDate,
   plan,
+  bookedDays,
   intake,
   onGetSuggestions,
   isOffline,
@@ -97,7 +103,15 @@ export default function WeatherAlertBadge({
      * good the Osaka weather is — and asking the AI to work that out invites
      * it to answer wrongly on a question the plan already settles.
      */
-    const candidates = plan ? swappableDays(plan, day.dayIndex) : allDays.filter(d => d.dayIndex !== day.dayIndex);
+    const sameCity = plan ? swappableDays(plan, day.dayIndex) : allDays.filter(d => d.dayIndex !== day.dayIndex);
+    /*
+     * And not already committed to. The prompt used to ask the AI to avoid
+     * days with confirmed bookings while passing it no booking data at all,
+     * so the instruction was unenforceable — the model could only guess, and
+     * a guess here moves a dinner someone has reserved.
+     */
+    const candidates = bookedDays ? sameCity.filter(d => !bookedDays.has(d.dayIndex)) : sameCity;
+    const heldBack = sameCity.length - candidates.length;
 
     const otherDaysSummary = candidates
       .map(d => {
@@ -137,9 +151,12 @@ export default function WeatherAlertBadge({
       affectedActivities || '  (no activities yet)',
       '',
       city ? `This day is in ${city}.` : '',
+      heldBack > 0 ? `${heldBack} other day(s) here already have bookings and cannot be moved.` : '',
       '',
       candidates.length
         ? `Days in ${city ?? 'the same city'} that could take these activities:`
+        : sameCity.length
+        ? `Every other day in ${city ?? 'this city'} already has bookings against it, so a swap is not possible.`
         : `No other day of this trip is in the same city, so a swap is not possible.`,
       otherDaysSummary || '',
       '',
@@ -152,8 +169,8 @@ export default function WeatherAlertBadge({
       '',
       `Please evaluate these two strategies in order:`,
       candidates.length
-        ? `1. DAY SWAP: If one of the days listed above has acceptable weather (low rain probability, no severe alerts) AND no confirmed bookings, suggest swapping the full activity lists of the two days. Only the days listed are in the same city; do not propose any other swap.`
-        : `1. DAY SWAP: Not available on this trip — every other day is in a different city. Skip straight to alternatives.`,
+        ? `1. DAY SWAP: If one of the days listed above has acceptable weather (low rain probability, no severe alerts), suggest swapping the full activity lists of the two days. Only the days listed are candidates — the rest are in another city or already have bookings against them — so do not propose any other swap.`
+        : `1. DAY SWAP: Not available on this trip. Skip straight to alternatives.`,
       `2. ACTIVITY ALTERNATIVES: If a swap is not possible, suggest indoor or weather-appropriate alternatives for each affected outdoor activity. Alternatives must respect the user's likes/dislikes, be age-appropriate if kids are present, and stay within the budget range.`,
       `For each suggestion, indicate whether it may exceed the budget (budgetWarning: true).`,
       `Format each suggestion clearly as either "DAY SWAP: ..." or "ALTERNATIVE: [original activity] → [suggested replacement]".`,

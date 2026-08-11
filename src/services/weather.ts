@@ -3,6 +3,20 @@ import { type WeatherDay } from '../store';
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
 const MAX_FORECAST_DAYS = 16;
 
+/**
+ * Whether a date is further ahead than anyone can forecast.
+ *
+ * Open-Meteo goes about sixteen days out. Beyond that there is no forecast to
+ * be had, which is a different thing from one failing to arrive — and worth
+ * saying, because an itinerary with no weather on it otherwise looks broken.
+ */
+export function isBeyondForecast(startDate: string, now: Date = new Date()): boolean {
+  const start = Date.parse(`${startDate?.slice(0, 10)}T00:00:00Z`);
+  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(start)) return false;
+  return (start - today) / 86400000 > MAX_FORECAST_DAYS;
+}
+
 interface OpenMeteoResponse {
   daily: {
     time: string[];

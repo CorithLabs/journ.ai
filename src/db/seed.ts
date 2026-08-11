@@ -42,8 +42,11 @@ function buildDemoPlan(): Plan {
     id: uuidv4(),
     name: 'Tokyo Explorer',
     destination: 'Tokyo, Japan',
-    startDate: isoDateOffset(30),
-    endDate: isoDateOffset(32),
+    // Inside the forecast horizon on purpose: at 30 days out Open-Meteo
+    // returns nothing, so the seeded plan demonstrated an itinerary with the
+    // weather silently missing from it.
+    startDate: isoDateOffset(4),
+    endDate: isoDateOffset(6),
     createdAt: now,
     updatedAt: now,
     deleted: false,
