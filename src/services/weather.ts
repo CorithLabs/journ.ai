@@ -123,3 +123,36 @@ export async function fetchWeatherForPlan(
   if (!coords) return null;
   return fetchWeather(coords[1], coords[0], startDate, endDate);
 }
+
+/**
+ * A forecast per city, for a trip that visits more than one.
+ *
+ * Weather is a city, not a coordinate: a Tokyo forecast says nothing about
+ * the day spent in Osaka, 400km away. Each city is geocoded and forecast
+ * once, and the days assigned to it take its numbers.
+ *
+ * A city that fails to geocode leaves its days without a forecast rather than
+ * borrowing another city's, since a wrong forecast is worse than none — it is
+ * what an alert would then be reasoning from.
+ */
+export async function fetchWeatherByCity(
+  cityForDate: Record<string, string>,
+  startDate: string,
+  endDate: string,
+  mapboxToken: string | null,
+): Promise<Record<string, WeatherDay> | null> {
+  const cities = [...new Set(Object.values(cityForDate))];
+  if (!cities.length) return null;
+
+  const out: Record<string, WeatherDay> = {};
+  for (const city of cities) {
+    const coords = await geocodeDestination(city, mapboxToken);
+    if (!coords) continue;
+    const forecast = await fetchWeather(coords[1], coords[0], startDate, endDate);
+    if (!forecast) continue;
+    for (const [date, assigned] of Object.entries(cityForDate)) {
+      if (assigned === city && forecast[date]) out[date] = forecast[date];
+    }
+  }
+  return Object.keys(out).length ? out : null;
+}

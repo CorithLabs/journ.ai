@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fetchWeather, geocodeDestination, fetchWeatherForPlan } from '../weather';
+import { fetchWeather, geocodeDestination, fetchWeatherForPlan, fetchWeatherByCity } from '../weather';
 
 const MOCK_GEOCODE_RESPONSE = {
   features: [{ center: [139.6917, 35.6895] }],
@@ -171,5 +171,62 @@ describe('fetchWeatherForPlan', () => {
       'pk.test',
     );
     expect(result).toBeNull();
+  });
+});
+
+/*
+ * A trip that visits more than one city needs more than one forecast: a Tokyo
+ * forecast says nothing about the day spent in Osaka, 400km away.
+ */
+describe('fetchWeatherByCity', () => {
+  const ok = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
+  const geo = (lng: number, lat: number) => ok({ features: [{ center: [lng, lat] }] });
+  const forecast = (dates: string[]) => ok({
+    daily: {
+      time: dates,
+      weathercode: dates.map(() => 61),
+      temperature_2m_max: dates.map(() => 18),
+      temperature_2m_min: dates.map(() => 11),
+      precipitation_probability_max: dates.map(() => 70),
+      windspeed_10m_max: dates.map(() => 12),
+      apparent_temperature_max: dates.map(() => 17),
+    },
+  });
+
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('geocodes and forecasts each city once, not once per day', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(geo(139.7, 35.7)).mockResolvedValueOnce(forecast(['2025-08-01', '2025-08-02']))
+      .mockResolvedValueOnce(geo(135.5, 34.7)).mockResolvedValueOnce(forecast(['2025-08-03']));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const out = await fetchWeatherByCity(
+      { '2025-08-01': 'Tokyo', '2025-08-02': 'Tokyo', '2025-08-03': 'Osaka' },
+      '2025-08-01', '2025-08-03', 'pk.test',
+    );
+    expect(Object.keys(out ?? {}).sort()).toEqual(['2025-08-01', '2025-08-02', '2025-08-03']);
+    expect(fetchMock).toHaveBeenCalledTimes(4); // two cities, geocode + forecast each
+  });
+
+  // A wrong forecast is worse than none: it is what an alert reasons from.
+  it('leaves a city that will not geocode without a forecast', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(geo(139.7, 35.7)).mockResolvedValueOnce(forecast(['2025-08-01']))
+      .mockResolvedValueOnce(ok({ features: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const out = await fetchWeatherByCity(
+      { '2025-08-01': 'Tokyo', '2025-08-02': 'Nowhere' },
+      '2025-08-01', '2025-08-02', 'pk.test',
+    );
+    expect(out).toHaveProperty('2025-08-01');
+    expect(out).not.toHaveProperty('2025-08-02');
+  });
+
+  it('has nothing to say without a token', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok({ features: [] })));
+    expect(await fetchWeatherByCity({ '2025-08-01': 'Tokyo' }, '2025-08-01', '2025-08-01', null)).toBeNull();
   });
 });
