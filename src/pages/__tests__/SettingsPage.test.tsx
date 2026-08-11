@@ -246,3 +246,24 @@ describe('SettingsPage — Mapbox token', () => {
     });
   });
 });
+
+/*
+ * The forecast is fetched for every plan already; this decides how it reads.
+ * Celsius by default because that is what the forecast arrives in, so the
+ * default costs no conversion.
+ */
+describe('temperature unit', () => {
+  it('starts in Celsius', () => {
+    localStorage.clear();
+    render(<SettingsPage />);
+    expect(screen.getByTestId('temp-unit-C')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('remembers Fahrenheit', () => {
+    localStorage.clear();
+    render(<SettingsPage />);
+    fireEvent.click(screen.getByTestId('temp-unit-F'));
+    expect(localStorage.getItem('aitp_temp_unit')).toBe('F');
+    expect(screen.getByTestId('temp-unit-F')).toHaveAttribute('aria-pressed', 'true');
+  });
+});

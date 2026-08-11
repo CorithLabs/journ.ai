@@ -4,7 +4,7 @@ import { type Plan, type Day, type Activity, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import Toast from '../ui/Toast';
 
-interface Suggestion {
+export interface Suggestion {
   id: string;
   type: 'swap' | 'alternative';
   /** For swap: the dayIndex to swap with */

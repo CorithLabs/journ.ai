@@ -1,4 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { useAppStore } from '../../store';
+import { getTempUnit } from '../../services/units';
+import { streamCompletion } from '../../services/aiClient';
+import { dateForDayIndex } from '../../utils/tripDay';
+import { hasOutdoorPlans } from '../../utils/outdoor';
+import WeatherStrip from './WeatherStrip';
+import WeatherAlertBadge from './WeatherAlertBadge';
+import WeatherSuggestionsPanel, { parseSuggestions, type Suggestion } from './WeatherSuggestionsPanel';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -201,6 +209,42 @@ export default function ItineraryView({ plan }: Props) {
   const navigate = useNavigate();
 
   /*
+   * The forecast was already being fetched on every plan open and thrown
+   * away: useWeather wrote it to the store and nothing ever read it. Three
+   * finished components sat unmounted while the API calls went out anyway.
+   */
+  const weatherByDate = useAppStore((st) => st.weatherByDate);
+  const isOffline = useAppStore((st) => st.offlineBannerVisible);
+  const useFahrenheit = getTempUnit() === 'F';
+  const [suggesting, setSuggesting] = useState<number | null>(null);
+  const [suggestions, setSuggestions] = useState<{ dayIndex: number; items: Suggestion[] } | null>(null);
+  const [suggestError, setSuggestError] = useState('');
+
+  /**
+   * Ask the AI to rearrange around the weather.
+   *
+   * The badge builds the prompt, because it is the thing that knows which
+   * alerts fired and which days are clear enough to swap with.
+   */
+  const askForSuggestions = async (dayIndex: number, prompt: string) => {
+    setSuggesting(dayIndex);
+    setSuggestError('');
+    try {
+      const text = await streamCompletion([{ role: 'user', content: prompt }]);
+      const parsed = parseSuggestions(text, plan, dayIndex);
+      if (!parsed.length) {
+        setSuggestError('The AI did not come back with anything usable. Try again?');
+        return;
+      }
+      setSuggestions({ dayIndex, items: parsed });
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : 'Could not reach the AI.');
+    } finally {
+      setSuggesting(null);
+    }
+  };
+
+  /*
    * Clipboard items linked to a day belong on that day. Linking a hotel
    * confirmation to day three used to record the link and show it nowhere,
    * so the itinerary said nothing about a check-in and the only way to find
@@ -397,6 +441,8 @@ export default function ItineraryView({ plan }: Props) {
           const bb = budgetLabel(day.estimatedDailySpend, plan.intake?.budgetRange);
           const isToday = day.dayIndex === todayIndex;
           const dayClips = sortBySlot(linkedByDay.get(day.dayIndex) ?? [], c => c.time);
+          const dayDate = dateForDayIndex(plan.startDate, day.dayIndex);
+          const dayWeather = dayDate ? weatherByDate?.[dayDate] : undefined;
           const near = relativeDayLabel(plan.startDate, day.dayIndex);
 
           return (
@@ -428,6 +474,36 @@ export default function ItineraryView({ plan }: Props) {
                 {bb && <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bb.warn ? 'text-status-warning bg-status-warning/10' : 'text-accent bg-accent/10'}`}>{bb.text}</span>}
                 {isCol ? <ChevronRight size={16} className="text-ink-muted" /> : <ChevronDown size={16} className="text-ink-muted" />}
               </button>
+
+              {dayWeather && (
+                <div className="ml-4 pl-3 pb-1">
+                  <WeatherStrip weather={dayWeather} useFahrenheit={useFahrenheit} isToday={isToday} />
+                </div>
+              )}
+
+              {/* Only when the weather can actually spoil something: a warning
+                  on a wet day spent entirely in museums teaches people to
+                  ignore the ones that are not wrong. */}
+              {dayWeather && hasOutdoorPlans(day) && weatherByDate && (
+                <div className="ml-4 pl-3 pb-2">
+                  <WeatherAlertBadge
+                    weather={dayWeather}
+                    day={day}
+                    allDays={plan.itinerary}
+                    allWeather={weatherByDate}
+                    planStartDate={plan.startDate}
+                    intake={plan.intake ?? null}
+                    isOffline={isOffline}
+                    onGetSuggestions={(prompt) => askForSuggestions(day.dayIndex, prompt)}
+                  />
+                  {suggesting === day.dayIndex && (
+                    <p className="text-xs text-ink-secondary mt-1" role="status">Asking the AI…</p>
+                  )}
+                  {suggestError && suggesting === null && (
+                    <p className="text-xs text-status-danger mt-1" role="alert" data-testid="weather-suggest-error">{suggestError}</p>
+                  )}
+                </div>
+              )}
 
               {!isCol && (
                 <div className={`space-y-2 ml-4 border-l-2 pl-3 pb-2 border-white/5`}>
@@ -504,6 +580,16 @@ export default function ItineraryView({ plan }: Props) {
           );
         })}
       </div>
+
+      {suggestions && (
+        <WeatherSuggestionsPanel
+          plan={plan}
+          affectedDayIndex={suggestions.dayIndex}
+          suggestions={suggestions.items}
+          onClose={() => setSuggestions(null)}
+          onToast={(msg, undo) => setToast({ msg, undo })}
+        />
+      )}
 
       {toast && <Toast message={toast.msg} onDismiss={() => setToast(null)} action={toast.undo ? { label: 'Undo', onClick: toast.undo } : undefined} />}
     </div>
