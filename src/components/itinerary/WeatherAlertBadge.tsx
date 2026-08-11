@@ -11,6 +11,8 @@ import {
 import { type WeatherDay } from '../../store';
 import { type WeatherAlert, detectAlerts } from '../../utils/weatherUtils';
 import { type Day } from '../../db';
+import type { Plan } from '../../db';
+import { cityForDay, swappableDays } from '../../utils/dayCity';
 
 interface Props {
   weather: WeatherDay;
@@ -18,6 +20,12 @@ interface Props {
   allDays: Day[];
   allWeather: Record<string, WeatherDay>;
   planStartDate: string;
+  /**
+   * The whole plan, for working out which city a day is in. Optional so the
+   * badge can still be rendered from a test or a preview with only the pieces
+   * it displays.
+   */
+  plan?: Plan;
   intake?: {
     likes: string[];
     dislikes: string[];
@@ -67,10 +75,12 @@ export default function WeatherAlertBadge({
   allDays,
   allWeather,
   planStartDate,
+  plan,
   intake,
   onGetSuggestions,
   isOffline,
 }: Props) {
+  const city = plan ? cityForDay(plan, day) : null;
   const alerts = detectAlerts(weather);
   if (alerts.length === 0) return null;
 
@@ -81,8 +91,15 @@ export default function WeatherAlertBadge({
       .map(a => `  - ${a.time} ${a.name} at ${a.locationName}`)
       .join('\n');
 
-    const otherDaysSummary = allDays
-      .filter(d => d.dayIndex !== day.dayIndex)
+    /*
+     * Only days in the same city can take these activities. A rainy Tokyo day
+     * and a clear Osaka one are different places, so they cannot trade however
+     * good the Osaka weather is — and asking the AI to work that out invites
+     * it to answer wrongly on a question the plan already settles.
+     */
+    const candidates = plan ? swappableDays(plan, day.dayIndex) : allDays.filter(d => d.dayIndex !== day.dayIndex);
+
+    const otherDaysSummary = candidates
       .map(d => {
         const date = addDays(planStartDate, d.dayIndex);
         const dWeather = allWeather[date];
@@ -119,16 +136,24 @@ export default function WeatherAlertBadge({
       `Affected activities on ${day.label}:`,
       affectedActivities || '  (no activities yet)',
       '',
-      `Other days in the itinerary:`,
-      otherDaysSummary || '  (no other days)',
+      city ? `This day is in ${city}.` : '',
+      '',
+      candidates.length
+        ? `Days in ${city ?? 'the same city'} that could take these activities:`
+        : `No other day of this trip is in the same city, so a swap is not possible.`,
+      otherDaysSummary || '',
       '',
       likesNote,
       dislikesNote,
       kidsNote,
       budgetNote,
       '',
+      `The user is asking because of the weather above, and for no other reason. Every suggestion must be a response to it: do not propose changes that would make sense on a clear day.`,
+      '',
       `Please evaluate these two strategies in order:`,
-      `1. DAY SWAP: If another day has acceptable weather (low rain probability, no severe alerts) AND no confirmed bookings, suggest swapping the full activity lists of the two days.`,
+      candidates.length
+        ? `1. DAY SWAP: If one of the days listed above has acceptable weather (low rain probability, no severe alerts) AND no confirmed bookings, suggest swapping the full activity lists of the two days. Only the days listed are in the same city; do not propose any other swap.`
+        : `1. DAY SWAP: Not available on this trip — every other day is in a different city. Skip straight to alternatives.`,
       `2. ACTIVITY ALTERNATIVES: If a swap is not possible, suggest indoor or weather-appropriate alternatives for each affected outdoor activity. Alternatives must respect the user's likes/dislikes, be age-appropriate if kids are present, and stay within the budget range.`,
       `For each suggestion, indicate whether it may exceed the budget (budgetWarning: true).`,
       `Format each suggestion clearly as either "DAY SWAP: ..." or "ALTERNATIVE: [original activity] → [suggested replacement]".`,

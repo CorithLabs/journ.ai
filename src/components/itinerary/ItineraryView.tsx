@@ -492,6 +492,7 @@ export default function ItineraryView({ plan }: Props) {
                     allDays={plan.itinerary}
                     allWeather={weatherByDate}
                     planStartDate={plan.startDate}
+                    plan={plan}
                     intake={plan.intake ?? null}
                     isOffline={isOffline}
                     onGetSuggestions={(prompt) => askForSuggestions(day.dayIndex, prompt)}
