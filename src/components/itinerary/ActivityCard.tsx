@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Button from '../ui/Button';
 import { AlertTriangle, Pin, Pencil, Trash2, MapPin } from 'lucide-react';
 import { type Activity, type Plan } from '../../db';
 import {
@@ -133,7 +134,12 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
         <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} rows={2}
           className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none resize-none"
           aria-label="Notes" placeholder="Notes" />
-        <button className="text-xs text-accent hover:underline" onClick={() => setEd(false)}>Done</button>
+        {/* Was a text link reading "Done", which named the moment rather
+            than the action and looked like nothing else that commits. */}
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" onClick={() => { save(); setEd(false); }} data-testid="activity-save-btn">Save</Button>
+          <Button size="sm" variant="secondary" onClick={() => setEd(false)} data-testid="activity-cancel-btn">Cancel</Button>
+        </div>
       </div>
     );
   }

@@ -69,12 +69,12 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Add clipboard item">
       {/* Backdrop */}
       <button
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/50 overlay-enter"
         aria-label="Close drawer"
         onClick={onClose}
       />
       {/* Drawer */}
-      <div className="relative w-full sm:w-[420px] h-full bg-surface-raised border-l border-white/10 shadow-glass flex flex-col">
+      <div className="relative w-full sm:w-[420px] h-full bg-surface-raised border-l border-white/10 shadow-glass flex flex-col drawer-enter">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
           <h2 className="text-lg font-semibold text-ink-primary">Add item</h2>
           <button

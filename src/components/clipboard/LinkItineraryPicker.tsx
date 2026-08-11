@@ -32,8 +32,8 @@ export default function LinkItineraryPicker({ plan, onClose, onLink }: Props) {
       aria-modal="true"
       aria-label="Link to itinerary"
     >
-      <button className="absolute inset-0 bg-black/50" aria-label="Close" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-5">
+      <button className="absolute inset-0 bg-black/50 overlay-enter" aria-label="Close" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-5 panel-enter">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-ink-primary">Link to itinerary</h2>
           <button

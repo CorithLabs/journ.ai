@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Button from '../ui/Button';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles, CalendarCheck } from 'lucide-react';
@@ -141,49 +142,43 @@ function AddInline({
   );
 
   /*
-   * On a phone the form opens as a dialog pinned to the TOP of the screen.
+   * Adding is a dialog at every width.
    *
-   * Inline, an activity added at the bottom of a long day sits directly above
-   * the on-screen keyboard — which covers it the moment the field is focused,
-   * so the user cannot see what they are typing. Anchoring high keeps the
-   * fields in the visible half whatever the keyboard does.
+   * On desktop the fields used to unfold inline, which read as the card list
+   * having sprouted two unlabelled inputs — nothing said what had opened or
+   * how to leave it. A dialog names the day it is adding to and ends in the
+   * same Save the other two editors end in.
+   *
+   * It is pinned to the top on a phone rather than centred: an activity added
+   * at the bottom of a long day sits exactly where the on-screen keyboard
+   * appears, so the fields have to be somewhere the keyboard cannot reach.
    */
-  if (isMobile) {
-    return (
-      <>
-        <div
-          className="fixed inset-0 bg-black/50 z-50"
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-        />
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Add activity to ${dayLabel}`}
-          className="fixed top-4 left-3 right-3 z-50 bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-4 space-y-3"
-          data-testid="add-activity-dialog"
-        >
-          <p className="text-sm font-semibold text-ink-primary">Add to {dayLabel}</p>
-          <form onSubmit={submit} className="space-y-2">
-            {fields}
-            <div className="flex gap-2 pt-1">
-              <button type="submit" className="flex-1 bg-accent text-ink-inverse font-semibold py-2 rounded-xl text-sm">Add</button>
-              <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl text-sm text-ink-secondary border border-white/10">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </>
-    );
-  }
-
   return (
-    <form onSubmit={submit} className="space-y-2">
-      {fields}
-      <div className="flex gap-2">
-        <button type="submit" className="text-xs text-accent hover:underline">Add</button>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-ink-muted hover:underline">Cancel</button>
+    <>
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-glass z-50 overlay-enter"
+        onClick={() => setOpen(false)}
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Add activity to ${dayLabel}`}
+        className={`fixed z-50 left-3 right-3 md:left-1/2 md:right-auto md:w-full md:max-w-sm md:-translate-x-1/2 bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-4 space-y-3 panel-enter ${
+          isMobile ? 'top-4' : 'top-1/2 md:-translate-y-1/2'
+        }`}
+        data-testid="add-activity-dialog"
+      >
+        <p className="text-sm font-semibold text-ink-primary">Add to {dayLabel}</p>
+        <form onSubmit={submit} className="space-y-2">
+          {fields}
+          <div className="flex gap-2 pt-1">
+            <Button type="submit" data-testid="add-save-btn">Save</Button>
+            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+          </div>
+        </form>
       </div>
-    </form>
+    </>
   );
 }
 

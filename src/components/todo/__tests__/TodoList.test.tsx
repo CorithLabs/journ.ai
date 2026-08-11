@@ -114,6 +114,11 @@ describe('TodoList', () => {
     });
   });
 
+  /*
+   * Saving on blur meant the only way to find out whether an edit had taken
+   * was to look. The editor now ends in a Save, the way the itinerary and
+   * clipboard editors do.
+   */
   it('inline edit: saving updated title calls db.todos.update', async () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
@@ -121,7 +126,7 @@ describe('TodoList', () => {
     fireEvent.click(titleBtn);
     const editInput = await screen.findByLabelText('Edit title');
     fireEvent.change(editInput, { target: { value: 'Book flights to Osaka' } });
-    fireEvent.blur(editInput);
+    fireEvent.click(screen.getByTestId('task-save-btn'));
     await waitFor(() => {
       expect(db.todos.update).toHaveBeenCalledWith(
         'todo-1',

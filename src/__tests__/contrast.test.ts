@@ -86,3 +86,29 @@ describe('controls are visible as controls', () => {
     expect(contrast(token('ink-inverse'), token('status-warning'))).toBeGreaterThanOrEqual(AA_TEXT);
   });
 });
+
+/*
+ * A dialog that is simply there on the next frame reads as the page having
+ * changed under you. The animation is decoration, not message — so anyone who
+ * has asked for less of it gets none, and the dialog is as usable either way.
+ */
+describe('modals arrive rather than appearing', () => {
+  it('defines the entry animations', () => {
+    for (const name of ['overlay-in', 'panel-in', 'drawer-in']) {
+      expect(CSS).toContain(`@keyframes ${name}`);
+    }
+  });
+
+  it('turns every one of them off for reduced motion', () => {
+    const reduced = CSS.slice(CSS.lastIndexOf('prefers-reduced-motion'));
+    for (const cls of ['.overlay-enter', '.panel-enter', '.drawer-enter']) {
+      expect(reduced).toContain(cls);
+    }
+  });
+
+  // A side drawer arrives from the edge it lives on; a centred dialog rises.
+  it('moves a drawer sideways and a dialog upward', () => {
+    expect(/@keyframes drawer-in[^}]*}[^}]*translateX/.test(CSS)).toBe(true);
+    expect(/@keyframes panel-in[^}]*}[^}]*translateY/.test(CSS)).toBe(true);
+  });
+});

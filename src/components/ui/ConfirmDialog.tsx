@@ -56,7 +56,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {children}
       {pending && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass overlay-enter"
           // Dismissing by any route is a "no": the safe answer is the one that
           // does nothing.
           onClick={() => settle(false)}
@@ -67,7 +67,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             aria-modal="true"
             aria-labelledby="confirm-title"
             aria-describedby={pending.body ? 'confirm-body' : undefined}
-            className="w-full max-w-sm bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-5"
+            className="w-full max-w-sm bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-5 panel-enter"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => { if (e.key === 'Escape') settle(false); }}
             data-testid="confirm-dialog"
