@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen } from '../../../test/render';
+import { MemoryRouter } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import ItineraryView from '../ItineraryView';
+import { useAppStore, type WeatherDay } from '../../../store';
+import type { Plan } from '../../../db';
+import { TEMP_UNIT_STORAGE } from '../../../services/units';
+import { setViewport, DESKTOP } from '../../../test/viewport';
+
+vi.mock('dexie-react-hooks');
+
+const wet: WeatherDay = {
+  date: '2025-08-01', weatherCode: 65, tempMax: 14, tempMin: 9,
+  precipProbability: 90, windspeedMax: 20, apparentTempMax: 12,
+};
+const fine: WeatherDay = { ...wet, date: '2025-08-02', weatherCode: 0, precipProbability: 5, tempMax: 22 };
+
+const planWith = (day0: string[], day1: string[] = []): Plan => ({
+  id: 'p1', name: 'Percé', destination: 'Percé', country: 'Canada',
+  startDate: '2025-08-01', endDate: '2025-08-02',
+  createdAt: '', updatedAt: '', deleted: false,
+  itinerary: [day0, day1].map((names, i) => ({
+    dayIndex: i, label: `Day ${i + 1}`,
+    activities: names.map((name, n) => ({
+      id: `a${i}${n}`, name, time: 'morning', locationName: '', notes: '', pinnedToTodo: false,
+    })),
+  })),
+});
+
+const show = (plan: Plan) => render(<MemoryRouter><ItineraryView plan={plan} /></MemoryRouter>);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+  setViewport(DESKTOP);
+  vi.mocked(useLiveQuery).mockReturnValue([]);
+  useAppStore.setState({ weatherByDate: { '2025-08-01': wet, '2025-08-02': fine } });
+});
+afterEach(() => {
+  useAppStore.setState({ weatherByDate: null });
+  vi.unstubAllGlobals();
+});
+
+/*
+ * useWeather already fetched a forecast on every plan open and wrote it to
+ * the store, where nothing read it. Three finished components sat unmounted
+ * while the API calls went out anyway.
+ */
+describe('the forecast reaches the itinerary', () => {
+  it('shows a day its own weather', () => {
+    show(planWith(['Coastal hike']));
+    expect(screen.getAllByTestId('weather-strip').length).toBeGreaterThan(0);
+  });
+
+  it('matches each day to its date rather than showing one everywhere', () => {
+    useAppStore.setState({ weatherByDate: { '2025-08-02': fine } });
+    show(planWith(['Coastal hike'], ['Museum']));
+    expect(screen.getAllByTestId('weather-strip')).toHaveLength(1);
+  });
+
+  it('says nothing when there is no forecast', () => {
+    useAppStore.setState({ weatherByDate: null });
+    show(planWith(['Coastal hike']));
+    expect(screen.queryByTestId('weather-strip')).not.toBeInTheDocument();
+  });
+
+  it('reads in Fahrenheit when that is the setting', () => {
+    localStorage.setItem(TEMP_UNIT_STORAGE, 'F');
+    show(planWith(['Coastal hike']));
+    expect(screen.getAllByTestId('weather-strip')[0]).toHaveTextContent('°F');
+  });
+
+  it('reads in Celsius by default', () => {
+    show(planWith(['Coastal hike']));
+    expect(screen.getAllByTestId('weather-strip')[0]).toHaveTextContent('°C');
+  });
+});
+
+describe('warning only when there is something to spoil', () => {
+  it('warns about rain on a day spent outside', () => {
+    show(planWith(['Coastal hike']));
+    expect(screen.getByTestId('weather-alert-badge')).toBeInTheDocument();
+  });
+
+  // A warning that is wrong more often than right teaches people to ignore
+  // the ones that are not.
+  it('stays quiet about rain on a day spent indoors', () => {
+    show(planWith(['Musée de la Gaspésie', 'Dinner at the restaurant']));
+    expect(screen.queryByTestId('weather-alert-badge')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet on a day with nothing planned', () => {
+    show(planWith([]));
+    expect(screen.queryByTestId('weather-alert-badge')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet when the weather is fine', () => {
+    useAppStore.setState({ weatherByDate: { '2025-08-01': { ...fine, date: '2025-08-01' } } });
+    show(planWith(['Coastal hike']));
+    expect(screen.queryByTestId('weather-alert-badge')).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { requestOnboarding } from '../services/onboarding';
 import AboutJournai from '../components/onboarding/AboutJournai';
+import { getTempUnit, setTempUnit, type TempUnit } from '../services/units';
 import {
   Settings,
   ShieldCheck,
@@ -46,6 +47,7 @@ const KEY_PREFIX: Record<AiProvider, string> = {
 };
 
 export default function SettingsPage() {
+  const [unit, setUnit] = useState<TempUnit>(getTempUnit());
   const [provider, setProvider] = useState<AiProvider>('openai');
   const [key, setKey] = useState('');
   const [hasKey, setHasKey] = useState(false);
@@ -439,6 +441,31 @@ export default function SettingsPage() {
           </p>
         )}
       </section>
+      {/* Weather is fetched for every plan already; this decides how it reads. */}
+      <section className="border-t border-white/5 pt-4 mt-4">
+        <h2 className="text-lg font-semibold text-ink-primary mb-1">Temperature</h2>
+        <p className="text-xs text-ink-secondary mb-3">
+          How the forecast on your itinerary is shown.
+        </p>
+        <div className="flex gap-1" role="group" aria-label="Temperature unit">
+          {(['C', 'F'] as const).map((u) => (
+            <button
+              key={u}
+              onClick={() => { setTempUnit(u); setUnit(u); }}
+              aria-pressed={unit === u}
+              className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                unit === u
+                  ? 'bg-accent/15 border-accent/40 text-ink-primary'
+                  : 'border-white/10 text-ink-secondary hover:text-ink-primary'
+              }`}
+              data-testid={`temp-unit-${u}`}
+            >
+              {u === 'C' ? 'Celsius' : 'Fahrenheit'}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {/* The same definition the introduction shows, so the two cannot
           disagree about what the app promises. */}
       <section className="border-t border-white/5 pt-4 mt-4">
