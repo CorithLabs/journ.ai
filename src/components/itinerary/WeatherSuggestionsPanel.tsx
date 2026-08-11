@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { CheckCircle2, XCircle, AlertTriangle, Sparkles } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, Sparkles, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { type Plan, type Day, type Activity, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import Toast from '../ui/Toast';
+import { suggestionReason } from '../../utils/plainText';
 
 export interface Suggestion {
   id: string;
@@ -129,6 +130,40 @@ export function parseSuggestions(aiText: string, plan: Plan, affectedDayIndex: n
   return suggestions;
 }
 
+/** A named thing in the change: a day, or an activity. */
+function Pill({ children, accent = false }: { children: string; accent?: boolean }) {
+  return (
+    <span
+      className={`inline-block max-w-[45%] truncate text-xs font-medium px-2 py-1 rounded-full border ${
+        accent
+          ? 'bg-accent/15 border-accent/40 text-ink-primary'
+          : 'bg-surface-overlay border-white/10 text-ink-secondary'
+      }`}
+      title={children}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** What is being moved or replaced. */
+function fromLabel(plan: Plan, affectedDayIndex: number, s: Suggestion): string {
+  if (s.type === 'swap') {
+    return plan.itinerary.find((d) => d.dayIndex === affectedDayIndex)?.label ?? `Day ${affectedDayIndex + 1}`;
+  }
+  return s.originalActivity?.name ?? 'This activity';
+}
+
+/** What it becomes. */
+function toLabel(plan: Plan, s: Suggestion): string {
+  if (s.type === 'swap') {
+    return s.swapDayIndex !== undefined
+      ? plan.itinerary.find((d) => d.dayIndex === s.swapDayIndex)?.label ?? `Day ${s.swapDayIndex + 1}`
+      : 'another day';
+  }
+  return s.replacement?.name ?? 'something indoors';
+}
+
 export default function WeatherSuggestionsPanel({
   plan,
   affectedDayIndex,
@@ -138,6 +173,7 @@ export default function WeatherSuggestionsPanel({
 }: Props) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>(initialSuggestions);
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
+  const [index, setIndex] = useState(0);
   const [rejected, setRejected] = useState<Set<string>>(new Set());
 
   const accept = async (suggestion: Suggestion) => {
@@ -193,6 +229,9 @@ export default function WeatherSuggestionsPanel({
   };
 
   const activeSuggestions = suggestions.filter(s => !accepted.has(s.id) && !rejected.has(s.id));
+  // Answering the last one must not leave the carousel pointing past the end.
+  const safeIndex = Math.min(index, Math.max(0, activeSuggestions.length - 1));
+  const shown = activeSuggestions.length ? [activeSuggestions[safeIndex]] : [];
 
   if (activeSuggestions.length === 0) {
     return (
@@ -227,8 +266,45 @@ export default function WeatherSuggestionsPanel({
         </button>
       </div>
 
+      {/* One at a time when there are several: three cards of prose in a
+          panel this size is a wall, and only one of them can be acted on
+          first anyway. */}
+      {activeSuggestions.length > 1 && (
+        <div className="flex items-center justify-between" data-testid="suggestion-carousel">
+          <button
+            onClick={() => setIndex(i => Math.max(0, i - 1))}
+            disabled={safeIndex === 0}
+            className="p-1.5 rounded-lg text-ink-muted hover:text-ink-primary disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label="Previous suggestion"
+            data-testid="suggestion-prev"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="flex items-center gap-1.5" aria-hidden="true">
+            {activeSuggestions.map((sg, i) => (
+              <span
+                key={sg.id}
+                className={`h-1.5 rounded-full transition-all ${i === safeIndex ? 'w-4 bg-accent' : 'w-1.5 bg-white/20'}`}
+              />
+            ))}
+          </div>
+          <span className="sr-only" role="status">
+            Suggestion {safeIndex + 1} of {activeSuggestions.length}
+          </span>
+          <button
+            onClick={() => setIndex(i => Math.min(activeSuggestions.length - 1, i + 1))}
+            disabled={safeIndex >= activeSuggestions.length - 1}
+            className="p-1.5 rounded-lg text-ink-muted hover:text-ink-primary disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label="Next suggestion"
+            data-testid="suggestion-next"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+
       <div className="space-y-2">
-        {activeSuggestions.map(suggestion => (
+        {shown.map(suggestion => (
           <div
             key={suggestion.id}
             className="bg-surface-raised border border-white/5 rounded-card p-3"
@@ -256,7 +332,20 @@ export default function WeatherSuggestionsPanel({
               )}
             </div>
 
-            <p className="text-sm text-ink-secondary mb-3">{suggestion.description}</p>
+            {/* The change itself, as the two things and the move between
+                them. This was the raw model text, markdown marks and all,
+                printed into the card. */}
+            <div className="flex items-center gap-2 flex-wrap mb-2" data-testid="suggestion-change">
+              <Pill>{fromLabel(plan, affectedDayIndex, suggestion)}</Pill>
+              <ArrowRight size={14} className="shrink-0 text-accent" aria-hidden="true" />
+              <Pill accent>{toLabel(plan, suggestion)}</Pill>
+            </div>
+
+            {suggestionReason(suggestion.description) && (
+              <p className="text-xs text-ink-secondary mb-3" data-testid="suggestion-reason">
+                {suggestionReason(suggestion.description)}
+              </p>
+            )}
 
             {/* Accept / reject */}
             <div className="flex gap-2">
