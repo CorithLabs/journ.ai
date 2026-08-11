@@ -1,4 +1,6 @@
 import { useState, useRef } from 'react';
+import Modal, { AddButton } from '../ui/Modal';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import Button from '../ui/Button';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -22,6 +24,7 @@ const CAT_COLOR: Record<Cat, string> = {
 };
 
 function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
+  const isMobile = useIsMobile();
   const [title, setTitle] = useState('');
   const [due, setDue] = useState('');
   const [cat, setCat] = useState<Cat>('Other');
@@ -40,8 +43,14 @@ function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
     } finally { setSaving(false); }
   };
 
+  /*
+   * Was a form that unfolded inside the list, ending in a full-width "Add
+   * Task" slab and offering no way out but pressing the trigger again. Adding
+   * a task is the same job as adding an activity, so it is the same dialog.
+   */
   return (
-    <form onSubmit={submit} className="bg-surface-overlay border border-white/10 rounded-xl p-4 space-y-3" data-testid="add-task-form">
+    <Modal title="Add task" onClose={onDone} anchor={isMobile ? 'top' : 'center'}>
+    <form onSubmit={submit} className="space-y-3" data-testid="add-task-form">
       <div>
         <input value={title} onChange={e => { setTitle(e.target.value); setErr(''); }} placeholder="Task title"
           className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -58,11 +67,14 @@ function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
           {CATS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
-      <button type="submit" disabled={saving} data-testid="save-task-btn"
-        className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold py-2 rounded-xl text-sm">
-        {saving ? 'Saving…' : 'Add Task'}
-      </button>
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" disabled={saving} data-testid="save-task-btn">
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+        <Button variant="secondary" onClick={onDone} data-testid="cancel-task-btn">Cancel</Button>
+      </div>
     </form>
+    </Modal>
   );
 }
 
@@ -232,9 +244,7 @@ export default function TodoList({ planId }: Props) {
       <div className="px-4 py-4 border-b border-white/5 shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-ink-primary">To-Do</h2>
-          <button onClick={() => setShowAdd(v => !v)} className="flex items-center gap-1.5 text-sm text-accent hover:text-accent-light" data-testid="add-task-btn" aria-label="Add task">
-            <PlusCircle size={16} /> Add task
-          </button>
+
         </div>
         {total > 0 && (
           <div>
@@ -253,13 +263,13 @@ export default function TodoList({ planId }: Props) {
         )}
       </div>
 
-      {showAdd && (
-        <div className="px-4 py-3 border-b border-white/5 shrink-0">
-          <AddForm planId={planId} onDone={() => setShowAdd(false)} />
-        </div>
-      )}
+      {showAdd && <AddForm planId={planId} onDone={() => setShowAdd(false)} />}
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-6">
+        {/* The way in sits with the list rather than as a small accent link in
+            the header, which is the least visible thing on screen at the
+            moment someone is looking for how to start. */}
+        <AddButton label="Add task" onClick={() => setShowAdd(true)} testId="add-task-btn" />
         {total === 0 && (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <CheckSquare size={36} className="text-accent-muted mb-3" aria-hidden="true" />
