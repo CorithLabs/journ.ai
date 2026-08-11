@@ -100,6 +100,10 @@ describe('WeatherSuggestionsPanel', () => {
     },
   ];
 
+  /*
+   * One at a time now: three cards of prose in a panel this size is a wall,
+   * and only one of them can be acted on first anyway.
+   */
   it('renders suggestion cards', () => {
     render(
       <WeatherSuggestionsPanel
@@ -110,7 +114,8 @@ describe('WeatherSuggestionsPanel', () => {
         onToast={vi.fn()}
       />,
     );
-    expect(screen.getAllByTestId('suggestion-card').length).toBe(2);
+    expect(screen.getAllByTestId('suggestion-card').length).toBe(1);
+    expect(screen.getByTestId('suggestion-carousel')).toBeInTheDocument();
   });
 
   it('shows budget warning badge when suggestion has budgetWarning', () => {
@@ -157,5 +162,105 @@ describe('WeatherSuggestionsPanel', () => {
     );
     fireEvent.click(screen.getByLabelText('Close suggestions panel'));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+
+const suggestionFixtures = [
+  {
+    id: 'sug-1',
+    type: 'swap' as const,
+    swapDayIndex: 1,
+    description: 'Swap Day 1 with Day 2 — Day 2 is clear',
+    budgetWarning: false,
+  },
+  {
+    id: 'sug-2',
+    type: 'alternative' as const,
+    originalActivity: mockPlan.itinerary[0].activities[1],
+    originalDayIndex: 0,
+    replacement: {
+      id: 'new-a2', name: 'Indoor Cooking Class', time: '14:00',
+      locationName: 'Ginza', notes: '', pinnedToTodo: false,
+    },
+    description: 'River Cruise → Indoor Cooking Class',
+    budgetWarning: false,
+  },
+];
+
+/*
+ * The suggestion arrived as prose from a model that writes markdown by habit
+ * and was printed straight into the card, marks and all. The change itself is
+ * drawn now — the two things, and the move between them.
+ */
+describe('reading a suggestion at a glance', () => {
+  const show = (suggestions = suggestionFixtures) => render(
+    <WeatherSuggestionsPanel
+      plan={mockPlan}
+      affectedDayIndex={0}
+      suggestions={suggestions}
+      onClose={vi.fn()}
+      onToast={vi.fn()}
+    />,
+  );
+
+  it('draws a swap as the two days', () => {
+    show([suggestionFixtures[0]]);
+    const change = screen.getByTestId('suggestion-change');
+    expect(change).toHaveTextContent(mockPlan.itinerary[0].label);
+  });
+
+  it('draws an alternative as the two activities', () => {
+    show([suggestionFixtures[1]]);
+    expect(screen.getByTestId('suggestion-change')).toBeInTheDocument();
+  });
+
+  it('leaves no markdown marks in the reason it gives', () => {
+    show([{ ...suggestionFixtures[0], description: '**Move it** to `Day 2` — the *rain* clears' }]);
+    const reason = screen.queryByTestId('suggestion-reason');
+    expect(reason?.textContent ?? '').not.toMatch(/[*`_]/);
+  });
+});
+
+describe('stepping through several', () => {
+  const show = () => render(
+    <WeatherSuggestionsPanel
+      plan={mockPlan}
+      affectedDayIndex={0}
+      suggestions={suggestionFixtures}
+      onClose={vi.fn()}
+      onToast={vi.fn()}
+    />,
+  );
+
+  it('starts at the first, with nowhere back to go', () => {
+    show();
+    expect(screen.getByTestId('suggestion-prev')).toBeDisabled();
+  });
+
+  it('moves to the next', () => {
+    show();
+    fireEvent.click(screen.getByTestId('suggestion-next'));
+    expect(screen.getByTestId('suggestion-next')).toBeDisabled();
+    expect(screen.getByTestId('suggestion-prev')).not.toBeDisabled();
+  });
+
+  it('says where you are, for anyone who cannot see the dots', () => {
+    show();
+    expect(screen.getByRole('status')).toHaveTextContent('Suggestion 1 of 2');
+  });
+
+  // Answering the last one must not leave the carousel pointing past the end.
+  it('does not run off the end when one is answered', () => {
+    show();
+    fireEvent.click(screen.getByTestId('suggestion-next'));
+    fireEvent.click(screen.getByTestId('reject-suggestion-btn'));
+    expect(screen.getByTestId('suggestion-card')).toBeInTheDocument();
+  });
+
+  it('drops the controls once only one is left', () => {
+    show();
+    fireEvent.click(screen.getByTestId('reject-suggestion-btn'));
+    expect(screen.queryByTestId('suggestion-carousel')).not.toBeInTheDocument();
   });
 });
