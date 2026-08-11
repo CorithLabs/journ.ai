@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
@@ -33,7 +34,7 @@ function budgetLabel(
 function AddInline({
   onAdd, siblings, dayLabel, seedSlot = 'morning', variant = 'link', label = 'Add activity',
 }: {
-  onAdd: (n: string, t: string, loc: string) => Promise<void>;
+  onAdd: (n: string, t: string, loc: string, notes: string) => Promise<void>;
   siblings: Activity[];
   dayLabel: string;
   /** Which part of the day this button sits in. */
@@ -45,6 +46,7 @@ function AddInline({
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
   const [loc, setLoc] = useState('');
+  const [notes, setNotes] = useState('');
   const [tm, setTm] = useState<string>(seedSlot);
   const [showExact, setShowExact] = useState(false);
 
@@ -62,9 +64,10 @@ function AddInline({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nm.trim()) return;
-    await onAdd(nm.trim(), tm, loc.trim());
+    await onAdd(nm.trim(), tm, loc.trim(), notes.trim());
     setNm('');
     setLoc('');
+    setNotes('');
     setOpen(false);
   };
 
@@ -123,6 +126,18 @@ function AddInline({
         </button>
       )}
 
+      {/* Was missing entirely, so anything worth noting meant saving the
+          activity and reopening it in edit mode to write it down. */}
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        rows={3}
+        aria-label="Notes"
+        placeholder="Notes — a booking reference, what to bring, who to ask for"
+        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none resize-none"
+        data-testid="add-notes-input"
+      />
+
       {/* Caught before the activity exists, rather than after — cheaper to
           correct now than to notice a double-booked hour later. */}
       {clashes.length > 0 && (
@@ -142,43 +157,30 @@ function AddInline({
   );
 
   /*
-   * Adding is a dialog at every width.
+   * Adding is a dialog at every width, and the same one the other tabs use.
    *
    * On desktop the fields used to unfold inline, which read as the card list
-   * having sprouted two unlabelled inputs — nothing said what had opened or
-   * how to leave it. A dialog names the day it is adding to and ends in the
-   * same Save the other two editors end in.
+   * having sprouted unlabelled inputs — nothing said what had opened or how to
+   * leave it.
    *
-   * It is pinned to the top on a phone rather than centred: an activity added
-   * at the bottom of a long day sits exactly where the on-screen keyboard
-   * appears, so the fields have to be somewhere the keyboard cannot reach.
+   * On a phone it is pinned to the top: an activity added at the bottom of a
+   * long day sits exactly where the on-screen keyboard appears, so the fields
+   * have to be somewhere the keyboard cannot reach.
    */
   return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-glass z-50 overlay-enter"
-        onClick={() => setOpen(false)}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Add activity to ${dayLabel}`}
-        className={`fixed z-50 left-3 right-3 md:left-1/2 md:right-auto md:w-full md:max-w-sm md:-translate-x-1/2 bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-4 space-y-3 panel-enter ${
-          isMobile ? 'top-4' : 'top-1/2 md:-translate-y-1/2'
-        }`}
-        data-testid="add-activity-dialog"
-      >
-        <p className="text-sm font-semibold text-ink-primary">Add to {dayLabel}</p>
-        <form onSubmit={submit} className="space-y-2">
-          {fields}
-          <div className="flex gap-2 pt-1">
-            <Button type="submit" data-testid="add-save-btn">Save</Button>
-            <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-          </div>
-        </form>
-      </div>
-    </>
+    <Modal
+      title={`Add to ${dayLabel}`}
+      onClose={() => setOpen(false)}
+      anchor={isMobile ? 'top' : 'center'}
+    >
+      <form onSubmit={submit} className="space-y-2">
+        {fields}
+        <div className="flex gap-2 pt-1">
+          <Button type="submit" data-testid="add-save-btn">Save</Button>
+          <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -249,8 +251,8 @@ export default function ItineraryView({ plan }: Props) {
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
 
-  const addAct = async (di: number, name: string, time: string, locationName: string, afterId?: string) => {
-    const newAct: Activity = { id: uuidv4(), name, time, locationName, notes: '', pinnedToTodo: false };
+  const addAct = async (di: number, name: string, time: string, locationName: string, notes: string, afterId?: string) => {
+    const newAct: Activity = { id: uuidv4(), name, time, locationName, notes, pinnedToTodo: false };
     const acts = plan.itinerary[di].activities;
     // Order within a part of the day is the array's, so an activity added from
     // a gap has to land in that gap rather than at the end of the day.
@@ -478,7 +480,7 @@ export default function ItineraryView({ plan }: Props) {
                           variant="gap"
                           label={`Add activity between ${act.name} and ${sorted[ai + 1].name}`}
                           seedSlot={seedSlotFor(act, sorted[ai + 1])}
-                          onAdd={(name, time, loc) => addAct(day.dayIndex, name, time, loc, act.id)}
+                          onAdd={(name, time, loc, notes) => addAct(day.dayIndex, name, time, loc, notes, act.id)}
                         />
                       )}
                     </div>
@@ -495,7 +497,7 @@ export default function ItineraryView({ plan }: Props) {
 
                   <AddInline siblings={day.activities} dayLabel={day.label}
                     seedSlot={seedSlotFor(sortByTime(day.activities).slice(-1)[0])}
-                    onAdd={(name, time, loc) => addAct(day.dayIndex, name, time, loc)} />
+                    onAdd={(name, time, loc, notes) => addAct(day.dayIndex, name, time, loc, notes)} />
                 </div>
               )}
             </section>

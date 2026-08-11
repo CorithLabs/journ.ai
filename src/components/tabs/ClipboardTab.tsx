@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AddButton } from '../ui/Modal';
 import { useConfirm } from '../ui/ConfirmDialog';
 import LinkItineraryPicker from '../clipboard/LinkItineraryPicker';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -106,14 +107,6 @@ export default function ClipboardTab({ planId }: Props) {
       <div className="px-4 py-4 border-b border-white/5 shrink-0 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-ink-primary">Clipboard</h2>
-          <button
-            onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 text-sm text-accent hover:text-accent-light focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded-lg px-1"
-            data-testid="add-item-btn"
-            aria-label="Add item"
-          >
-            <PlusCircle size={16} /> Add item
-          </button>
         </div>
 
         {/* Search */}
@@ -158,6 +151,11 @@ export default function ClipboardTab({ planId }: Props) {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-6">
+        {/* The way in sits with the list rather than as a small accent link in
+            the header, which is the least visible thing on screen at the
+            moment someone is looking for how to start. */}
+        <AddButton label="Add item" onClick={() => setShowAdd(true)} testId="add-item-btn" />
+
         {items.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Paperclip size={40} className="text-accent-muted mb-3" aria-hidden="true" />

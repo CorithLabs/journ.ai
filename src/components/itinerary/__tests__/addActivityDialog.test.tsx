@@ -34,17 +34,27 @@ describe('adding an activity on a phone', () => {
     setViewport(PHONE);
     render(<ItineraryView plan={plan} />);
     fireEvent.click(screen.getByText('Add activity'));
-    const dialog = screen.getByTestId('add-activity-dialog');
-    expect(dialog).toBeInTheDocument();
-    expect(dialog.className).toContain('top-4');
-    expect(dialog.className).toContain('fixed');
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+    // The scrim decides where the panel sits.
+    expect(screen.getByTestId('modal-scrim').className).toContain('items-start');
   });
 
   it('names the day it is adding to', () => {
     setViewport(PHONE);
     render(<ItineraryView plan={plan} />);
     fireEvent.click(screen.getByText('Add activity'));
-    expect(screen.getByTestId('add-activity-dialog')).toHaveTextContent('Day 1');
+    expect(screen.getByTestId('modal')).toHaveAccessibleName(/Day 1/);
+  });
+
+  /*
+   * Anything worth noting used to mean saving the activity and reopening it
+   * in edit mode to write it down.
+   */
+  it('takes notes without a second trip through edit mode', () => {
+    setViewport(PHONE);
+    render(<ItineraryView plan={plan} />);
+    fireEvent.click(screen.getByText('Add activity'));
+    expect(screen.getByTestId('add-notes-input')).toBeInTheDocument();
   });
 
   /*
@@ -57,10 +67,8 @@ describe('adding an activity on a phone', () => {
     setViewport(DESKTOP);
     render(<ItineraryView plan={plan} />);
     fireEvent.click(screen.getByText('Add activity'));
-    const dialog = screen.getByTestId('add-activity-dialog');
-    expect(dialog).toBeInTheDocument();
-    expect(dialog.className).toContain('top-1/2');
-    expect(dialog.className).not.toContain('top-4');
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
+    expect(screen.getByTestId('modal-scrim').className).toContain('items-center');
   });
 
   it('ends in the same Save the other editors end in', () => {
@@ -138,7 +146,7 @@ describe('inserting between two cards', () => {
     setViewport(PHONE);
     render(<ItineraryView plan={threeActs} />);
     fireEvent.click(screen.getByLabelText('Add activity between Museum and Lunch'));
-    expect(screen.getByTestId('add-activity-dialog')).toBeInTheDocument();
+    expect(screen.getByTestId('modal')).toBeInTheDocument();
     expect(screen.getByTestId('slot-morning')).toHaveAttribute('aria-pressed', 'true');
   });
 

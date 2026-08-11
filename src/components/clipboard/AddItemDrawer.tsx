@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import Modal from '../ui/Modal';
+import Button from '../ui/Button';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { SlotPicker } from '../itinerary/ActivityCard';
 import { exactTime } from '../../utils/activityTime';
 import { X } from 'lucide-react';
@@ -30,6 +33,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
   const [body, setBody] = useState('');
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [time, setTime] = useState('');
+  const isMobile = useIsMobile();
   const [saving, setSaving] = useState(false);
 
   const overLimit = body.length > BODY_MAX;
@@ -65,28 +69,15 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
     }
   };
 
+  /*
+   * Was a drawer sliding in from the right. Adding a clipboard item is the
+   * same job as adding an activity or a to-do, and doing it a third way meant
+   * a third thing to learn — including a different place to look for how to
+   * leave.
+   */
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label="Add clipboard item">
-      {/* Backdrop */}
-      <button
-        className="absolute inset-0 bg-black/50 overlay-enter"
-        aria-label="Close drawer"
-        onClick={onClose}
-      />
-      {/* Drawer */}
-      <div className="relative w-full sm:w-[420px] h-full bg-surface-raised border-l border-white/10 shadow-glass flex flex-col drawer-enter">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
-          <h2 className="text-lg font-semibold text-ink-primary">Add item</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-ink-muted hover:text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <form onSubmit={save} className="flex-1 min-h-0 overflow-y-auto px-5 py-5 space-y-5" data-testid="add-item-form">
+    <Modal title="Add item" onClose={onClose} anchor={isMobile ? 'top' : 'center'} width="md">
+        <form onSubmit={save} className="space-y-5" data-testid="add-item-form">
           {/* Type selector */}
           <div>
             <label htmlFor="clip-type" className="block text-sm text-ink-secondary mb-1.5">
@@ -177,20 +168,13 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
               </p>
             )}
           </div>
+        <div className="flex gap-2 pt-1">
+            <Button type="submit" onClick={save} disabled={saving || overLimit} data-testid="save-item-btn">
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button variant="secondary" onClick={onClose} data-testid="cancel-item-btn">Cancel</Button>
+          </div>
         </form>
-
-        <div className="px-5 py-4 border-t border-white/5 shrink-0">
-          <button
-            type="submit"
-            onClick={save}
-            disabled={saving || overLimit}
-            className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-            data-testid="save-item-btn"
-          >
-            {saving ? 'Saving…' : 'Save item'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
