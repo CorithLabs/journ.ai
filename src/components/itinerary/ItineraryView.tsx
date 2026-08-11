@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { getTempUnit } from '../../services/units';
+import { isBeyondForecast } from '../../services/weather';
+import { getMapboxToken } from '../../services/mapbox';
 import { streamCompletion } from '../../services/aiClient';
 import { dateForDayIndex } from '../../utils/tripDay';
 import { hasOutdoorPlans } from '../../utils/outdoor';
@@ -22,7 +24,7 @@ import LinkedClipboardCard from './LinkedClipboardCard';
 import { scrollBehavior } from '../../utils/motion';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { sortByTime, sortBySlot, moveActivity, findTimeClashes, nextFreeTime, formatTime, slotForTime, slotIndex, exactTime, TIME_SLOTS, type TimeSlotId } from '../../utils/activityTime';
-import { findActivityBookings, bookingWarning } from '../../utils/activityBookings';
+import { findActivityBookings, bookingWarning, bookedDayIndexes } from '../../utils/activityBookings';
 import { tripTiming, relativeDayLabel } from '../../utils/tripDay';
 import { useConfirm } from '../ui/ConfirmDialog';
 
@@ -254,6 +256,15 @@ export default function ItineraryView({ plan }: Props) {
     () => db.clipboard.where('planId').equals(plan.id).toArray(),
     [plan.id],
   );
+  // Loaded once for the whole view: which days are already committed to, so a
+  // swap is never offered for one of them.
+  const todos = useLiveQuery(() => db.todos.where('planId').equals(plan.id).toArray(), [plan.id]);
+  const bookedDays = bookedDayIndexes(
+    plan,
+    Array.isArray(linked) ? linked : [],
+    Array.isArray(todos) ? todos : [],
+  );
+
   const linkedByDay = new Map<number, ClipboardItem[]>();
   // Undefined while the query is in flight, and the itinerary is worth
   // rendering before the clipboard has loaded.
@@ -435,6 +446,20 @@ export default function ItineraryView({ plan }: Props) {
         </p>
       )}
 
+      {/* An itinerary with no weather on it looks broken. These are the two
+          reasons there is none, and both are fixable by the user. */}
+      {!weatherByDate && (
+        isBeyondForecast(plan.startDate) ? (
+          <p className="px-4 pt-1 text-xs text-ink-muted shrink-0" data-testid="weather-too-far">
+            Too far ahead to forecast — the weather appears about two weeks before you go.
+          </p>
+        ) : !getMapboxToken() ? (
+          <p className="px-4 pt-1 text-xs text-ink-muted shrink-0" data-testid="weather-needs-token">
+            Add a Mapbox token in Settings to see the forecast.
+          </p>
+        ) : null
+      )}
+
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4" data-testid="itinerary-days">
         {plan.itinerary.map(day => {
           const isCol = collapsed[day.dayIndex];
@@ -493,6 +518,7 @@ export default function ItineraryView({ plan }: Props) {
                     allWeather={weatherByDate}
                     planStartDate={plan.startDate}
                     plan={plan}
+                    bookedDays={bookedDays}
                     intake={plan.intake ?? null}
                     isOffline={isOffline}
                     onGetSuggestions={(prompt) => askForSuggestions(day.dayIndex, prompt)}
