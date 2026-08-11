@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Button from '../ui/Button';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, FileText, Link2, Unlink, Pencil } from 'lucide-react';
@@ -247,12 +248,8 @@ export default function ClipboardItemDetail({ planId }: Props) {
               <p className="text-xs text-ink-muted">{item.fileName} stays attached.</p>
             )}
             <div className="flex gap-2 pt-1">
-              <button onClick={saveEdits} className="flex-1 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2 rounded-xl text-sm" data-testid="detail-save-btn">
-                Save
-              </button>
-              <button onClick={() => setEditing(false)} className="px-4 py-2 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="detail-cancel-btn">
-                Cancel
-              </button>
+              <Button onClick={saveEdits} data-testid="detail-save-btn">Save</Button>
+              <Button variant="secondary" onClick={() => setEditing(false)} data-testid="detail-cancel-btn">Cancel</Button>
             </div>
           </div>
         )}

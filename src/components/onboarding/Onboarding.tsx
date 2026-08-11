@@ -99,14 +99,14 @@ export default function Onboarding({ onClose }: Props) {
   const index = ORDER.indexOf(step);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" data-testid="onboarding">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass overlay-enter" data-testid="onboarding">
       <div
         ref={panelRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
-        className="w-full max-w-md max-h-full overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 focus:outline-none"
+        className="w-full max-w-md max-h-full overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 focus:outline-none panel-enter"
       >
         {/* Position first: four screens with no end in sight is why people
             close a first-run flow. */}

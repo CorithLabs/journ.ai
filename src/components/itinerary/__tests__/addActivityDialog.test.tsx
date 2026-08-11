@@ -47,12 +47,27 @@ describe('adding an activity on a phone', () => {
     expect(screen.getByTestId('add-activity-dialog')).toHaveTextContent('Day 1');
   });
 
-  it('stays inline on desktop, where there is no keyboard to dodge', () => {
+  /*
+   * Unfolding inline on desktop read as the card list having sprouted two
+   * unlabelled inputs — nothing said what had opened or how to leave it. It
+   * is a dialog at every width now, centred where there is no keyboard to
+   * dodge and pinned to the top where there is.
+   */
+  it('is a dialog on desktop too, centred rather than pinned', () => {
     setViewport(DESKTOP);
     render(<ItineraryView plan={plan} />);
     fireEvent.click(screen.getByText('Add activity'));
-    expect(screen.queryByTestId('add-activity-dialog')).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Activity name')).toBeInTheDocument();
+    const dialog = screen.getByTestId('add-activity-dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(dialog.className).toContain('top-1/2');
+    expect(dialog.className).not.toContain('top-4');
+  });
+
+  it('ends in the same Save the other editors end in', () => {
+    setViewport(DESKTOP);
+    render(<ItineraryView plan={plan} />);
+    fireEvent.click(screen.getByText('Add activity'));
+    expect(screen.getByTestId('add-save-btn')).toHaveTextContent('Save');
   });
 
   // A clash is only possible between two exact clock times, which now take a

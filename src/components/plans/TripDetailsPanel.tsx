@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import Button from '../ui/Button';
 import { createPortal } from 'react-dom';
 import { X, MapPin } from 'lucide-react';
 import { db, type Plan, type TripLeg, type TripStop } from '../../db';
@@ -118,14 +119,14 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
    */
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass overlay-enter"
       data-testid="trip-details-panel"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="trip-details-title"
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
+        className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 panel-enter"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 id="trip-details-title" className="text-lg font-semibold text-ink-primary">Trip details</h2>
@@ -217,12 +218,10 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
           {error && <p role="alert" className="text-xs text-status-danger" data-testid="td-error">{error}</p>}
 
           <div className="flex gap-2 pt-1">
-            <button onClick={save} disabled={saving} className="flex-1 bg-accent hover:bg-accent-light disabled:opacity-60 text-ink-inverse font-semibold py-2.5 rounded-xl text-sm" data-testid="td-save">
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
-            <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="td-cancel">
-              Cancel
-            </button>
+            <Button onClick={save} disabled={saving} data-testid="td-save">
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button variant="secondary" onClick={onClose} data-testid="td-cancel">Cancel</Button>
           </div>
         </div>
       </div>

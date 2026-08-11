@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import Button from '../ui/Button';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { PlusCircle, Trash2, CheckSquare, Square, Pin, Pencil } from 'lucide-react';
@@ -76,6 +77,15 @@ interface RowProps {
 }
 
 function Row({ item, plan, onToggle, onDel, onUpd, onPin, onNavigateToDay }: RowProps) {
+  const commit = () => {
+    if (val.trim()) onUpd(val.trim());
+    else setVal(item.title);
+    setEd(false);
+  };
+  const cancel = () => {
+    setVal(item.title);
+    setEd(false);
+  };
   const [ed, setEd] = useState(false);
   const [val, setVal] = useState(item.title);
   const ref = useRef<HTMLInputElement>(null);
@@ -104,8 +114,18 @@ function Row({ item, plan, onToggle, onDel, onUpd, onPin, onNavigateToDay }: Row
       </button>
       <div className="flex-1 min-w-0">
         {ed
-          ? <input ref={ref} value={val} onChange={e => setVal(e.target.value)} onBlur={() => { if (val.trim()) onUpd(val.trim()); else setVal(item.title); setEd(false); }} onKeyDown={e => e.key === 'Enter' && ref.current?.blur()}
-              className="w-full bg-surface-overlay border border-accent/40 rounded-lg px-2 py-0.5 text-sm text-ink-primary focus:outline-none" aria-label="Edit title" autoFocus />
+          ? <div className="space-y-2">
+              {/* Saving silently on blur meant the only way to find out whether
+                  an edit had taken was to look. Now it says so, in the same
+                  words the other two editors use. */}
+              <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
+                className="w-full bg-surface-overlay border border-accent/40 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none" aria-label="Edit title" autoFocus />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={commit} data-testid="task-save-btn">Save</Button>
+                <Button size="sm" variant="secondary" onClick={cancel} data-testid="task-cancel-btn">Cancel</Button>
+              </div>
+            </div>
           : <div>
               <button onClick={() => setEd(true)} className={`text-sm text-left w-full ${item.status === 'done' ? 'line-through text-ink-muted' : 'text-ink-primary'}`}>{item.title}</button>
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
