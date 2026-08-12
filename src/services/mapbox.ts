@@ -59,6 +59,13 @@ export interface GeocodeOptions {
  */
 const CITY_ITSELF_KM = 0.1;
 
+/** A resolved place: where it is, and what Mapbox says it is. */
+export interface GeocodedPlace {
+  coordinates: [number, number];
+  /** The full formatted address, e.g. "Ichiran, 1-22-7 Jinnan, Shibuya, Tokyo". */
+  address: string;
+}
+
 /**
  * Geocode a location name to [lng, lat] coordinates using Mapbox Geocoding API.
  * Returns null if token missing, location empty, or request fails.
@@ -74,6 +81,21 @@ export async function geocodeLocation(
   token: string,
   options: GeocodeOptions = {},
 ): Promise<[number, number] | null> {
+  return (await geocodePlace(locationName, token, options))?.coordinates ?? null;
+}
+
+/**
+ * The same lookup, keeping the address that comes back with it.
+ *
+ * Every field below `center` used to be discarded, so a resolved location was
+ * a pin and nothing else — no way to see whether the geocoder had found the
+ * place meant or merely a place by that name.
+ */
+export async function geocodePlace(
+  locationName: string,
+  token: string,
+  options: GeocodeOptions = {},
+): Promise<GeocodedPlace | null> {
   if (!locationName.trim() || !token) return null;
   try {
     // Only add context the name doesn't already carry, so we don't send
@@ -93,9 +115,10 @@ export async function geocodeLocation(
     const resp = await fetch(url);
     if (!resp.ok) return null;
     const data = (await resp.json()) as {
-      features?: { center?: [number, number] }[];
+      features?: { center?: [number, number]; place_name?: string }[];
     };
-    const center = data.features?.[0]?.center;
+    const feature = data.features?.[0];
+    const center = feature?.center;
     if (!center || center.length < 2) return null;
     const coords: [number, number] = [center[0], center[1]];
 
@@ -116,7 +139,7 @@ export async function geocodeLocation(
     ) {
       return null;
     }
-    return coords;
+    return { coordinates: coords, address: feature.place_name?.trim() || query };
   } catch {
     return null;
   }
@@ -239,18 +262,29 @@ export async function geocodePlanActivities(
       const owner =
         anchored.find((a) => haystack.includes(a.city.toLowerCase())) ?? primary;
 
-      const coords = await geocodeLocation(query, token, {
+      const place = await geocodePlace(query, token, {
         rejectCityItself: !stated,
         proximity: owner?.coords,
         anchors: allAnchors,
         context: owner?.context,
       });
-      if (coords) {
-        day.activities[i] = { ...act, coordinates: coords };
+      if (place) {
+        day.activities[i] = {
+          ...act,
+          coordinates: place.coordinates,
+          address: place.address,
+          locationUnresolved: false,
+        };
         changed = true;
       } else {
         failed.add(act.id);
         onFail?.(act.name);
+        // Recorded, so the card can say it was looked for and not found —
+        // which no absence of coordinates can distinguish from not yet tried.
+        if (!act.locationUnresolved) {
+          day.activities[i] = { ...act, locationUnresolved: true };
+          changed = true;
+        }
       }
     }
   }

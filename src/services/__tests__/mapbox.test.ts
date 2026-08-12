@@ -265,7 +265,65 @@ describe('geocoding a whole plan', () => {
     const failed = await geocodePlanActivities(plan, 'pk.test');
 
     expect(failed.has('x0')).toBe(true);
-    expect(db.plans.update).not.toHaveBeenCalled();
+    // Marked rather than pinned: the card gets to say it was looked for and
+    // found nothing, which is the honest answer for an activity that is not
+    // a place.
+    const saved = vi.mocked(db.plans.update).mock.calls[0][1] as { itinerary: Plan['itinerary'] };
+    expect(saved.itinerary[0].activities[0]).toMatchObject({ locationUnresolved: true });
+    expect(saved.itinerary[0].activities[0].coordinates).toBeUndefined();
+  });
+
+  /*
+   * Every field below `center` used to be discarded. A resolved location was a
+   * pin and nothing else — no way to tell whether the geocoder had found the
+   * place meant, or merely a place by that name.
+   */
+  it('keeps the address it resolved to', async () => {
+    const fetchMock = vi.fn();
+    fetchMock.mockResolvedValueOnce({
+      ok: true, json: async () => ({ features: [{ center: TOKYO, place_name: 'Tokyo, Japan' }] }),
+    } as Response);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        features: [{ center: [139.7671, 35.6812], place_name: 'Ichiran, 1-22-7 Jinnan, Shibuya, Tokyo' }],
+      }),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await geocodePlanActivities(planWith([{ name: 'Ramen', locationName: 'Ichiran' }]), 'pk.test');
+
+    expect(vi.mocked(db.plans.update).mock.calls[0][1]).toMatchObject({
+      itinerary: [{ activities: [{ address: 'Ichiran, 1-22-7 Jinnan, Shibuya, Tokyo' }] }],
+    });
+  });
+
+  /*
+   * A card with no coordinates is usually one nothing has looked at yet, since
+   * geocoding only runs when the map is opened. Recording the failure is what
+   * lets the card say it was looked for and not found.
+   */
+  it('records that a location was looked for and not found', async () => {
+    answerWith(TOKYO, null);
+    const plan = planWith([{ name: 'Drinks', locationName: 'somewhere downtown' }]);
+
+    await geocodePlanActivities(plan, 'pk.test');
+
+    expect(vi.mocked(db.plans.update).mock.calls[0][1]).toMatchObject({
+      itinerary: [{ activities: [{ locationUnresolved: true }] }],
+    });
+  });
+
+  it('clears the mark when a location resolves', async () => {
+    answerWith(TOKYO, [139.7016, 35.658]);
+    const plan = planWith([{ name: 'Drinks', locationName: 'Shibuya' }]);
+    plan.itinerary[0].activities[0].locationUnresolved = true;
+
+    await geocodePlanActivities(plan, 'pk.test');
+
+    expect(vi.mocked(db.plans.update).mock.calls[0][1]).toMatchObject({
+      itinerary: [{ activities: [{ locationUnresolved: false }] }],
+    });
   });
 
   it('still prefers the location when one was given', async () => {

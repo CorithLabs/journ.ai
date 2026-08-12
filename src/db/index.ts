@@ -114,6 +114,24 @@ export interface Activity {
   time: string;          // 'HH:MM' 24h
   locationName: string;
   coordinates?: [number, number]; // [lng, lat]
+  /**
+   * The formatted address the coordinates were resolved to.
+   *
+   * Kept so a location can be checked rather than trusted: a pin alone cannot
+   * tell you the geocoder picked the Ichiran in Shibuya and not one of the
+   * other eighty. Mapbox returns it with every result — it used to be thrown
+   * away.
+   */
+  address?: string;
+  /**
+   * Set when a lookup was made and found nothing.
+   *
+   * Distinguishes a location that failed from one nothing has tried yet, which
+   * a missing `coordinates` cannot: geocoding only runs when the map is
+   * opened, so flagging every card without coordinates would accuse a whole
+   * itinerary of being broken before it had been looked at once.
+   */
+  locationUnresolved?: boolean;
   notes: string;
   pinnedToTodo: boolean;
   budgetWarning?: boolean;
