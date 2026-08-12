@@ -103,15 +103,38 @@ describe('TodoList', () => {
     });
   });
 
-  it('inline edit: clicking title makes it editable', async () => {
+  /*
+   * Tapping a title used to drop straight into editing it, which is a strange
+   * answer to "what is this?" and was the only way to read a long one.
+   */
+  it('opens what the task knows when its title is tapped', async () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    // The title is a button — clicking it should switch to edit mode
-    const titleBtn = screen.getByText('Book flights to Tokyo');
-    fireEvent.click(titleBtn);
-    await waitFor(() => {
-      expect(screen.getByLabelText('Edit title')).toBeInTheDocument();
-    });
+
+    fireEvent.click(screen.getByText('Book flights to Tokyo'));
+
+    await waitFor(() => expect(screen.getByTestId('task-detail')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Edit title')).not.toBeInTheDocument();
+    expect(screen.getByTestId('detail-title')).toHaveTextContent('Book flights to Tokyo');
+  });
+
+  it('goes on to edit from the same modal, without closing it first', async () => {
+    vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByText('Book flights to Tokyo'));
+
+    fireEvent.click(await screen.findByTestId('detail-edit'));
+
+    expect(await screen.findByLabelText('Edit title')).toBeInTheDocument();
+  });
+
+  it('reaches the editor directly from the pencil', async () => {
+    vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+
+    fireEvent.click(screen.getByTestId('task-edit'));
+
+    expect(await screen.findByLabelText('Edit title')).toBeInTheDocument();
   });
 
   /*
@@ -119,11 +142,10 @@ describe('TodoList', () => {
    * was to look. The editor now ends in a Save, the way the itinerary and
    * clipboard editors do.
    */
-  it('inline edit: saving updated title calls db.todos.update', async () => {
+  it('saving an updated title calls db.todos.update', async () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    const titleBtn = screen.getByText('Book flights to Tokyo');
-    fireEvent.click(titleBtn);
+    fireEvent.click(screen.getByTestId('task-edit'));
     const editInput = await screen.findByLabelText('Edit title');
     fireEvent.change(editInput, { target: { value: 'Book flights to Osaka' } });
     fireEvent.click(screen.getByTestId('task-save-btn'));
