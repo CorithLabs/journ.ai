@@ -14,6 +14,7 @@ import {
   BODY_WARN,
 } from './clipboardConstants';
 import FileDropzone, { type SelectedFile } from './FileDropzone';
+import { fieldOnCard, notesOnCard } from '../ui/formStyles';
 
 interface Props {
   planId: string;
@@ -76,7 +77,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
    * leave.
    */
   return (
-    <Modal title="Add item" onClose={onClose} anchor={isMobile ? 'top' : 'center'} width="md">
+    <Modal title="Add item" onClose={onClose} anchor={isMobile ? 'top' : 'center'} width="xl">
         <form onSubmit={save} className="space-y-5" data-testid="add-item-form">
           {/* Type selector */}
           <div>
@@ -87,7 +88,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
               id="clip-type"
               value={type}
               onChange={(e) => setType(e.target.value as ClipboardType)}
-              className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className={fieldOnCard}
               data-testid="type-select"
             >
               {CLIPBOARD_TYPES.map((t) => (
@@ -108,7 +109,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={`e.g. ${type}`}
-              className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className={fieldOnCard}
               data-testid="title-input"
             />
           </div>
@@ -154,7 +155,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
               onChange={(e) => setBody(e.target.value)}
               rows={8}
               placeholder="Confirmation numbers, email text, notes…"
-              className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 resize-y"
+              className={notesOnCard}
               data-testid="body-input"
             />
             {nearLimit && (

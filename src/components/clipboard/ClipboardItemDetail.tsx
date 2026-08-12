@@ -8,6 +8,7 @@ import { TYPE_BORDER, CLIPBOARD_TYPES, formatFileSize, isImageMime } from './cli
 import LinkItineraryPicker from './LinkItineraryPicker';
 import { SlotPicker } from '../itinerary/ActivityCard';
 import { exactTime } from '../../utils/activityTime';
+import { fieldOnCard, fieldOnCardAuto, notesOnCard } from '../ui/formStyles';
 
 interface Props {
   planId: string;
@@ -197,14 +198,14 @@ export default function ClipboardItemDetail({ planId }: Props) {
               aria-label="Title"
               placeholder="Title"
               autoFocus
-              className="w-full bg-surface-overlay border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className={fieldOnCard}
               data-testid="detail-title-input"
             />
             <select
               value={type}
               onChange={(e) => setType(e.target.value as ClipboardItem['type'])}
               aria-label="Type"
-              className="w-full bg-surface-overlay border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary focus:outline-none"
+              className={fieldOnCard}
               data-testid="detail-type-select"
             >
               {CLIPBOARD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -212,10 +213,10 @@ export default function ClipboardItemDetail({ planId }: Props) {
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              rows={5}
+              rows={6}
               aria-label="Notes"
               placeholder="Notes — a confirmation number, a door code, what time check-in opens"
-              className="w-full bg-surface-overlay border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none resize-none"
+              className={notesOnCard}
               data-testid="detail-body-input"
             />
             {/* Optional, and only meaningful once the item is linked to a
@@ -230,7 +231,7 @@ export default function ClipboardItemDetail({ planId }: Props) {
                   value={exactTime(time) ?? ''}
                   onChange={(e) => setTime(e.target.value)}
                   aria-label="Exact time"
-                  className="bg-surface-overlay border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary focus:outline-none"
+                  className={fieldOnCardAuto}
                   data-testid="detail-exact-time"
                 />
                 {time && (
