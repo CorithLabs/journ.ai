@@ -83,15 +83,41 @@ describe('no form control goes back to its own size', () => {
       return e.name.endsWith('.tsx') ? [full] : [];
     });
 
-  it('has no hand-rolled input padding left in the components', () => {
-    const offenders: string[] = [];
-    for (const file of walk(join(process.cwd(), 'src/components'))) {
-      const src = readFileSync(file, 'utf-8');
-      // A bordered, filled control that sets its own padding — the shape the
-      // shared constants exist to own.
-      const re = /className="[^"]*bg-surface-(raised|overlay)[^"]*border[^"]*px-2 py-1(\.5)?[^"]*"/g;
-      if (re.test(src)) offenders.push(file.replace(process.cwd(), ''));
-    }
-    expect(offenders).toEqual([]);
+  const sources = () =>
+    [join(process.cwd(), 'src/components'), join(process.cwd(), 'src/pages')]
+      .flatMap(walk)
+      .map((file) => [file.replace(process.cwd(), ''), readFileSync(file, 'utf-8')] as const);
+
+  const offendersFor = (re: RegExp) =>
+    sources().filter(([, src]) => new RegExp(re.source, 'g').test(src)).map(([name]) => name);
+
+  // A bordered, filled control that sets its own padding — the shape the
+  // shared constants exist to own.
+  const OWN_PADDING = /className="[^"]*bg-surface-(raised|overlay)[^"]*border[^"]*px-2 py-1(\.5)?[^"]*"/;
+
+  /*
+   * The other way the five sizes arrived: not a different size, but the right
+   * one written out again. Three copies of the house field had accumulated —
+   * two named constants and one longhand — and a copy is where the next size
+   * comes from.
+   */
+  const RESPELT = /className="[^"]*bg-surface-(raised|overlay)[^"]*border[^"]*rounded-xl px-3 py-2[^"]*"/;
+
+  it('has no hand-rolled input padding left', () => {
+    expect(offendersFor(OWN_PADDING)).toEqual([]);
+  });
+
+  it('has nobody re-spelling the shared field instead of importing it', () => {
+    expect(offendersFor(RESPELT)).toEqual([]);
+  });
+
+  // A guard nothing can trip is not a guard.
+  it('would catch either of them coming back', () => {
+    const ownPadding =
+      'className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm"';
+    const respelt =
+      'className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm"';
+    expect(OWN_PADDING.test(ownPadding)).toBe(true);
+    expect(RESPELT.test(respelt)).toBe(true);
   });
 });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { slotLabel } from '../../utils/activityTime';
 import { X } from 'lucide-react';
 import type { Plan } from '../../db';
+import { fieldClass } from '../ui/formStyles';
 
 interface Props {
   plan: Plan;
@@ -63,7 +64,7 @@ export default function LinkItineraryPicker({ plan, onClose, onLink }: Props) {
                   setActivityId('');
                 }}
                 data-testid="link-day-select"
-                className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                className={fieldClass}
               >
                 <option value="">Select a day…</option>
                 {plan.itinerary.map((d) => (
@@ -84,7 +85,7 @@ export default function LinkItineraryPicker({ plan, onClose, onLink }: Props) {
                   value={activityId}
                   onChange={(e) => setActivityId(e.target.value)}
                   data-testid="link-activity-select"
-                  className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  className={fieldClass}
                 >
                   <option value="">Whole day</option>
                   {selectedDay.activities.map((a) => (

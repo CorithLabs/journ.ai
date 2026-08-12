@@ -7,6 +7,7 @@ import { hasStoredKey } from '../../services/aiKey';
 import { useAgentChat } from './useAgentChat';
 import Markdown from './Markdown';
 import { useDraggablePanel, isDraggableViewport } from './useDraggablePanel';
+import { fieldOnCardAuto } from '../ui/formStyles';
 
 interface Props {
   planId: string;
@@ -193,7 +194,7 @@ export default function AgentPanel({ planId }: Props) {
           disabled={!keyConfigured || busy}
           aria-label="Message the AI agent"
           data-testid="agent-input"
-          className="flex-1 bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60"
+          className={`flex-1 ${fieldOnCardAuto}`}
         />
         <button
           type="submit"
