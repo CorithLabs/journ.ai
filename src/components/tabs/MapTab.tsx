@@ -79,9 +79,11 @@ export default function MapTab({ planId }: Props) {
     if (geocodedRef.current === cacheKey) return;
     geocodedRef.current = cacheKey;
 
+    // Anything with a name to look up, which is every activity — the location
+    // field being blank no longer takes a card out of the running.
     const unresolved = plan.itinerary
       .flatMap(d => d.activities)
-      .filter(a => a.locationName && !a.coordinates);
+      .filter(a => !a.coordinates && (a.locationName?.trim() || a.name?.trim()));
 
     if (unresolved.length === 0) return;
 
@@ -156,9 +158,10 @@ export default function MapTab({ planId }: Props) {
     debouncedDayIndex !== null ? pins.filter(p => p.dayIndex === debouncedDayIndex) : pins;
 
   const selectedDayAllUnresolved =
+    geocoding &&
     selectedDay != null &&
-    selectedDay.activities.some(a => a.locationName) &&
-    selectedDay.activities.every(a => !a.locationName || !a.coordinates);
+    selectedDay.activities.length > 0 &&
+    selectedDay.activities.every(a => !a.coordinates);
 
   const openDay = openPin ? plan.itinerary.find(d => d.dayIndex === openPin.dayIndex) : null;
   const openAct = openDay?.activities.find(a => a.id === openPin!.activity.id);
@@ -170,10 +173,11 @@ export default function MapTab({ planId }: Props) {
 
   const hasAnyCoordinates = pins.length > 0;
   const allActivities = plan.itinerary.flatMap(d => d.activities);
-  const hasUnresolved = allActivities.some(a => a.locationName && !a.coordinates);
-  // An activity with no location name is never geocoded, so it can never be
-  // pinned — which used to be invisible rather than merely disappointing.
-  const unlocated = allActivities.filter(a => !a.locationName?.trim()).length;
+  const hasUnresolved = allActivities.some(a => !a.coordinates);
+  // Counted by what actually failed to be placed, not by the empty location
+  // field: an activity with no location is now looked up by its own name, so
+  // a blank field no longer means a card that cannot be pinned.
+  const unlocated = allActivities.filter(a => !a.coordinates).length;
 
   return (
     <div className="flex flex-col h-full" data-testid="map-tab">
@@ -332,6 +336,18 @@ export default function MapTab({ planId }: Props) {
             />
             <span className="text-ink-secondary">{selectedDay.label}</span>
             <span className="text-ink-muted">·</span>
+            {/* Said out loud when some of the day is missing. The count was
+                only ever shown across all days, so a day that put three of its
+                five cards on the map looked like a day with three cards. */}
+            {selectedDayPins.length > 0 &&
+              selectedDayPins.length < selectedDay.activities.length && (
+                <>
+                  <span className="text-ink-muted" data-testid="day-pin-count">
+                    {selectedDayPins.length} of {selectedDay.activities.length} on the map
+                  </span>
+                  <span className="text-ink-muted">·</span>
+                </>
+              )}
             {selectedDayPins.length === 0 ? (
               <span className="text-ink-muted" data-testid="no-route-message">
                 No geocoded locations for this day
@@ -357,7 +373,7 @@ export default function MapTab({ planId }: Props) {
         )}
         {unlocated > 0 && !geocoding && (
           <span className="text-ink-muted ml-auto" data-testid="unlocated-count">
-            {unlocated} without a location
+            {unlocated} could not be placed
           </span>
         )}
         {geocodeError && (

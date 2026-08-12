@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   geocodeLocation,
+  geocodePlanActivities,
   getPinActivities,
   haversineKm,
   totalRouteDistanceKm,
 } from '../mapbox';
-import { type Plan } from '../../db';
+import { db, type Plan } from '../../db';
 
 const MOCK_GEOCODE_RESPONSE = {
   features: [{ center: [139.6917, 35.6895] }],
@@ -159,6 +160,123 @@ describe('geocodeLocation', () => {
       const result = await geocodeLocation('Union Station', 'pk.test');
       expect(result).toEqual([-87.6298, 41.8781]);
     });
+  });
+
+  /*
+   * An activity with no location is now looked up by its own name, which is
+   * how "Senso-ji Temple" reaches the map. The cost is that "Lunch" is also
+   * sent, and a geocoder with no answer replies with the city — a pin in the
+   * middle of Tokyo for something that is not a place.
+   */
+  describe('a guess made from the activity name', () => {
+    const TOKYO: [number, number] = [139.6917, 35.6895];
+    const respondWith = (center: [number, number]) =>
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ features: [{ center }] }),
+      } as Response);
+
+    it('throws away an answer that is only the city', async () => {
+      respondWith(TOKYO);
+      const result = await geocodeLocation('Lunch', 'pk.test', {
+        proximity: TOKYO,
+        rejectCityItself: true,
+      });
+      expect(result).toBeNull();
+    });
+
+    it('keeps a real place a short walk from the city point', async () => {
+      respondWith([139.7671, 35.6812]); // Tokyo Station, ~7km out
+      const result = await geocodeLocation('Tokyo Station', 'pk.test', {
+        proximity: TOKYO,
+        rejectCityItself: true,
+      });
+      expect(result).toEqual([139.7671, 35.6812]);
+    });
+
+    // A location the traveller typed means what it says: "Tokyo" is the city,
+    // on purpose, and rejecting it would drop a card they placed by hand.
+    it('accepts the city when the city is what was asked for', async () => {
+      respondWith(TOKYO);
+      const result = await geocodeLocation('Tokyo', 'pk.test', { proximity: TOKYO });
+      expect(result).toEqual(TOKYO);
+    });
+  });
+});
+
+/*
+ * The reported bug: a day with five cards showed three pins. Two of them had
+ * an empty location field, and the loop skipped those outright — they were
+ * never looked up, so they could never appear.
+ */
+describe('geocoding a whole plan', () => {
+  const TOKYO: [number, number] = [139.6917, 35.6895];
+
+  /** The city anchor first, then one answer per activity looked up. */
+  const answerWith = (...centers: Array<[number, number] | null>) => {
+    const fetchMock = vi.fn();
+    for (const center of centers) {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ features: center ? [{ center }] : [] }),
+      } as Response);
+    }
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  const planWith = (activities: Array<{ name: string; locationName: string }>): Plan => ({
+    ...mockPlan,
+    itinerary: [{
+      dayIndex: 0,
+      label: 'Day 1',
+      activities: activities.map((a, i) => ({
+        id: `x${i}`, time: '09:00', notes: '', pinnedToTodo: false, ...a,
+      })),
+    }],
+  });
+
+  beforeEach(() => {
+    vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('looks up an activity that was given no location, using its name', async () => {
+    const fetchMock = answerWith(TOKYO, [139.7967, 35.7148]); // anchor, then Senso-ji
+    const plan = planWith([{ name: 'Senso-ji Temple', locationName: '' }]);
+
+    const failed = await geocodePlanActivities(plan, 'pk.test');
+
+    expect(failed.size).toBe(0);
+    expect(decodeURIComponent(String(fetchMock.mock.calls[1][0]))).toContain('Senso-ji Temple');
+    expect(vi.mocked(db.plans.update).mock.calls[0][1]).toMatchObject({
+      itinerary: [{ activities: [{ coordinates: [139.7967, 35.7148] }] }],
+    });
+  });
+
+  // The price of guessing from the name: "Lunch" is not a place, and the
+  // geocoder answers with the city rather than nothing.
+  it('does not pin the middle of the city for something that is not a place', async () => {
+    answerWith(TOKYO, TOKYO);
+    const plan = planWith([{ name: 'Lunch', locationName: '' }]);
+
+    const failed = await geocodePlanActivities(plan, 'pk.test');
+
+    expect(failed.has('x0')).toBe(true);
+    expect(db.plans.update).not.toHaveBeenCalled();
+  });
+
+  it('still prefers the location when one was given', async () => {
+    const fetchMock = answerWith(TOKYO, [139.7016, 35.658]);
+    const plan = planWith([{ name: 'Dinner', locationName: 'Shibuya' }]);
+
+    await geocodePlanActivities(plan, 'pk.test');
+
+    const asked = decodeURIComponent(String(fetchMock.mock.calls[1][0]));
+    expect(asked).toContain('Shibuya');
+    expect(asked).not.toContain('Dinner');
   });
 });
 

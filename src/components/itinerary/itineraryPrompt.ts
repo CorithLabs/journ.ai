@@ -105,6 +105,13 @@ export function buildItineraryPrompt(plan: Plan): string {
     '- If kids are present, every activity must be age-appropriate.',
     '- Give one "estimatedDailySpend" {min,max,currency:"USD"} per day using realistic estimates.',
     '- "time" is 24h "HH:MM". Generate a fresh UUID-like string for each activity "id".',
+    // Every locationName is fed to a geocoder, and a vague one comes back as
+    // the middle of the city or as nothing at all — which is how activities
+    // went missing from the map.
+    '- "locationName" must be a real, searchable place with its city, e.g.',
+    '  "Senso-ji Temple, Asakusa, Tokyo". Never "downtown", "various", "TBD" or',
+    '  the name of the activity. If an activity has no single place (a travel day,',
+    '  free time), name the station, terminal or neighbourhood it happens at.',
     '',
     'Schema (return exactly this shape):',
     '{"days":[{"dayIndex":0,"label":"Day 1","estimatedDailySpend":{"min":80,"max":150,"currency":"USD"},"activities":[{"id":"a1","name":"...","time":"09:00","locationName":"...","notes":"...","budgetWarning":false}]}]}',
