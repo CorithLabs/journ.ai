@@ -144,15 +144,62 @@ describe('IntakeChat suggestions', () => {
     expect(screen.getByTestId('intake-suggestions')).toBeInTheDocument();
   });
 
-  it('does not add the same value twice', async () => {
+  /*
+   * Tapping a chosen chip used to do nothing at all. Once a chip shows that
+   * it is chosen, doing nothing reads as broken — so the second tap takes it
+   * back off.
+   */
+  it('takes a value back off when its chip is tapped again', async () => {
     render(<IntakeChat plan={mockPlan} />);
     fireEvent.click(screen.getByTestId('intake-suggestion-2'));
     await screen.findByText(/Are any of the travellers children/i);
     fireEvent.click(screen.getByTestId('intake-suggestion-No'));
     const streetFood = await screen.findByTestId('intake-suggestion-street food');
     fireEvent.click(streetFood);
-    fireEvent.click(streetFood);
     expect(screen.getByTestId('intake-input')).toHaveValue('street food');
+    fireEvent.click(streetFood);
+    expect(screen.getByTestId('intake-input')).toHaveValue('');
+  });
+
+  it('never lists the same value twice', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    const streetFood = await screen.findByTestId('intake-suggestion-street food');
+    const museums = await screen.findByTestId('intake-suggestion-museums');
+    fireEvent.click(streetFood);
+    fireEvent.click(museums);
+    fireEvent.click(streetFood);
+    fireEvent.click(streetFood);
+    expect(screen.getByTestId('intake-input')).toHaveValue('museums, street food');
+  });
+
+  // Answering meant reaching past the chips to the input at the bottom of the
+  // screen; the way to finish now sits with the thing being answered.
+  it('shows what is chosen, and offers to send it from where the chips are', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    const streetFood = await screen.findByTestId('intake-suggestion-street food');
+
+    expect(screen.queryByTestId('intake-send-chips')).not.toBeInTheDocument();
+    fireEvent.click(streetFood);
+    expect(streetFood).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('intake-send-chips')).toHaveTextContent('Send 1');
+
+    fireEvent.click(screen.getByTestId('intake-send-chips'));
+    await screen.findByText(/like to avoid/i);
+  });
+
+  // Single-answer chips submit on the first tap, so a send button beside them
+  // would be a second control for something already done.
+  it('offers no send button on a single-answer question', async () => {
+    render(<IntakeChat plan={mockPlan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    expect(screen.queryByTestId('intake-send-chips')).not.toBeInTheDocument();
   });
 });
 

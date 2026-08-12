@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import StartManualButton from './StartManualButton';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
 import { scrollBehavior } from '../../utils/motion';
+import Button from '../ui/Button';
 
 interface Props {
   plan: Plan;
@@ -159,6 +160,8 @@ export default function IntakeChat({ plan }: Props) {
   // asked about one — the question itself was part of the assumption.
   const asksVisa = plan.international !== false;
   const [saving, setSaving] = useState(false);
+  /** What the chips have put in the box, so they can show it back. */
+  const chosen = input.split(',').map((v) => v.trim()).filter(Boolean);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -356,10 +359,13 @@ export default function IntakeChat({ plan }: Props) {
 
         {/* Suggestion chips for the current question */}
         {STEP_SUGGESTIONS[step] && (
-          <div className="flex flex-wrap gap-2 pl-8" data-testid="intake-suggestions">
+          <div className="flex flex-wrap items-center gap-2 pl-8" data-testid="intake-suggestions">
             {/* The bookings chips name what there is to book, which depends on
                 how they are getting there. */}
-            {(step === 'bookings' ? bookingOptions() : STEP_SUGGESTIONS[step]!.values).map((value) => (
+            {(step === 'bookings' ? bookingOptions() : STEP_SUGGESTIONS[step]!.values).map((value) => {
+              const isMulti = STEP_SUGGESTIONS[step]!.multi && value !== 'skip';
+              const picked = isMulti && chosen.includes(value);
+              return (
               <button
                 key={value}
                 type="button"
@@ -371,18 +377,42 @@ export default function IntakeChat({ plan }: Props) {
                     handleSend(value);
                     return;
                   }
+                  // Toggles. Once a chip looks chosen, tapping it again has to
+                  // un-choose it — the old version silently did nothing, which
+                  // reads as broken the moment the state is visible.
                   setInput((prev) => {
                     const parts = prev.split(',').map((s) => s.trim()).filter(Boolean);
-                    if (parts.includes(value)) return prev; // already chosen
-                    return [...parts, value].join(', ');
+                    const next = parts.includes(value)
+                      ? parts.filter((p) => p !== value)
+                      : [...parts, value];
+                    return next.join(', ');
                   });
                 }}
-                className="px-3 py-1.5 rounded-full bg-surface-overlay border border-white/10 text-xs text-ink-secondary hover:text-ink-primary hover:border-accent/40 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+                aria-pressed={isMulti ? picked : undefined}
+                className={`px-3 py-1.5 rounded-full border text-xs transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
+                  picked
+                    ? 'bg-accent/15 border-accent/40 text-ink-primary font-medium'
+                    : 'bg-surface-overlay border-white/10 text-ink-secondary hover:text-ink-primary hover:border-accent/40'
+                }`}
                 data-testid={`intake-suggestion-${value}`}
               >
                 {value}
               </button>
-            ))}
+              );
+            })}
+
+            {/* Answering meant reaching past the chips to the input at the
+                bottom of the screen. The way to finish sits with the thing
+                being answered. */}
+            {STEP_SUGGESTIONS[step]!.multi && chosen.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => handleSend()}
+                data-testid="intake-send-chips"
+              >
+                Send {chosen.length}
+              </Button>
+            )}
           </div>
         )}
 
