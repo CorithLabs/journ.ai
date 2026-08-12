@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import Modal, { AddButton } from '../ui/Modal';
 import DetailModal, { DetailRow } from '../ui/DetailModal';
+import { fieldClass, fieldClassAuto } from '../ui/formStyles';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import Button from '../ui/Button';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
@@ -54,17 +55,19 @@ function AddForm({ planId, onDone }: { planId: string; onDone: () => void }) {
     <form onSubmit={submit} className="space-y-3" data-testid="add-task-form">
       <div>
         <input value={title} onChange={e => { setTitle(e.target.value); setErr(''); }} placeholder="Task title"
-          className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className={fieldClass}
           data-testid="task-title-input" aria-label="Task title" />
         {err && <p role="alert" className="mt-1 text-xs text-status-danger">{err}</p>}
       </div>
       <div className="flex gap-2">
+        {/* A date and a category are both short. Paired on one row rather
+            than stacked, which is what the extra width is for. */}
         <input type="date" value={due} onChange={e => setDue(e.target.value)}
-          className={`flex-1 bg-surface-raised border rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50 ${due && due < today ? 'border-status-warning/50' : 'border-white/10'}`}
+          className={`flex-1 ${fieldClassAuto} ${due && due < today ? '!border-status-warning/50' : ''}`}
           aria-label="Due date" />
         {due && due < today && <p className="text-xs text-status-warning self-center">Past</p>}
         <select value={cat} onChange={e => setCat(e.target.value as Cat)} aria-label="Category"
-          className="bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50">
+          className={fieldClassAuto}>
           {CATS.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
@@ -212,7 +215,7 @@ function Row({ item, plan, onToggle, onDel, onUpd, onPin, onNavigateToDay }: Row
                   words the other two editors use. */}
               <input ref={ref} value={val} onChange={e => setVal(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') cancel(); }}
-                className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                className={fieldClass}
                 aria-label="Edit title" autoFocus />
               <div className="flex gap-2 pt-1">
                 <Button size="sm" onClick={commit} data-testid="task-save-btn">Save</Button>

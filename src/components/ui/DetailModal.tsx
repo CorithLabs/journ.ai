@@ -27,6 +27,14 @@ export default function DetailModal({
   mapLabel = 'Map',
   /** A move inside the app — the itinerary day a task came from. */
   goTo,
+  /**
+   * Widen for a form.
+   *
+   * Prose reads best at a narrow measure, so the reading view stays at the
+   * default. A form is a set of controls, not prose, and the same width left
+   * every field stacked in one column with nowhere to go.
+   */
+  wide = false,
   testId = 'detail-modal',
 }: {
   title: string;
@@ -38,13 +46,14 @@ export default function DetailModal({
   mapUrl?: string | null;
   mapLabel?: string;
   goTo?: { label: string; onClick: () => void } | null;
+  wide?: boolean;
   testId?: string;
 }) {
   const action =
     'flex items-center justify-center gap-1.5 flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none';
 
   return (
-    <Modal title={title} onClose={onClose}>
+    <Modal title={title} onClose={onClose} width={wide ? 'xl' : 'md'}>
       <div className="space-y-4" data-testid={testId}>
         {children}
 

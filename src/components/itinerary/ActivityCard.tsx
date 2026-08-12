@@ -16,6 +16,7 @@ import { nearbyAnchor, locationContext } from '../../utils/locationSearch';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
 import LocationField, { type PickedLocation } from '../ui/LocationField';
 import DetailModal, { DetailRow } from '../ui/DetailModal';
+import { fieldClass, fieldClassAuto, notesClass } from '../ui/formStyles';
 
 /**
  * Why an activity is missing from the map, if it is.
@@ -160,10 +161,10 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
    * reading were replaced by the fields that hold them.
    */
   const editForm = (
-      <div className="space-y-2" data-testid="activity-edit-form">
+      <div className="space-y-3" data-testid="activity-edit-form">
         <div>
           <input value={nm} onChange={e => setNm(e.target.value)} onBlur={save}
-            className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+            className={fieldClass}
             aria-label="Activity name" placeholder="Activity name" />
           {err && <p className="text-xs text-status-danger mt-0.5">{err}</p>}
         </div>
@@ -187,8 +188,9 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
 
         {showExact ? (
           <div className="flex items-center gap-2">
+            {/* Sized to a clock, not to the row it sits in. */}
             <input type="time" value={exactTime(tm) ?? ''} onChange={e => setTm(e.target.value)} onBlur={save}
-              className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
+              className={fieldClassAuto}
               aria-label="Exact time" data-testid="edit-time" />
             <button type="button" className="text-xs text-ink-muted hover:underline"
               onClick={() => { setShowExact(false); const slot = slotForTime(tm); if (slot) { setTm(slot); onUpd({ time: slot }); } }}>
@@ -222,9 +224,10 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
             )}
           </p>
         )}
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} rows={2}
-          className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none resize-none"
-          aria-label="Notes" placeholder="Notes" />
+        {/* Two rows, where the same field on the clipboard had eight. */}
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} rows={6}
+          className={notesClass}
+          aria-label="Notes" placeholder="Notes — a booking reference, what to bring, who to ask for" />
         {/* Was a text link reading "Done", which named the moment rather
             than the action and looked like nothing else that commits. */}
         <div className="flex gap-2 pt-1">
@@ -353,6 +356,7 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
           onDelete={() => { closeDetail(); onDel(); }}
           deleteLabel={`Delete ${act.name}`}
           mapUrl={mapsUrl}
+          wide={detail === 'edit'}
           testId="activity-detail"
         >
           {detail === 'edit' ? editForm : (

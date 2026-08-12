@@ -29,7 +29,16 @@ export default function Modal({
   onClose: () => void;
   children: ReactNode;
   anchor?: 'center' | 'top';
-  width?: 'sm' | 'md' | 'lg';
+  /**
+   * Reading and editing want opposite widths, which is why `xl` exists.
+   *
+   * Prose is legible at a narrow measure, so a detail view is right at `md`.
+   * A form is not prose — it is a set of controls — and the same 448px box
+   * left a location field, a slot picker, a clock and a notes box stacked in
+   * one column with nowhere to go. Every CRUD dialog in the app used `md`,
+   * so reading was correct by accident and editing was cramped by it.
+   */
+  width?: 'sm' | 'md' | 'lg' | 'xl';
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -39,7 +48,7 @@ export default function Modal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const maxWidth = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' }[width];
+  const maxWidth = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg', xl: 'max-w-2xl' }[width];
 
   return createPortal(
     <div

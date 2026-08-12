@@ -13,6 +13,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import LocationField, { type PickedLocation } from '../ui/LocationField';
 import { nearbyAnchor, locationContext } from '../../utils/locationSearch';
+import { fieldClass, fieldClassAuto, notesClass } from '../ui/formStyles';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles, CalendarCheck } from 'lucide-react';
@@ -116,7 +117,7 @@ function AddInline({
   const fields = (
     <>
       <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
-        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
+        aria-label="Activity name" className={fieldClass} />
 
       {/* Where it is, chosen rather than described where possible. Typing a
           venue name and leaving it to be resolved later accepts whichever
@@ -137,7 +138,7 @@ function AddInline({
 
       {showExact ? (
         <input type="time" value={exactTime(tm) ?? ''} onChange={e => setTm(e.target.value)}
-          className="bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-ink-primary w-28 focus:outline-none" aria-label="Exact time" />
+          className={fieldClassAuto} aria-label="Exact time" />
       ) : (
         <button type="button" onClick={() => setShowExact(true)}
           className="text-xs text-ink-muted hover:text-accent" data-testid="add-exact-time">
@@ -150,10 +151,10 @@ function AddInline({
       <textarea
         value={notes}
         onChange={e => setNotes(e.target.value)}
-        rows={3}
+        rows={6}
         aria-label="Notes"
         placeholder="Notes — a booking reference, what to bring, who to ask for"
-        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none resize-none"
+        className={notesClass}
         data-testid="add-notes-input"
       />
 
@@ -191,8 +192,9 @@ function AddInline({
       title={`Add to ${dayLabel}`}
       onClose={() => setOpen(false)}
       anchor={isMobile ? 'top' : 'center'}
+      width="xl"
     >
-      <form onSubmit={submit} className="space-y-2">
+      <form onSubmit={submit} className="space-y-3">
         {fields}
         <div className="flex gap-2 pt-1">
           <Button type="submit" data-testid="add-save-btn">Save</Button>

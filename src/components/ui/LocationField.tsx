@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MapPin } from 'lucide-react';
 import { searchVenues, type VenueSuggestion } from '../../services/venues';
+import { fieldClass } from './formStyles';
 
 export interface PickedLocation {
   locationName: string;
@@ -148,7 +149,7 @@ export default function LocationField({
         aria-controls={`${testId}-options`}
         aria-autocomplete="list"
         autoComplete="off"
-        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+        className={fieldClass}
         data-testid={testId}
       />
 
