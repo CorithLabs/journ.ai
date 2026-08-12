@@ -35,7 +35,29 @@ export interface GeocodeOptions {
    * "Union Station" → "Union Station, Toronto, Canada".
    */
   context?: string;
+  /**
+   * Reject a result that is nothing more than the city itself.
+   *
+   * Set when the query is a guess rather than a stated location — an activity
+   * name being tried because no location was given. Mapbox answers "Lunch,
+   * Tokyo, Japan" with Tokyo, which passes every distance check and drops a
+   * pin in the middle of the city for something that is not a place at all.
+   *
+   * Not set for a location the traveller actually typed: "Tokyo" as a
+   * location means the city, and is a fair answer.
+   */
+  rejectCityItself?: boolean;
 }
+
+/**
+ * Close enough to an anchor to be that anchor.
+ *
+ * A geocoder that finds nothing returns the city feature's own centre, so a
+ * result landing on the point we looked the city up at is the geocoder saying
+ * "no" in the shape of a yes. Real places sit further out — 100m is inside a
+ * single city block.
+ */
+const CITY_ITSELF_KM = 0.1;
 
 /**
  * Geocode a location name to [lng, lat] coordinates using Mapbox Geocoding API.
@@ -86,6 +108,12 @@ export async function geocodeLocation(
         ? [options.proximity]
         : [];
     if (anchors.length && !anchors.some((a) => haversineKm(a, coords) <= MAX_ACTIVITY_DISTANCE_KM)) {
+      return null;
+    }
+    if (
+      options.rejectCityItself &&
+      anchors.some((a) => haversineKm(a, coords) <= CITY_ITSELF_KM)
+    ) {
       return null;
     }
     return coords;
@@ -188,7 +216,22 @@ export async function geocodePlanActivities(
   for (const day of itinerary) {
     for (let i = 0; i < day.activities.length; i++) {
       const act = day.activities[i];
-      if (act.coordinates || !act.locationName.trim()) continue;
+      if (act.coordinates) continue;
+
+      /*
+       * An activity with no location falls back to its own name.
+       *
+       * Most of what goes missing from the map is not a geocoding failure —
+       * it is a card that was never looked up at all, because the location
+       * field was left empty. "Senso-ji Temple" is a perfectly good query on
+       * its own, and hand-added cards almost never carry a separate location.
+       *
+       * Named guesses are held to a stricter standard (rejectCityItself), or
+       * "Lunch" would pin the middle of Tokyo.
+       */
+      const stated = act.locationName.trim();
+      const query = stated || act.name.trim();
+      if (!query) continue;
 
       // Bias toward the city the activity names, so "Todai-ji, Nara" resolves
       // near Nara rather than wherever the trip happens to start.
@@ -196,7 +239,8 @@ export async function geocodePlanActivities(
       const owner =
         anchored.find((a) => haystack.includes(a.city.toLowerCase())) ?? primary;
 
-      const coords = await geocodeLocation(act.locationName, token, {
+      const coords = await geocodeLocation(query, token, {
+        rejectCityItself: !stated,
         proximity: owner?.coords,
         anchors: allAnchors,
         context: owner?.context,
@@ -235,21 +279,23 @@ import { getDayColor } from '../constants/colors';
 export function getPinActivities(plan: Plan): PinActivity[] {
   const pins: PinActivity[] = [];
   for (const day of plan.itinerary) {
-    let seq = 1;
     // The same order the itinerary renders in, so pin 3 is card 3. Walking the
     // raw array numbered them by however the day happened to be stored.
-    for (const activity of sortByTime(day.activities)) {
+    //
+    // Numbered by position in the day rather than among the pins, so a card
+    // that could not be placed leaves a gap — 1, 2, 4 says card 3 is missing,
+    // where renumbering hid the fact that anything was missing at all.
+    sortByTime(day.activities).forEach((activity, i) => {
       if (activity.coordinates) {
         pins.push({
           activity,
           dayIndex: day.dayIndex,
           dayLabel: day.label,
-          sequenceNumber: seq,
+          sequenceNumber: i + 1,
           dayColor: getDayColor(day.dayIndex),
         });
-        seq++;
       }
-    }
+    });
   }
   return pins;
 }

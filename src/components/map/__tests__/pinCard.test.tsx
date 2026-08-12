@@ -107,20 +107,43 @@ describe('tapping a pin', () => {
 });
 
 describe('what the map admits it is not showing', () => {
-  it('counts activities that can never be pinned', () => {
-    const partial: Plan = {
-      ...plan,
-      itinerary: [{
-        ...plan.itinerary[0],
-        activities: [act('a1', 'Museum', 'morning', 'Ueno'), act('a2', 'Coffee', 'noon', '')],
-      }],
-    };
+  const partial: Plan = {
+    ...plan,
+    itinerary: [{
+      ...plan.itinerary[0],
+      activities: [act('a1', 'Museum', 'morning', 'Ueno'), act('a2', 'Coffee', 'noon', '')],
+    }],
+  };
+
+  it('counts activities that could not be placed', async () => {
     vi.mocked(useLiveQuery).mockReturnValue(partial);
     render(<MapTab planId="p1" />);
 
     fireEvent.click(screen.getByTestId('day-selector-all'));
     expect(screen.getByTestId('all-days-summary')).toHaveTextContent('1 of 2 activities on the map');
-    expect(screen.getByTestId('unlocated-count')).toHaveTextContent('1 without a location');
+    // Only once the lookup has finished: mid-geocode, a card with no pin yet
+    // is not a card that failed.
+    await waitFor(() =>
+      expect(screen.getByTestId('unlocated-count')).toHaveTextContent('1 could not be placed'),
+    );
+  });
+
+  // A day showing three of its five cards used to look like a day with three
+  // cards: the count existed only across the whole trip.
+  it('says so on the day that is short, not only across the trip', () => {
+    vi.mocked(useLiveQuery).mockReturnValue(partial);
+    render(<MapTab planId="p1" />);
+
+    fireEvent.click(screen.getByTestId('day-selector-0'));
+    expect(screen.getByTestId('day-pin-count')).toHaveTextContent('1 of 2 on the map');
+  });
+
+  it('stays quiet on a day where everything is on the map', () => {
+    vi.mocked(useLiveQuery).mockReturnValue(plan);
+    render(<MapTab planId="p1" />);
+
+    fireEvent.click(screen.getByTestId('day-selector-0'));
+    expect(screen.queryByTestId('day-pin-count')).not.toBeInTheDocument();
   });
 });
 
@@ -137,5 +160,24 @@ describe('pin numbering', () => {
     };
     const pins = getPinActivities(outOfOrder);
     expect(pins.map(p => [p.activity.id, p.sequenceNumber])).toEqual([['early', 1], ['late', 2]]);
+  });
+
+  // Renumbering around a card that could not be placed hid the fact that
+  // anything was missing: five cards and four pins numbered 1-4 read as four
+  // cards. A gap says which one is absent.
+  it('leaves a gap where a card could not be placed', () => {
+    const withHole: Plan = {
+      ...plan,
+      itinerary: [{
+        ...plan.itinerary[0],
+        activities: [
+          act('a1', 'Museum', 'morning', 'Ueno'),
+          act('a2', 'Coffee', 'noon', ''),
+          act('a3', 'Dinner', 'evening', 'Shibuya'),
+        ],
+      }],
+    };
+    const pins = getPinActivities(withHole);
+    expect(pins.map(p => [p.activity.id, p.sequenceNumber])).toEqual([['a1', 1], ['a3', 3]]);
   });
 });
