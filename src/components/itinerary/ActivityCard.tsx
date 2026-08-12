@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Button from '../ui/Button';
-import { AlertTriangle, Pin, Pencil, Trash2, MapPin } from 'lucide-react';
+import { AlertTriangle, Pin, Pencil, Trash2, MapPin, MapPinOff } from 'lucide-react';
 import { type Activity, type Plan } from '../../db';
 import {
   formatTime,
@@ -12,7 +12,35 @@ import {
   nextFreeTime,
 } from '../../utils/activityTime';
 import { mapsUrlFor } from '../../utils/mapsLink';
+import { nearbyAnchor, locationContext } from '../../utils/locationSearch';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
+import LocationField, { type PickedLocation } from '../ui/LocationField';
+
+/**
+ * Why an activity is missing from the map, if it is.
+ *
+ * Three states, and only two of them are worth saying out loud. Geocoding runs
+ * when the Map tab is opened, so an activity with no coordinates has usually
+ * just not been looked at yet — flagging that would accuse a whole fresh
+ * itinerary of being broken. `locationUnresolved` is the difference: it is set
+ * only after a lookup came back empty.
+ *
+ * The two that are worth saying need different repairs, which is why they are
+ * not one badge: one is missing a location, the other has one that no map
+ * knows.
+ */
+export function mapGapFor(
+  act: Pick<Activity, 'locationName' | 'coordinates' | 'locationUnresolved'>,
+): { kind: 'missing' | 'unresolved'; label: string; tone: 'muted' | 'warning' } | null {
+  if (act.coordinates) return null;
+  if (act.locationUnresolved) {
+    return act.locationName?.trim()
+      ? { kind: 'unresolved', label: 'Location not found — fix it', tone: 'warning' }
+      : { kind: 'missing', label: 'Add a location for the map', tone: 'muted' };
+  }
+  // Never looked up. Says nothing, because nothing has gone wrong yet.
+  return null;
+}
 
 /** Morning / Noon / Evening / Night, with the current one lit. */
 export function SlotPicker({ value, onPick }: { value: string; onPick: (t: string) => void }) {
@@ -55,23 +83,54 @@ interface Props {
 export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, onPin }: Props) {
   const mapsUrl = act.locationName?.trim() || act.coordinates ? mapsUrlFor(act, plan) : null;
   const [ed, setEd] = useState(false);
+  /** Set when edit was opened from the map flag rather than the pencil. */
+  const [focusLocation, setFocusLocation] = useState(false);
   const [nm, setNm] = useState(act.name);
   const [tm, setTm] = useState(act.time);
   const [loc, setLoc] = useState(act.locationName);
   const [notes, setNotes] = useState(act.notes);
   const [err, setErr] = useState('');
+  /*
+   * What the location field last resolved to, held until the edit is saved.
+   *
+   * A picked venue arrives with coordinates; typed text arrives with none,
+   * and that absence has to be written through — keeping the old pin after
+   * the location was changed left the card naming one place and drawn at
+   * another.
+   */
+  const [picked, setPicked] = useState<PickedLocation>({
+    locationName: act.locationName,
+    address: act.address,
+    coordinates: act.coordinates,
+  });
   // The clock is the exception now, so it stays out of the way unless this
   // activity already has one or the user asks for it.
   const [showExact, setShowExact] = useState(Boolean(exactTime(act.time)));
 
   const clashes = findTimeClashes(siblings, tm, act.id);
   const suggestion = clashes.length ? nextFreeTime(siblings, tm, act.id) : null;
+  const mapGap = mapGapFor(act);
 
+
+  const setLocation = (next: PickedLocation) => {
+    setLoc(next.locationName);
+    setPicked(next);
+  };
 
   const save = () => {
     if (!nm.trim()) { setErr('Name cannot be blank'); return; }
     setErr('');
-    onUpd({ name: nm.trim(), time: tm, locationName: loc, notes });
+    onUpd({
+      name: nm.trim(),
+      time: tm,
+      locationName: loc,
+      notes,
+      coordinates: picked.coordinates,
+      address: picked.address,
+      // A location that has changed has not been looked for yet, whatever
+      // happened to the one before it.
+      locationUnresolved: false,
+    });
   };
 
   if (ed) {
@@ -83,9 +142,16 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
             aria-label="Activity name" placeholder="Activity name" />
           {err && <p className="text-xs text-status-danger mt-0.5">{err}</p>}
         </div>
-        <input value={loc} onChange={e => setLoc(e.target.value)} onBlur={save}
-          className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1 text-sm text-ink-primary focus:outline-none"
-          aria-label="Location" placeholder="Location" />
+        <LocationField
+          value={loc}
+          address={picked.address ?? act.address}
+          proximity={nearbyAnchor(siblings, act.id)}
+          context={locationContext(plan)}
+          onChange={setLocation}
+          onBlur={save}
+          autoFocus={focusLocation}
+          testId="edit-location"
+        />
 
         {/* The part of the day is the time. An exact clock value is available
             below for the few things that have one — a check-in, a flight. */}
@@ -137,8 +203,8 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
         {/* Was a text link reading "Done", which named the moment rather
             than the action and looked like nothing else that commits. */}
         <div className="flex gap-2 pt-1">
-          <Button size="sm" onClick={() => { save(); setEd(false); }} data-testid="activity-save-btn">Save</Button>
-          <Button size="sm" variant="secondary" onClick={() => setEd(false)} data-testid="activity-cancel-btn">Cancel</Button>
+          <Button size="sm" onClick={() => { save(); setEd(false); setFocusLocation(false); }} data-testid="activity-save-btn">Save</Button>
+          <Button size="sm" variant="secondary" onClick={() => { setEd(false); setFocusLocation(false); }} data-testid="activity-cancel-btn">Cancel</Button>
         </div>
       </div>
     );
@@ -184,6 +250,29 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
         {act.locationName && (
           <p className="text-xs text-ink-muted mt-0.5 break-words">{act.locationName}</p>
         )}
+
+        {/* Why this card is not on the map, and the way to fix it in the same
+            control. A badge that only reported the problem would leave the
+            user to go and find the field it is about. */}
+        {mapGap && (
+          <button
+            type="button"
+            // Straight into the field the flag is about, so the fix is one tap
+            // rather than "open edit, then find the right box".
+            onClick={() => { setFocusLocation(true); setEd(true); }}
+            className={`mt-1 inline-flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 border transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
+              mapGap.tone === 'warning'
+                ? 'text-status-warning border-status-warning/40 hover:bg-status-warning/10'
+                : 'text-ink-muted border-white/15 hover:text-ink-secondary hover:bg-white/5'
+            }`}
+            data-testid="map-gap-flag"
+            data-gap={mapGap.kind}
+          >
+            <MapPinOff size={11} aria-hidden="true" />
+            {mapGap.label}
+          </button>
+        )}
+
         {act.notes && (
           <p className="text-xs text-ink-secondary mt-1 line-clamp-3 break-words">{act.notes}</p>
         )}

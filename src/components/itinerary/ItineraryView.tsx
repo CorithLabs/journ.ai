@@ -11,6 +11,8 @@ import WeatherAlertBadge from './WeatherAlertBadge';
 import WeatherSuggestionsPanel, { parseSuggestions, type Suggestion } from './WeatherSuggestionsPanel';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import LocationField, { type PickedLocation } from '../ui/LocationField';
+import { nearbyAnchor, locationContext } from '../../utils/locationSearch';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Plus, PlusCircle, Sparkles, CalendarCheck } from 'lucide-react';
@@ -42,10 +44,11 @@ function budgetLabel(
 }
 
 function AddInline({
-  onAdd, siblings, dayLabel, seedSlot = 'morning', variant = 'link', label = 'Add activity',
+  onAdd, siblings, plan, dayLabel, seedSlot = 'morning', variant = 'link', label = 'Add activity',
 }: {
-  onAdd: (n: string, t: string, loc: string, notes: string) => Promise<void>;
+  onAdd: (n: string, t: string, loc: PickedLocation, notes: string) => Promise<void>;
   siblings: Activity[];
+  plan: Plan;
   dayLabel: string;
   /** Which part of the day this button sits in. */
   seedSlot?: TimeSlotId;
@@ -55,7 +58,7 @@ function AddInline({
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [nm, setNm] = useState('');
-  const [loc, setLoc] = useState('');
+  const [loc, setLoc] = useState<PickedLocation>({ locationName: '' });
   const [notes, setNotes] = useState('');
   const [tm, setTm] = useState<string>(seedSlot);
   const [showExact, setShowExact] = useState(false);
@@ -74,9 +77,9 @@ function AddInline({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nm.trim()) return;
-    await onAdd(nm.trim(), tm, loc.trim(), notes.trim());
+    await onAdd(nm.trim(), tm, { ...loc, locationName: loc.locationName.trim() }, notes.trim());
     setNm('');
-    setLoc('');
+    setLoc({ locationName: '' });
     setNotes('');
     setOpen(false);
   };
@@ -115,12 +118,18 @@ function AddInline({
       <input autoFocus value={nm} onChange={e => setNm(e.target.value)} placeholder="Activity name"
         className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
 
-      {/* Without this the activity can never reach the map: geocoding only
-          ever looks at the location, so every hand-added card was invisible
-          there with nothing to say why. */}
-      <input value={loc} onChange={e => setLoc(e.target.value)} placeholder="Location (for the map)"
-        aria-label="Location"
-        className="w-full bg-surface-raised border border-white/10 rounded-lg px-2 py-1.5 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none" />
+      {/* Where it is, chosen rather than described where possible. Typing a
+          venue name and leaving it to be resolved later accepts whichever
+          place of that name ranks highest; picking one settles it here and
+          carries its coordinates, so nothing is guessed at afterwards. */}
+      <LocationField
+        value={loc.locationName}
+        address={loc.address}
+        proximity={nearbyAnchor(siblings)}
+        context={locationContext(plan)}
+        onChange={setLoc}
+        testId="add-location"
+      />
 
       {/* Part of the day first — that is what a plan is built in. The clock is
           for the few things that come with one. */}
@@ -327,8 +336,19 @@ export default function ItineraryView({ plan }: Props) {
   const persist = (it: typeof plan.itinerary) =>
     db.plans.update(plan.id, { itinerary: it, updatedAt: new Date().toISOString() });
 
-  const addAct = async (di: number, name: string, time: string, locationName: string, notes: string, afterId?: string) => {
-    const newAct: Activity = { id: uuidv4(), name, time, locationName, notes, pinnedToTodo: false };
+  const addAct = async (di: number, name: string, time: string, loc: PickedLocation, notes: string, afterId?: string) => {
+    const newAct: Activity = {
+      id: uuidv4(),
+      name,
+      time,
+      locationName: loc.locationName,
+      // Present only when a venue was picked from the list. Without them the
+      // card is geocoded the usual way next time the map is opened.
+      coordinates: loc.coordinates,
+      address: loc.address,
+      notes,
+      pinnedToTodo: false,
+    };
     const acts = plan.itinerary[di].activities;
     // Order within a part of the day is the array's, so an activity added from
     // a gap has to land in that gap rather than at the end of the day.
@@ -620,6 +640,7 @@ export default function ItineraryView({ plan }: Props) {
                       {ai < sorted.length - 1 && (
                         <AddInline
                           siblings={day.activities}
+                          plan={plan}
                           dayLabel={day.label}
                           variant="gap"
                           label={`Add activity between ${act.name} and ${sorted[ai + 1].name}`}
@@ -639,7 +660,7 @@ export default function ItineraryView({ plan }: Props) {
                       />
                     ))}
 
-                  <AddInline siblings={day.activities} dayLabel={day.label}
+                  <AddInline siblings={day.activities} plan={plan} dayLabel={day.label}
                     seedSlot={seedSlotFor(sortByTime(day.activities).slice(-1)[0])}
                     onAdd={(name, time, loc, notes) => addAct(day.dayIndex, name, time, loc, notes)} />
                 </div>
