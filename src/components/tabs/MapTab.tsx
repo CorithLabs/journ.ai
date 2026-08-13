@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Map, Settings, MapPin, X } from 'lucide-react';
 import { db } from '../../db';
@@ -150,6 +150,21 @@ export default function MapTab({ planId }: Props) {
     return () => controller.abort();
   }, [filters, viewport]);
 
+  /*
+   * Held steady between renders.
+   *
+   * This was rebuilt during render, so every re-render of the tab handed the
+   * map a new array — and the map treats a new pin array as a reason to reframe
+   * the camera. Reporting the viewport after a pinch re-rendered the tab, which
+   * rebuilt this, which threw the camera back to where it started. The zoom was
+   * being undone by the act of zooming.
+   */
+  const pins = useMemo(() => (plan ? getPinActivities(plan) : []), [plan]);
+  const selectedDayPins = useMemo(
+    () => (debouncedDayIndex !== null ? pins.filter(p => p.dayIndex === debouncedDayIndex) : pins),
+    [pins, debouncedDayIndex],
+  );
+
   const toggleFilter = (id: DiscoverCategoryId) => {
     setOpenPlace(null);
     setFilters((prev) => {
@@ -232,14 +247,10 @@ export default function MapTab({ planId }: Props) {
     );
   }
 
-  const pins = getPinActivities(plan);
   const selectedDay =
     selectedDayIndex !== null
       ? plan.itinerary.find(d => d.dayIndex === selectedDayIndex)
       : null;
-
-  const selectedDayPins =
-    debouncedDayIndex !== null ? pins.filter(p => p.dayIndex === debouncedDayIndex) : pins;
 
   const selectedDayAllUnresolved =
     geocoding &&
