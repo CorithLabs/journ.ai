@@ -1,4 +1,5 @@
 import { getMapboxToken, haversineKm } from './mapbox';
+import { photonSearch } from './photon';
 
 /**
  * A place you can pick instead of a place we had to guess at.
@@ -51,8 +52,15 @@ export async function searchVenues(
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
 
+  /*
+   * With no Mapbox token there is still OpenStreetMap, which needs none.
+   *
+   * This used to return nothing at all, so the venue picker — the whole point
+   * of which is not having to get a location right by typing — was switched
+   * off for exactly the people who had not set an API key up.
+   */
   const token = getMapboxToken();
-  if (!token) return [];
+  if (!token) return fromOpenStreetMap(trimmed, options);
 
   try {
     const params = new URLSearchParams({
@@ -81,7 +89,7 @@ export async function searchVenues(
     if (!resp.ok) return [];
     const data = (await resp.json()) as { features?: MapboxFeature[] };
 
-    return (data.features ?? [])
+    const hits = (data.features ?? [])
       .filter((f): f is MapboxFeature & { center: [number, number] } =>
         Array.isArray(f.center) && f.center.length === 2)
       .filter((f) =>
@@ -92,7 +100,28 @@ export async function searchVenues(
         coordinates: f.center,
       }))
       .filter((v) => v.name);
+
+    // An empty list is where the beaches and parks went. OSM carries the named
+    // geography Mapbox is thinnest on, so it gets asked before the field gives
+    // up — and only then, so the common case still costs one request.
+    return hits.length ? hits : await fromOpenStreetMap(trimmed, options);
   } catch {
     return [];
   }
+}
+
+/** The same search, asked of OpenStreetMap, held to the same radius. */
+async function fromOpenStreetMap(
+  query: string,
+  options: { proximity?: [number, number]; signal?: AbortSignal },
+): Promise<VenueSuggestion[]> {
+  const hits = await photonSearch(query, {
+    proximity: options.proximity,
+    limit: 6,
+    signal: options.signal,
+  });
+  return hits
+    .filter((h) =>
+      !options.proximity || haversineKm(options.proximity, h.coordinates) <= VENUE_RADIUS_KM)
+    .map((h) => ({ name: h.name, address: h.address, coordinates: h.coordinates }));
 }

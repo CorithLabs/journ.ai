@@ -1,6 +1,7 @@
 import { type Activity, type Plan, db } from '../db';
 import { sortByTime } from '../utils/activityTime';
 import { tripRoute, sameCity } from '../utils/travel';
+import { photonSearch } from './photon';
 
 /** localStorage key for the Mapbox access token */
 export const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
@@ -59,6 +60,36 @@ export interface GeocodeOptions {
  */
 const CITY_ITSELF_KM = 0.1;
 
+/**
+ * The same query, asked of OpenStreetMap, held to the same guards.
+ *
+ * The guards matter more here, not less: a second opinion that is not checked
+ * the way the first was is just a second way to pin the wrong continent.
+ */
+async function fromOpenStreetMap(
+  query: string,
+  anchors: Array<[number, number]>,
+  options: GeocodeOptions,
+): Promise<GeocodedPlace | null> {
+  const hits = await photonSearch(query, { proximity: options.proximity, limit: 5 });
+  for (const hit of hits) {
+    if (
+      anchors.length &&
+      !anchors.some((a) => haversineKm(a, hit.coordinates) <= MAX_ACTIVITY_DISTANCE_KM)
+    ) {
+      continue;
+    }
+    if (
+      options.rejectCityItself &&
+      anchors.some((a) => haversineKm(a, hit.coordinates) <= CITY_ITSELF_KM)
+    ) {
+      continue;
+    }
+    return { coordinates: hit.coordinates, address: hit.address };
+  }
+  return null;
+}
+
 /** A resolved place: where it is, and what Mapbox says it is. */
 export interface GeocodedPlace {
   coordinates: [number, number];
@@ -107,7 +138,16 @@ export async function geocodePlace(
         ? `${name}, ${ctx}`
         : name;
 
-    const params = new URLSearchParams({ access_token: token, limit: '1' });
+    /*
+     * Several candidates, not one.
+     *
+     * This asked for a single result and then applied two rejection filters to
+     * it — the distance guard and the city-itself guard — so a query whose top
+     * hit failed either was a total failure, with Mapbox willing to have
+     * returned four more in the same request at the same price. The right
+     * beach could be second and we would never have seen it.
+     */
+    const params = new URLSearchParams({ access_token: token, limit: '5' });
     if (options.proximity) {
       params.set('proximity', `${options.proximity[0]},${options.proximity[1]}`);
     }
@@ -117,10 +157,6 @@ export async function geocodePlace(
     const data = (await resp.json()) as {
       features?: { center?: [number, number]; place_name?: string }[];
     };
-    const feature = data.features?.[0];
-    const center = feature?.center;
-    if (!center || center.length < 2) return null;
-    const coords: [number, number] = [center[0], center[1]];
 
     // Proximity is only a ranking hint, not a filter — a name with no local
     // match still returns the far-away one. Reject those outright rather than
@@ -130,16 +166,31 @@ export async function geocodePlace(
       : options.proximity
         ? [options.proximity]
         : [];
-    if (anchors.length && !anchors.some((a) => haversineKm(a, coords) <= MAX_ACTIVITY_DISTANCE_KM)) {
-      return null;
+
+    for (const feature of data.features ?? []) {
+      const center = feature?.center;
+      if (!center || center.length < 2) continue;
+      const coords: [number, number] = [center[0], center[1]];
+
+      if (anchors.length && !anchors.some((a) => haversineKm(a, coords) <= MAX_ACTIVITY_DISTANCE_KM)) {
+        continue;
+      }
+      if (
+        options.rejectCityItself &&
+        anchors.some((a) => haversineKm(a, coords) <= CITY_ITSELF_KM)
+      ) {
+        continue;
+      }
+      return { coordinates: coords, address: feature.place_name?.trim() || query };
     }
-    if (
-      options.rejectCityItself &&
-      anchors.some((a) => haversineKm(a, coords) <= CITY_ITSELF_KM)
-    ) {
-      return null;
-    }
-    return { coordinates: coords, address: feature.place_name?.trim() || query };
+
+    /*
+     * Nothing Mapbox offered survived. Ask OpenStreetMap before giving up:
+     * named geography — beaches, parks, viewpoints, trails — is where its
+     * coverage is strongest and Mapbox's thinnest, and this costs one extra
+     * request paid only on the failures.
+     */
+    return await fromOpenStreetMap(query, anchors, options);
   } catch {
     return null;
   }
