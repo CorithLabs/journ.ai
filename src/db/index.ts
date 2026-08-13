@@ -17,6 +17,15 @@ export interface TripLeg {
    *  flying into Osaka for a Kyoto trip is ordinary. */
   city?: string;
   country?: string;
+  /**
+   * The airport, when flying — "Narita International (NRT)".
+   *
+   * Kept apart from `city` rather than written into it, because `city` is read
+   * as a city: it anchors geocoding and decides which city a day belongs to.
+   * It also has to stay a real city when the airport is somewhere else, which
+   * is ordinary — you fly into Kansai for Kyoto and into Calgary for Banff.
+   */
+  airport?: string;
   /** ISO date. May sit outside the trip's own dates for an overnight leg. */
   date?: string;
   /**

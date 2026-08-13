@@ -61,6 +61,20 @@ export function LegFields({
         className={input}
         data-testid={`${id}-city`}
       />
+      {/* Shown only when flying, because it is only a question then — and
+          filled in for an international trip, where it is nearly always the
+          same answer. */}
+      {value.mode === 'flight' && (
+        <input
+          type="text"
+          value={value.airport ?? ''}
+          onChange={(e) => set({ airport: e.target.value })}
+          placeholder="Airport"
+          aria-label={`${legend} airport`}
+          className={input}
+          data-testid={`${id}-airport`}
+        />
+      )}
       <div className="flex gap-2">
         <input
           type="date"
