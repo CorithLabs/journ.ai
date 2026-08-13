@@ -27,6 +27,7 @@ import {
   type AiProvider,
 } from '../services/aiClient';
 import { useAppStore } from '../store';
+import { fieldOnCard } from '../components/ui/formStyles';
 
 type TestState =
   | { kind: 'idle' }
@@ -224,7 +225,7 @@ export default function SettingsPage() {
       </div>
 
       <section
-        className="max-w-lg bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
+        className="max-w-2xl bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
         aria-label="AI Provider"
       >
         <h2 className="text-lg font-semibold text-ink-primary mb-1">AI Provider</h2>
@@ -245,6 +246,12 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Which provider and which of its models are one decision, and both
+            answers are short. Full width each, stacked, they read as two
+            unrelated settings — and they were getting the same room as the API
+            key below, which holds about a hundred characters. */}
+        <div className="flex flex-wrap gap-3 mb-4">
+        <div className="flex-1 min-w-[12rem]">
         <label htmlFor="ai-provider" className="block text-sm text-ink-secondary mb-1.5">
           Provider
         </label>
@@ -253,14 +260,15 @@ export default function SettingsPage() {
           value={provider}
           onChange={(e) => onProviderChange(e.target.value as AiProvider)}
           data-testid="provider-select"
-          className="w-full mb-4 bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className={fieldOnCard}
         >
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic (Claude)</option>
         </select>
+        </div>
 
         {provider === 'anthropic' && (
-          <>
+          <div className="flex-1 min-w-[12rem]">
             <label htmlFor="anthropic-model" className="block text-sm text-ink-secondary mb-1.5">
               Model
             </label>
@@ -269,7 +277,7 @@ export default function SettingsPage() {
               value={anthropicModel}
               onChange={(e) => onModelChange(e.target.value)}
               data-testid="anthropic-model-select"
-              className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              className={fieldOnCard}
             >
               {ANTHROPIC_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -281,12 +289,13 @@ export default function SettingsPage() {
                 <option value={anthropicModel}>{anthropicModel}</option>
               )}
             </select>
-            <p className="mt-1.5 mb-4 text-xs text-ink-muted">
+            <p className="mt-1.5 text-xs text-ink-muted">
               Haiku is fastest and cheapest; Sonnet and Opus produce better
               itineraries for complex multi-day trips.
             </p>
-          </>
+          </div>
         )}
+        </div>
 
         <label htmlFor="api-key" className="block text-sm text-ink-secondary mb-1.5">
           {PROVIDER_LABEL[provider]} API key
@@ -302,7 +311,7 @@ export default function SettingsPage() {
           placeholder={hasKey ? '•••••••• (saved — enter a new key to replace)' : `${KEY_PREFIX[provider]}…`}
           autoComplete="off"
           data-testid="api-key-input"
-          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className={fieldOnCard}
         />
 
         {formatWarning && (
@@ -360,7 +369,7 @@ export default function SettingsPage() {
       </section>
 
       <section
-        className="max-w-lg bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
+        className="max-w-2xl bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
         aria-label="Map"
       >
         <div className="flex items-center gap-2 mb-1">
@@ -388,7 +397,7 @@ export default function SettingsPage() {
           autoComplete="off"
           spellCheck={false}
           data-testid="mapbox-token-input"
-          className="w-full bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+          className={fieldOnCard}
         />
 
         <p className="mt-1.5 text-xs text-ink-muted">

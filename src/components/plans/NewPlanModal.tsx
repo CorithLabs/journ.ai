@@ -18,6 +18,7 @@ import {
   DESTINATION_ERROR,
   type DestinationSuggestion,
 } from '../../services/destinations';
+import { fieldClass } from '../ui/formStyles';
 
 interface Props {
   onClose: () => void;
@@ -186,7 +187,7 @@ export default function NewPlanModal({ onClose }: Props) {
 
   return (
     <div
-      className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
+      className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-plan-title"
@@ -261,7 +262,7 @@ export default function NewPlanModal({ onClose }: Props) {
               onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               onKeyDown={onDestinationKeyDown}
               placeholder="e.g. Tokyo, Japan"
-              className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+              className={fieldClass}
               aria-required="true"
               aria-describedby={errors.destination ? 'destination-error' : undefined}
               role="combobox"
@@ -315,7 +316,12 @@ export default function NewPlanModal({ onClose }: Props) {
           )}
         </div>
 
-        <div>
+        {/* A start and an end are a pair, and both are short. Stacked at full
+            width they read as two unrelated questions — and the trip details
+            panel, which edits these same two fields, already put them on one
+            row. */}
+        <div className="flex flex-wrap gap-3">
+        <div className="flex-1 min-w-[10rem]">
           <label
             htmlFor="start-date"
             className="block text-sm text-ink-secondary mb-1"
@@ -330,12 +336,12 @@ export default function NewPlanModal({ onClose }: Props) {
               setStartDate(e.target.value);
               if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
             }}
-            className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+            className={fieldClass}
             data-testid="start-date-input"
           />
         </div>
 
-        <div>
+        <div className="flex-1 min-w-[10rem]">
           <label
             htmlFor="end-date"
             className="block text-sm text-ink-secondary mb-1"
@@ -356,7 +362,7 @@ export default function NewPlanModal({ onClose }: Props) {
               setEndDate(e.target.value);
               if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
             }}
-            className="w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+            className={fieldClass}
             aria-describedby={
               endDateError ? 'end-date-error' : 'end-date-help'
             }
@@ -377,6 +383,7 @@ export default function NewPlanModal({ onClose }: Props) {
               {startDate ? ` — latest ${maxEndDate(startDate)}.` : '.'}
             </p>
           )}
+        </div>
         </div>
 
         <div>

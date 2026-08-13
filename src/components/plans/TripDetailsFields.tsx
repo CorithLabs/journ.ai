@@ -2,9 +2,9 @@ import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import type { TravelMode, TripLeg, TripStop } from '../../db';
 import { TRAVEL_MODES } from '../../utils/travel';
+import { fieldClass } from '../ui/formStyles';
 
-const input =
-  'w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm';
+const input = fieldClass;
 
 function ModePicker({
   value, onChange, id,

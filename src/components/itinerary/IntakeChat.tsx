@@ -8,6 +8,7 @@ import StartManualButton from './StartManualButton';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
 import { scrollBehavior } from '../../utils/motion';
 import Button from '../ui/Button';
+import { fieldOnCardAuto } from '../ui/formStyles';
 
 interface Props {
   plan: Plan;
@@ -479,7 +480,7 @@ export default function IntakeChat({ plan }: Props) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Type your answer…"
-              className="flex-1 bg-surface-overlay border border-white/10 rounded-xl px-3 py-2 text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm"
+              className={`flex-1 ${fieldOnCardAuto}`}
               data-testid="intake-input"
               aria-label="Answer"
             />

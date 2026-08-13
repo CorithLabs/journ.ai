@@ -11,9 +11,11 @@ import {
   DESTINATION_ERROR,
   type DestinationSuggestion,
 } from '../../services/destinations';
+import { fieldClass } from '../ui/formStyles';
 
-const input =
-  'w-full bg-surface-raised border border-white/10 rounded-xl px-3 py-2 text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50 text-sm';
+// One of two local copies of the house field, which the shared constant now
+// owns — the New Plan form held a third, written out longhand.
+const input = fieldClass;
 
 /**
  * Everything about a trip, after it exists.
@@ -126,7 +128,7 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
         role="dialog"
         aria-modal="true"
         aria-labelledby="trip-details-title"
-        className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 panel-enter"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 panel-enter"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 id="trip-details-title" className="text-lg font-semibold text-ink-primary">Trip details</h2>
