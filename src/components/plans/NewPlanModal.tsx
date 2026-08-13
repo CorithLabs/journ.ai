@@ -19,6 +19,7 @@ import {
   type DestinationSuggestion,
 } from '../../services/destinations';
 import { fieldClass } from '../ui/formStyles';
+import { internationalFlightDefaults, wouldFillTravel } from '../../utils/tripDefaults';
 
 interface Props {
   onClose: () => void;
@@ -88,6 +89,63 @@ export default function NewPlanModal({ onClose }: Props) {
     setShowSuggestions(false);
     setHighlighted(-1);
     setErrors((prev) => ({ ...prev, destination: '' }));
+  };
+
+  /*
+   * Saying a trip crosses a border answers most of the travel section by
+   * implication: you are flying, into the destination's main airport, landing
+   * on the first day and leaving on the last, and coming home from where you
+   * arrived. All of it was hidden behind a collapsed section and typed by
+   * hand.
+   *
+   * The section is opened rather than filled in quietly. An international trip
+   * is not always a flight — Copenhagen to Lund is a train across a border —
+   * so these are defaults to look at and change, not decisions made for you.
+   */
+  /*
+   * The leg dates we put there ourselves.
+   *
+   * Trip type is often chosen before the dates are settled, and a leg still
+   * carrying the old start date would be wrong in a way that is easy to miss.
+   * These follow the trip — but only while they still hold what we wrote. The
+   * moment either is edited by hand it belongs to the traveller, and an
+   * overnight flight leaving the day before the trip must survive a change to
+   * the dates.
+   */
+  const autoDates = useRef<{ arrival?: string; departure?: string }>({});
+
+  useEffect(() => {
+    if (international !== true) return;
+    /*
+     * Read before it is replaced. A state updater runs during the next render,
+     * not here — so an updater reading the ref directly would compare the old
+     * leg date against the new trip date and conclude the traveller had edited
+     * it, leaving every leg behind at the first date it was given.
+     */
+    const ours = autoDates.current;
+    setArrival((leg) => (leg.date && leg.date !== ours.arrival ? leg : { ...leg, date: startDate }));
+    setDeparture((leg) => (leg.date && leg.date !== ours.departure ? leg : { ...leg, date: endDate }));
+    autoDates.current = { arrival: startDate, departure: endDate };
+  }, [startDate, endDate, international]);
+
+  const chooseBorder = (value: boolean | null) => {
+    setInternational(value);
+    if (value !== true) return;
+
+    const next = internationalFlightDefaults({
+      destination,
+      country,
+      startDate,
+      endDate,
+      arrival,
+      departure,
+    });
+    if (!wouldFillTravel({ arrival, departure }, next)) return;
+
+    autoDates.current = { arrival: next.arrival.date, departure: next.departure.date };
+    setArrival(next.arrival);
+    setDeparture(next.departure);
+    setShowTravel(true);
   };
 
   const onDestinationKeyDown = (e: React.KeyboardEvent) => {
@@ -392,7 +450,7 @@ export default function NewPlanModal({ onClose }: Props) {
               and nothing else in the app can work that out — a train crosses
               borders, a flight often does not, and the app never learns where
               the traveller lives. */}
-          <BorderPicker value={international} onChange={setInternational} />
+          <BorderPicker value={international} onChange={chooseBorder} />
         </div>
 
         <div className="border-t border-white/5 pt-3">
