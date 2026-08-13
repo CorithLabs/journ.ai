@@ -370,6 +370,54 @@ describe('executeAgentAction', () => {
   });
 });
 
+/*
+ * A real session: asked to "update day 1 with nearby attractions", the
+ * assistant asked which attractions, listed four when pushed, then asked again
+ * which of those to add. Three exchanges and nothing added to the itinerary.
+ *
+ * The cause was one instruction — "if a request is ambiguous, ask instead of
+ * guessing" — with nothing on the other side of the scale, so any unstated
+ * detail read as ambiguity. These guard the balance, because the prompt is the
+ * behaviour and nothing else in the suite can see it.
+ */
+describe('the assistant is told to plan, not to converse', () => {
+  const prompt = () => buildSystemPrompt(plan, 'itinerary');
+
+  it('tells it to make the change rather than describe it', () => {
+    expect(prompt()).toMatch(/planner, not a chat partner/i);
+    expect(prompt()).toMatch(/make the change with a tool in the same turn/i);
+  });
+
+  // Not knowing which museum is not the same as not knowing what was asked.
+  it('separates a request it cannot read from a detail it must choose', () => {
+    expect(prompt()).toMatch(/Missing detail is not ambiguity/i);
+    expect(prompt()).toMatch(/choosing which is your work/i);
+  });
+
+  it('forbids ending a turn by offering to do what was just asked', () => {
+    expect(prompt()).toMatch(/Never end a turn by offering to do the thing/i);
+  });
+
+  // "Local museums" cannot be added to a day; the Glenbow Museum can.
+  it('asks for named places, and for a location the map can use', () => {
+    expect(prompt()).toMatch(/Name real, specific places, never categories/i);
+    expect(prompt()).toMatch(/locationName with its city/i);
+  });
+
+  it('treats a long empty stretch as worth filling', () => {
+    expect(prompt()).toMatch(/long empty stretch is worth filling/i);
+  });
+
+  /*
+   * The old wording, kept out by name. It is a reasonable-sounding sentence
+   * and the obvious thing to add back the next time the assistant guesses
+   * badly — which is how it got there in the first place.
+   */
+  it('no longer tells it to ask whenever anything is unstated', () => {
+    expect(prompt()).not.toMatch(/ask a clarifying question INSTEAD of guessing/i);
+  });
+});
+
 describe('buildSystemPrompt', () => {
   it('includes destination, active tab, and an itinerary summary', () => {
     const prompt = buildSystemPrompt(plan, 'itinerary');
