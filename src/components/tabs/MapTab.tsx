@@ -22,6 +22,16 @@ import {
   togglePinnedTodo,
 } from '../../services/activityEdits';
 import RouteOptimisation from './RouteOptimisation';
+import DiscoveredPlaceCard from '../map/DiscoveredPlaceCard';
+import {
+  DISCOVER_CATEGORIES,
+  discoverPlaces,
+  isSearchableArea,
+  type BBox,
+  type DiscoverCategoryId,
+  type DiscoveredPlace,
+} from '../../services/discover';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
   planId: string;
@@ -40,6 +50,16 @@ export default function MapTab({ planId }: Props) {
   const [geocoding, setGeocoding] = useState(false);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [openPin, setOpenPin] = useState<PinActivity | null>(null);
+  /*
+   * Discovery: places found in the area on screen, which the map had no way of
+   * offering before. Off until asked for — a filter that searched on every pan
+   * would put a question to a free shared service every time the map moved.
+   */
+  const [filters, setFilters] = useState<Set<DiscoverCategoryId>>(new Set());
+  const [found, setFound] = useState<DiscoveredPlace[]>([]);
+  const [viewport, setViewport] = useState<BBox | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [openPlace, setOpenPlace] = useState<DiscoveredPlace | null>(null);
   const confirm = useConfirm();
   const geocodedRef = useRef<string | null>(null);
   const mapboxToken = getMapboxToken();
@@ -102,6 +122,70 @@ export default function MapTab({ planId }: Props) {
   useEffect(() => {
     if (plan) triggerGeocoding();
   }, [plan, triggerGeocoding]);
+
+  /*
+   * Runs when the filters change or the map settles somewhere new, and only
+   * then. The results are cached per area, so panning back is free.
+   */
+  useEffect(() => {
+    if (!viewport || filters.size === 0) {
+      setFound([]);
+      return;
+    }
+    if (!isSearchableArea(viewport)) {
+      setFound([]);
+      return;
+    }
+    const controller = new AbortController();
+    setSearching(true);
+    (async () => {
+      const wanted = DISCOVER_CATEGORIES.filter((c) => filters.has(c.id));
+      const results = await Promise.all(
+        wanted.map((c) => discoverPlaces(c, viewport, controller.signal)),
+      );
+      if (controller.signal.aborted) return;
+      setFound(results.flat());
+      setSearching(false);
+    })();
+    return () => controller.abort();
+  }, [filters, viewport]);
+
+  const toggleFilter = (id: DiscoverCategoryId) => {
+    setOpenPlace(null);
+    setFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /*
+   * A found place goes in with everything already settled — name, coordinates
+   * and the address it was found at — so it is on the map the moment it is
+   * added, with nothing left to geocode and nothing to get wrong by typing.
+   */
+  const addFoundPlace = async (place: DiscoveredPlace, dayIndex: number) => {
+    if (!plan) return;
+    const activity = {
+      id: uuidv4(),
+      name: place.name,
+      time: 'morning',
+      locationName: place.name,
+      coordinates: place.coordinates,
+      notes: '',
+      pinnedToTodo: false,
+    };
+    await saveItinerary(
+      plan.id,
+      plan.itinerary.map((d) =>
+        d.dayIndex === dayIndex ? { ...d, activities: [...d.activities, activity] } : d,
+      ),
+    );
+    setOpenPlace(null);
+    const label = plan.itinerary.find((d) => d.dayIndex === dayIndex)?.label ?? `Day ${dayIndex + 1}`;
+    setToast({ msg: `"${place.name}" added to ${label}` });
+  };
 
   if (!plan) {
     return (
@@ -232,6 +316,47 @@ export default function MapTab({ planId }: Props) {
         )}
       </div>
 
+      {/* What the map can find, rather than only what it can draw. Off by
+          default: the map's job is still the trip, and this is a second one
+          you ask for. */}
+      <div
+        className="px-3 py-2 border-b border-white/5 flex items-center gap-2 overflow-x-auto shrink-0"
+        role="group"
+        aria-label="Find places nearby"
+      >
+        <span className="shrink-0 text-xs text-ink-muted">Find</span>
+        {DISCOVER_CATEGORIES.map((c) => {
+          const on = filters.has(c.id);
+          return (
+            <button
+              key={c.id}
+              onClick={() => toggleFilter(c.id)}
+              aria-pressed={on}
+              className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                on
+                  ? 'bg-status-success/15 border-status-success/50 text-status-success font-semibold'
+                  : 'border-white/10 text-ink-secondary hover:text-ink-primary'
+              }`}
+              data-testid={`discover-filter-${c.id}`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+        {searching && (
+          <span className="shrink-0 text-xs text-ink-muted ml-auto" data-testid="discover-searching">
+            Searching…
+          </span>
+        )}
+        {!searching && filters.size > 0 && (
+          <span className="shrink-0 text-xs text-ink-muted ml-auto" data-testid="discover-count">
+            {viewport && !isSearchableArea(viewport)
+              ? 'Zoom in to search'
+              : `${found.length} found`}
+          </span>
+        )}
+      </div>
+
       {/* Map area */}
       <div className="flex-1 relative min-h-0">
         {selectedDayAllUnresolved && (
@@ -262,9 +387,28 @@ export default function MapTab({ planId }: Props) {
           selectedDayIndex={debouncedDayIndex}
           pins={selectedDayPins}
           onDistanceChange={setDistance}
-          onPinClick={setOpenPin}
+          onPinClick={(pin) => { setOpenPlace(null); setOpenPin(pin); }}
           selectedActivityId={openPin?.activity.id ?? null}
+          discovered={found}
+          onDiscoveredClick={(place) => { setOpenPin(null); setOpenPlace(place); }}
+          onViewportChange={setViewport}
         />
+
+        {/* Sits where the activity card sits, because only one of the two can
+            be open and they answer the same question about a pin. */}
+        {openPlace && (
+          <div
+            className="absolute z-20 left-3 right-3 bottom-3 md:left-auto md:right-4 md:bottom-4 md:w-80"
+            data-testid="discovered-panel"
+          >
+            <DiscoveredPlaceCard
+              place={openPlace}
+              plan={plan}
+              onAdd={(dayIndex) => addFoundPlace(openPlace, dayIndex)}
+              onClose={() => setOpenPlace(null)}
+            />
+          </div>
+        )}
 
         {/* The card the pin belongs to, with the actions it has in the
             itinerary — a card that looked the same but did nothing would be

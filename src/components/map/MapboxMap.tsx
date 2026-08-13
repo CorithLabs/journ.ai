@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { type Plan } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import { totalRouteDistanceKm, type PinActivity } from '../../services/mapbox';
+import type { BBox, DiscoveredPlace } from '../../services/discover';
 
 // Minimal types for CDN-loaded mapbox-gl (window.mapboxgl)
 interface MapboxGLMap {
@@ -20,6 +21,7 @@ interface MapboxGLMap {
   fitBounds(bounds: MapboxLngLatBounds, options?: { padding?: number; duration?: number; maxZoom?: number }): this;
   flyTo(options: { center?: [number, number]; zoom?: number; padding?: number; duration?: number }): this;
   loaded?(): boolean;
+  getBounds(): { toArray(): [[number, number], [number, number]] } | null;
 }
 
 interface MapboxLngLatBounds {
@@ -62,6 +64,16 @@ interface Props {
   /** Called when Mapbox GL emits an error. kind distinguishes an auth failure
    * (invalid/expired token → HTTP 401 from tile servers) from any other error. */
   onMapError?: (kind: 'auth' | 'other') => void;
+  /**
+   * Places found by a discovery filter, drawn apart from the itinerary's own.
+   *
+   * A different shape on purpose: these are suggestions, and one that looked
+   * like a numbered stop would read as something already planned.
+   */
+  discovered?: DiscoveredPlace[];
+  onDiscoveredClick?: (place: DiscoveredPlace) => void;
+  /** The area on screen, so a search can be about what is being looked at. */
+  onViewportChange?: (bbox: BBox) => void;
 }
 
 const ROUTE_SOURCE_ID = 'route-line-source';
@@ -132,6 +144,34 @@ const SPREAD_METRES = 35;
  * Nudging is honest here because the positions were interchangeable already:
  * they are one lookup result repeated, not two places that were measured.
  */
+/**
+ * A found place, drawn so it cannot be mistaken for a planned one.
+ *
+ * Smaller, hollow and unnumbered. The itinerary's pins are solid circles
+ * carrying the position of a card; one of these carrying a number would read
+ * as something already decided.
+ */
+function createDiscoveredElement(label: string): HTMLElement {
+  const el = document.createElement('div');
+  el.style.cssText = `
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: rgba(15,23,42,0.85);
+    border: 2px solid #34d399;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease;
+  `;
+  el.setAttribute('role', 'button');
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('aria-label', `${label} — add to your trip`);
+  el.dataset.testid = 'discovered-pin';
+  el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.3)'; });
+  el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
+  return el;
+}
+
 export function spreadCoincident(pins: PinActivity[]): Array<[number, number]> {
   const groups = new Map<string, number[]>();
   pins.forEach((pin, i) => {
@@ -167,6 +207,9 @@ export default function MapboxMap({
   onPinClick,
   selectedActivityId,
   onMapError,
+  discovered,
+  onDiscoveredClick,
+  onViewportChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxGLMap | null>(null);
@@ -174,6 +217,13 @@ export default function MapboxMap({
   const pinElementsRef = useRef<Map<string, HTMLElement>>(new Map());
   const onMapErrorRef = useRef(onMapError);
   onMapErrorRef.current = onMapError;
+  // Kept in refs so the map is built once: these change on every render of the
+  // tab above, and rebuilding the map would throw the camera away with it.
+  const discoveredMarkersRef = useRef<MapboxMarker[]>([]);
+  const onDiscoveredClickRef = useRef(onDiscoveredClick);
+  onDiscoveredClickRef.current = onDiscoveredClick;
+  const onViewportChangeRef = useRef(onViewportChange);
+  onViewportChangeRef.current = onViewportChange;
 
   // Remove all existing markers
   const clearMarkers = useCallback(() => {
@@ -313,6 +363,42 @@ export default function MapboxMap({
   }, [clearMarkers, onPinClick]);
 
   /*
+   * Kept in their own marker list so a change of filter does not disturb the
+   * itinerary pins — and, more to the point, does not refit the camera and
+   * move the map out from under someone who is browsing.
+   */
+  useEffect(() => {
+    const map = mapRef.current;
+    const mapboxgl = getMapboxGL();
+    if (!map || !mapboxgl) return;
+
+    discoveredMarkersRef.current.forEach((m) => m.remove());
+    discoveredMarkersRef.current = [];
+
+    for (const place of discovered ?? []) {
+      const el = createDiscoveredElement(place.name);
+      const open = (e: Event) => {
+        // Or the map underneath takes the tap and closes what just opened.
+        e.stopPropagation();
+        onDiscoveredClickRef.current?.(place);
+      };
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', (e) => {
+        if ((e as KeyboardEvent).key === 'Enter' || (e as KeyboardEvent).key === ' ') {
+          e.preventDefault();
+          open(e);
+        }
+      });
+      discoveredMarkersRef.current.push(new mapboxgl.Marker(el).setLngLat(place.coordinates).addTo(map));
+    }
+
+    return () => {
+      discoveredMarkersRef.current.forEach((m) => m.remove());
+      discoveredMarkersRef.current = [];
+    };
+  }, [discovered]);
+
+  /*
    * Applied straight to the element rather than by re-rendering the markers:
    * re-rendering refits the camera, so the map would jump every time a card
    * was opened.
@@ -350,7 +436,21 @@ export default function MapboxMap({
     };
     map.on('error', handleError);
 
+    /*
+     * What is on screen, so a discovery search can be about the area being
+     * looked at rather than about the whole trip. Reported after the move
+     * settles, not during it.
+     */
+    const reportViewport = () => {
+      const bounds = map.getBounds?.()?.toArray();
+      if (!bounds) return;
+      const [[w, s2], [e, n]] = bounds;
+      onViewportChangeRef.current?.([w, s2, e, n]);
+    };
+    map.on('moveend', reportViewport);
+
     map.on('load', () => {
+      reportViewport();
       // Load arrow image for route direction
       map.loadImage(
         'https://docs.mapbox.com/mapbox-gl-js/assets/arrow.png',
@@ -364,6 +464,7 @@ export default function MapboxMap({
 
     return () => {
       map.off('error', handleError);
+      map.off('moveend', reportViewport);
       clearMarkers();
       clearRoute();
       map.remove();
