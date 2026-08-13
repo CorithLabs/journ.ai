@@ -50,8 +50,9 @@ describe('a trip that is happening now', () => {
   it('says where the trip has got to', () => {
     onDay('2025-08-03');
     show();
-    expect(screen.getByTestId('trip-timing')).toHaveTextContent('Day 3 of your trip');
-    expect(screen.getByTestId('trip-timing')).toHaveTextContent('3 days to go');
+    expect(screen.getByTestId('trip-phase')).toHaveAttribute('data-phase', 'active');
+    expect(screen.getByTestId('phase-headline')).toHaveTextContent('Day 3 of 5');
+    expect(screen.getByTestId('trip-phase')).toHaveTextContent('3 days left');
   });
 
   it('offers a way back to today after looking elsewhere', () => {
@@ -82,14 +83,15 @@ describe('a trip that is not happening now', () => {
   it('counts down to one still ahead', () => {
     onDay('2025-07-29');
     show();
-    expect(screen.getByTestId('trip-timing')).toHaveTextContent('Starts in 3 days');
+    expect(screen.getByTestId('trip-phase')).toHaveAttribute('data-phase', 'upcoming');
+    expect(screen.getByTestId('phase-headline')).toHaveTextContent('3 days to go');
     expect(screen.queryByTestId('jump-to-today')).not.toBeInTheDocument();
   });
 
   it('says when a trip has ended', () => {
     onDay('2025-08-10');
     show();
-    expect(screen.getByTestId('trip-timing')).toHaveTextContent('ended');
+    expect(screen.getByTestId('trip-phase')).toHaveAttribute('data-phase', 'past');
     expect(screen.queryByTestId('today-section')).not.toBeInTheDocument();
   });
 
@@ -102,6 +104,6 @@ describe('a trip that is not happening now', () => {
   it('stays quiet when the dates say nothing', () => {
     onDay('2025-08-03');
     render(<MemoryRouter><ItineraryView plan={{ ...plan, startDate: '', endDate: '' }} /></MemoryRouter>);
-    expect(screen.queryByTestId('trip-timing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('trip-phase')).not.toBeInTheDocument();
   });
 });

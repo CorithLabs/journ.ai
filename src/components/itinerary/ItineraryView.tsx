@@ -7,6 +7,7 @@ import { streamCompletion } from '../../services/aiClient';
 import { dateForDayIndex } from '../../utils/tripDay';
 import { hasOutdoorPlans } from '../../utils/outdoor';
 import WeatherStrip from './WeatherStrip';
+import TripPhasePanel from './TripPhasePanel';
 import WeatherAlertBadge from './WeatherAlertBadge';
 import WeatherSuggestionsPanel, { parseSuggestions, type Suggestion } from './WeatherSuggestionsPanel';
 import Modal from '../ui/Modal';
@@ -473,22 +474,18 @@ export default function ItineraryView({ plan }: Props) {
         </button>
       </div>
 
-      {/* The one line a traveller wants on opening: is this trip happening,
-          and how much of it is left. */}
-      {timing.status !== 'unknown' && (
-        <p className="px-4 pt-2 text-xs text-ink-muted shrink-0" data-testid="trip-timing">
-          {timing.status === 'upcoming' && (
-            timing.daysUntil === 0 ? 'Starts today' :
-            timing.daysUntil === 1 ? 'Starts tomorrow' :
-            `Starts in ${timing.daysUntil} days`
-          )}
-          {timing.status === 'active' && (
-            `Day ${(todayIndex ?? 0) + 1} of your trip` +
-            (timing.daysRemaining ? ` · ${timing.daysRemaining} day${timing.daysRemaining === 1 ? '' : 's'} to go` : '')
-          )}
-          {timing.status === 'past' && 'This trip has ended'}
-        </p>
-      )}
+      {/* Was one line of text with the same shape in all three phases:
+          "Day 4 of your trip · 3 days to go". Planning a trip, being on one
+          and having been on one are different jobs, and only the middle of
+          those three was even named. */}
+      <TripPhasePanel
+        plan={plan}
+        weatherByDate={weatherByDate}
+        onGoToDay={(dayIndex) => {
+          setCollapsed((prev) => ({ ...prev, [dayIndex]: false }));
+          document.getElementById(`day-${dayIndex}`)?.scrollIntoView({ behavior: scrollBehavior() });
+        }}
+      />
 
       {/* An itinerary with no weather on it looks broken. These are the two
           reasons there is none, and both are fixable by the user. */}
