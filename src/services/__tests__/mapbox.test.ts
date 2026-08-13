@@ -160,6 +160,108 @@ describe('geocodeLocation', () => {
       const result = await geocodeLocation('Union Station', 'pk.test');
       expect(result).toEqual([-87.6298, 41.8781]);
     });
+
+    /*
+     * This asked for a single result and then applied two rejection filters to
+     * it, so a query whose top hit failed either was a total failure — with
+     * Mapbox willing to have returned four more in the same request, at the
+     * same price.
+     */
+    it('takes the first candidate that survives the guards, not only the first', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          features: [
+            { center: [-87.6298, 41.8781], place_name: 'Union Station, Chicago' },
+            { center: [-79.3806, 43.6453], place_name: 'Union Station, Toronto' },
+          ],
+        }),
+      } as Response);
+
+      const result = await geocodeLocation('Union Station', 'pk.test', { proximity: TORONTO });
+
+      expect(result).toEqual([-79.3806, 43.6453]);
+    });
+
+    it('asks for more than one', async () => {
+      respondWith(TORONTO);
+      await geocodeLocation('Union Station', 'pk.test');
+      expect(requestedUrl()).toContain('limit=5');
+    });
+  });
+
+  /*
+   * "Kitsilano Beach, Vancouver" resolved in Google and not in Mapbox. Named
+   * geography — beaches, parks, viewpoints — is where OSM is strongest and
+   * Mapbox thinnest, so it gets asked before the lookup gives up.
+   */
+  describe('falling through to OpenStreetMap', () => {
+    const VANCOUVER: [number, number] = [-123.1207, 49.2827];
+    const KITS: [number, number] = [-123.1553, 49.2734];
+
+    const mapboxSays = (features: unknown[]) =>
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true, json: async () => ({ features }),
+      } as Response);
+
+    const osmSays = (features: unknown[]) =>
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true, json: async () => ({ features }),
+      } as Response);
+
+    const kitsFeature = {
+      geometry: { coordinates: KITS },
+      properties: { name: 'Kitsilano Beach', city: 'Vancouver', country: 'Canada' },
+    };
+
+    it('finds what Mapbox could not', async () => {
+      mapboxSays([]);
+      osmSays([kitsFeature]);
+
+      const result = await geocodeLocation('Kitsilano Beach', 'pk.test', { proximity: VANCOUVER });
+
+      expect(result).toEqual(KITS);
+      expect(String(vi.mocked(fetch).mock.calls[1][0])).toContain('photon');
+    });
+
+    it('does not ask twice when Mapbox already answered', async () => {
+      mapboxSays([{ center: KITS, place_name: 'Kitsilano Beach, Vancouver' }]);
+
+      await geocodeLocation('Kitsilano Beach', 'pk.test', { proximity: VANCOUVER });
+
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    });
+
+    /*
+     * A second opinion that is not checked the way the first was is just a
+     * second way to pin the wrong continent.
+     */
+    it('holds the second opinion to the same distance guard', async () => {
+      mapboxSays([]);
+      osmSays([{
+        geometry: { coordinates: [174.76, -36.85] }, // Auckland
+        properties: { name: 'Kitsilano Beach', country: 'New Zealand' },
+      }]);
+
+      const result = await geocodeLocation('Kitsilano Beach', 'pk.test', { proximity: VANCOUVER });
+
+      expect(result).toBeNull();
+    });
+
+    it('holds it to the city-itself guard too', async () => {
+      mapboxSays([]);
+      osmSays([{
+        geometry: { coordinates: VANCOUVER },
+        properties: { name: 'Vancouver', country: 'Canada' },
+      }]);
+
+      const result = await geocodeLocation('Lunch', 'pk.test', {
+        proximity: VANCOUVER,
+        rejectCityItself: true,
+      });
+
+      expect(result).toBeNull();
+    });
   });
 
   /*

@@ -92,11 +92,28 @@ describe('searching for a venue', () => {
  * must never be the reason an activity cannot be added.
  */
 describe('when the search cannot run', () => {
-  it('offers nothing without a token, rather than failing', async () => {
+  /*
+   * OpenStreetMap needs no token, so there is no reason to switch the picker
+   * off for the people who have not set an API key up — which is exactly who
+   * benefits most from not having to type a location correctly.
+   */
+  it('falls back to OpenStreetMap without a token instead of giving up', async () => {
     localStorage.clear();
-    const m = respondWith([]);
-    expect(await searchVenues('Ichiran')).toEqual([]);
-    expect(m).not.toHaveBeenCalled();
+    const m = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        features: [{
+          geometry: { coordinates: [-123.1553, 49.2734] },
+          properties: { name: 'Kitsilano Beach', city: 'Vancouver', country: 'Canada' },
+        }],
+      }),
+    } as Response);
+    vi.stubGlobal('fetch', m);
+
+    const hits = await searchVenues('Kitsilano Beach');
+
+    expect(String(m.mock.calls[0][0])).toContain('photon');
+    expect(hits[0]).toMatchObject({ name: 'Kitsilano Beach', coordinates: [-123.1553, 49.2734] });
   });
 
   it('offers nothing on a network failure', async () => {
