@@ -308,7 +308,18 @@ export default function MapboxMap({
     });
   }, [clearRoute, onDistanceChange]);
 
-  const renderPins = useCallback((pinsToRender: PinActivity[]) => {
+  /**
+   * Which selection the camera was last framed for.
+   *
+   * Drawing the markers and moving the camera used to be one action, so any
+   * re-render that rebuilt the pin array also refitted the view. Pinching to
+   * zoom moved the map, which reported a new viewport, which re-rendered the
+   * tab, which handed down a fresh array — and the camera snapped back to the
+   * whole day. The zoom was being undone by the act of zooming.
+   */
+  const lastFitRef = useRef<string | null>(null);
+
+  const renderPins = useCallback((pinsToRender: PinActivity[], fitCamera: boolean) => {
     const map = mapRef.current;
     const mapboxgl = getMapboxGL();
     if (!map || !mapboxgl) return;
@@ -353,7 +364,9 @@ export default function MapboxMap({
       bounds.extend(coords);
     });
 
-    if (!bounds.isEmpty() && pinsToRender.length > 0) {
+    // Only when the view is about something new. Otherwise the map stays
+    // exactly where it was put, which is the whole point of putting it there.
+    if (fitCamera && !bounds.isEmpty() && pinsToRender.length > 0) {
       if (pinsToRender.length === 1) {
         map.flyTo({ center: placed[0], zoom: 14 });
       } else {
@@ -441,10 +454,16 @@ export default function MapboxMap({
      * looked at rather than about the whole trip. Reported after the move
      * settles, not during it.
      */
+    let lastReported = '';
     const reportViewport = () => {
       const bounds = map.getBounds?.()?.toArray();
       if (!bounds) return;
       const [[w, s2], [e, n]] = bounds;
+      // Rounded: a few metres of drift is the same view, and reporting it
+      // costs a render of the whole tab.
+      const key = [w, s2, e, n].map((v) => v.toFixed(3)).join(',');
+      if (key === lastReported) return;
+      lastReported = key;
       onViewportChangeRef.current?.([w, s2, e, n]);
     };
     map.on('moveend', reportViewport);
@@ -478,16 +497,29 @@ export default function MapboxMap({
     if (!map) return;
 
     const update = () => {
+      /*
+       * A new frame is warranted when the day being looked at changes, and
+       * when pins first appear on a day that had none — geocoding finishing
+       * should bring the map to what it just found. Nothing else: an edit, a
+       * filter, or a pan must leave the camera alone.
+       */
+      const shown = selectedDayIndex === null
+        ? pins
+        : pins.filter(p => p.dayIndex === selectedDayIndex);
+      const fitKey = `${selectedDayIndex}:${shown.length > 0}`;
+      const fitCamera = lastFitRef.current !== fitKey;
+      lastFitRef.current = fitKey;
+
       if (selectedDayIndex === null) {
         // All days — show all pins, no route
         clearRoute();
         onDistanceChange(null);
-        renderPins(pins);
+        renderPins(pins, fitCamera);
       } else {
         // Specific day
-        const dayPins = pins.filter(p => p.dayIndex === selectedDayIndex);
+        const dayPins = shown;
         clearRoute();
-        renderPins(dayPins);
+        renderPins(dayPins, fitCamera);
         if (dayPins.length >= 2) {
           const drawOnIdle = () => {
             drawRouteForDay(dayPins, selectedDayIndex);
