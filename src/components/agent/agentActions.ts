@@ -736,6 +736,12 @@ export function buildSystemPrompt(
     'Name real, specific places, never categories: "the Glenbow Museum", not "a local museum". Put the place in locationName with its city, so it reaches the map.',
     'Give every activity you add a sensible time, spaced so the day can actually be walked. A long empty stretch is worth filling: an arrival at 09:00 with nothing until 19:00 is nine hours the traveller has to plan themselves.',
     'Only act on the plan the user is currently viewing.',
+    /*
+     * A trailing marker rather than a tool: these are three short strings, and
+     * a tool call would cost another round trip to produce them — arriving
+     * after the reply the traveller is already reading.
+     */
+    'End every reply with up to three follow-ups the user is likely to want next, on their own line, exactly as: [[suggest: First | Second | Third]]. They are tapped, not read, so keep each under about six words and phrase them as the user would ("Add lunch on day 2", not "Would you like lunch?"). Offer what follows from what you just did; omit the line entirely if nothing sensible follows.',
     `Today's date: ${today}`,
     `Active tab: ${activeTab}`,
     `Plan: ${plan.destination} (${plan.startDate} to ${plan.endDate})`,

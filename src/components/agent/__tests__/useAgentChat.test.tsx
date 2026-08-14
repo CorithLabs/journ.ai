@@ -43,7 +43,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(aiKey.hasStoredKey).mockReturnValue(true);
   vi.mocked(aiKey.getApiKey).mockResolvedValue('sk-test');
-  vi.mocked(useLiveQuery).mockReturnValue(plan);
+  /*
+   * The panel runs two live queries — the plan, and the to-dos the opening
+   * suggestions are drawn from. Returning the plan for both handed an object
+   * where an array was expected, so the mock answers by what the querier
+   * asked for rather than returning one value to everything.
+   */
+  vi.mocked(useLiveQuery).mockImplementation((querier) => {
+    const source = String(querier);
+    return (source.includes('todos') ? [] : plan) as never;
+  });
   useAppStore.setState({
     agentPanelOpen: true,
     agentMessages: [],
