@@ -6,6 +6,7 @@ import { useAppStore, type ActiveTab } from '../../store';
 import { hasStoredKey } from '../../services/aiKey';
 import { useAgentChat } from './useAgentChat';
 import Markdown from './Markdown';
+import { openingSuggestions } from './suggestions';
 import { useDraggablePanel, isDraggableViewport } from './useDraggablePanel';
 import { fieldOnCardAuto } from '../ui/formStyles';
 
@@ -25,6 +26,41 @@ const TAB_LABELS: Record<ActiveTab, string> = {
  * Conversation history lives in the Zustand session store so it survives tab
  * switches within the same plan session (cleared on page reload).
  */
+/**
+ * Something to tap instead of something to type.
+ *
+ * Under the message rather than in the composer: they belong to the reply that
+ * offered them, and a row pinned above the input would still be showing the
+ * first turn's suggestions on the fifth.
+ */
+function SuggestionPills({
+  suggestions,
+  onPick,
+  disabled,
+}: {
+  suggestions: string[];
+  onPick: (s: string) => void;
+  disabled: boolean;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2" data-testid="agent-suggestions">
+      {suggestions.map((s, i) => (
+        <button
+          key={`${s}-${i}`}
+          type="button"
+          onClick={() => onPick(s)}
+          disabled={disabled}
+          className="text-xs px-3 py-1.5 rounded-full border border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-40 transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          data-testid={`agent-suggestion-${i}`}
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function AgentPanel({ planId }: Props) {
   const open = useAppStore((s) => s.agentPanelOpen);
   const setOpen = useAppStore((s) => s.setAgentPanelOpen);
@@ -41,7 +77,24 @@ export default function AgentPanel({ planId }: Props) {
   const floating = canDrag && position !== null;
 
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
+  // Only for the opening suggestions — what is still open is one of the more
+  // useful things to be asked before anything has been said.
+  const todos = useLiveQuery(() => db.todos.where('planId').equals(planId).toArray(), [planId]);
   const { send, busy } = useAgentChat(plan);
+
+  /*
+   * Tapping a pill sends it as though it had been typed, so the thread reads
+   * the same either way and the assistant sees a normal request.
+   */
+  const ask = (text: string) => {
+    if (busy || !keyConfigured) return;
+    setInput('');
+    void send(text);
+  };
+
+  // Only the newest reply offers follow-ups; an older turn's are answers to a
+  // question that has already moved on.
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
 
   // A key may exist; hasStoredKey is a cheap synchronous presence check.
   const keyConfigured = hasStoredKey();
@@ -155,6 +208,15 @@ export default function AgentPanel({ planId }: Props) {
             Ask me to add activities, tick off to-dos, or save something to your clipboard.
           </p>
         )}
+        {/* The empty composer is where the blank-page problem is worst, and
+            the app knows what is worth doing before anything has been said. */}
+        {messages.filter((m) => m.role !== 'system').length === 0 && (
+          <SuggestionPills
+            suggestions={openingSuggestions(plan, todos ?? [])}
+            onPick={ask}
+            disabled={busy || !keyConfigured}
+          />
+        )}
         {messages
           .filter((m) => m.role !== 'system')
           .map((m) => (
@@ -174,6 +236,15 @@ export default function AgentPanel({ planId }: Props) {
                 <span className="whitespace-pre-wrap break-words">{m.content}</span>
               ) : (
                 <Markdown content={m.content} />
+              )}
+              {/* Only on the newest reply. An older turn's follow-ups are
+                  answers to a question that has already moved on. */}
+              {m.role === 'assistant' && m.id === lastAssistantId && (
+                <SuggestionPills
+                  suggestions={m.suggestions ?? []}
+                  onPick={ask}
+                  disabled={busy || !keyConfigured}
+                />
               )}
             </div>
           ))}

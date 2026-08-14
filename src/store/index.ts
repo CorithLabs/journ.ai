@@ -20,6 +20,14 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  /**
+   * Follow-ups the assistant proposed with this reply, to tap instead of type.
+   *
+   * Carried on the message rather than held beside the thread so they belong
+   * to the turn that offered them — scrolling back to an older reply should
+   * not show what the newest one suggested.
+   */
+  suggestions?: string[];
 }
 
 const PROVIDER_STORAGE = 'aitp_ai_provider';

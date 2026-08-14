@@ -9,6 +9,7 @@ import {
   type ConversationMessage,
 } from '../../services/aiClient';
 import { AGENT_TOOLS, buildSystemPrompt, executeAgentAction } from './agentActions';
+import { splitReply } from './suggestions';
 
 export interface AgentChat {
   send: (text: string) => Promise<void>;
@@ -38,8 +39,22 @@ export function useAgentChat(plan: Plan | undefined): AgentChat {
   const offline = useAppStore((s) => s.offlineBannerVisible);
   const [busy, setBusy] = useState(false);
 
-  const reply = (content: string, role: Message['role'] = 'assistant') =>
-    pushAgentMessage({ id: uuidv4(), role, content, timestamp: Date.now() });
+  /*
+   * Split here rather than at render, so the marker never reaches the store
+   * and cannot be shown by anything that later reads a message's content.
+   */
+  const reply = (content: string, role: Message['role'] = 'assistant') => {
+    const { text, suggestions } = role === 'assistant'
+      ? splitReply(content)
+      : { text: content, suggestions: [] };
+    pushAgentMessage({
+      id: uuidv4(),
+      role,
+      content: text,
+      timestamp: Date.now(),
+      suggestions: suggestions.length ? suggestions : undefined,
+    });
+  };
 
   const send = async (text: string) => {
     reply(text, 'user');
