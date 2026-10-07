@@ -158,6 +158,44 @@ describe('GenerateItinerary', () => {
     });
   });
 
+  // Pasted into an issue, the report has to say what failed and what came back.
+  it('copies the error, the trip and what the AI returned as JSON', async () => {
+    seedApiKey();
+    vi.spyOn(global, 'fetch').mockImplementation(() => Promise.resolve(mockStreamResponse('{"oops":true}')));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+    const copy = await screen.findByTestId('copy-error-report');
+    expect(copy).toHaveTextContent('Copy error and JSON');
+    fireEvent.click(copy);
+    await waitFor(() => expect(copy).toHaveTextContent('Copied'));
+    const report = JSON.parse(writeText.mock.calls[0][0]);
+    expect(report.error).toMatch(/could not read/);
+    expect(report.destination).toBe('Tokyo');
+    expect(report.dates).toEqual({ start: '2025-07-14', end: '2025-07-20' });
+    expect(report.aiResponse).toBe('{"oops":true}');
+  });
+
+  it('offers the error alone when nothing came back', async () => {
+    seedApiKey();
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+    expect(await screen.findByTestId('copy-error-report')).toHaveTextContent('Copy error details');
+  });
+
+  // Some views refuse the clipboard; the report is then shown to copy by hand.
+  it('shows the report when the clipboard is refused', async () => {
+    seedApiKey();
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) }, configurable: true });
+    render(<MemoryRouter><GenerateItinerary plan={mockPlan} onGenerated={onGenerated} /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('start-generate-btn'));
+    fireEvent.click(await screen.findByTestId('copy-error-report'));
+    expect((await screen.findByTestId('error-report-text') as HTMLTextAreaElement).value).toContain('"destination": "Tokyo"');
+  });
+
   it('parses a markdown-fenced AI response and saves the itinerary to IndexedDB (Bug 1)', async () => {
     seedApiKey();
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(mockStreamResponse(FENCED_JSON));

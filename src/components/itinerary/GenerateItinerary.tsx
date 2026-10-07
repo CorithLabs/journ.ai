@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Check, Copy } from 'lucide-react';
 import { hasAnyAiKey, NO_AI_KEY_MESSAGE } from '../../services/aiKeyStatus';
 import { extractJson } from '../../utils/jsonRepair';
 import { Sparkles, AlertTriangle } from 'lucide-react';
 import { type Plan, type Day, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import { autoGenerateTodos } from './generateTodos';
-import { streamCompletion, MissingKeyError } from '../../services/aiClient';
+import { streamCompletion, MissingKeyError, getActiveProvider } from '../../services/aiClient';
+import GeneratingTrip from './GeneratingTrip';
 import { buildItineraryPrompt, BUDGET_RANGES } from './itineraryPrompt';
 import StartManualButton from './StartManualButton';
 import {
@@ -125,6 +126,11 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
   // The raw AI text kept when parsing fails — surfaced in a details expander so a
   // parse failure is diagnosable instead of a dead-end "couldn't read".
   const [rawResponse, setRawResponse] = useState<string | null>(null);
+  const [repairing, setRepairing] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
+  // The latest text streamed, so an error mid-stream can still show it.
+  const streamed = useRef('');
+  const onToken = (t: string) => { streamed.current = t; setStreamText(t); };
 
   // NewPlanModal caps new plans at MAX_TRIP_DAYS, but a plan created before that
   // cap shipped — or duplicated from one — can still be over. Generating from it
@@ -150,11 +156,12 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
       return;
     }
     setStatus('generating'); setError(null); setStreamText(''); setRawResponse(null);
+    setRepairing(false); setCopied('idle'); streamed.current = '';
     try {
       const prompt = buildItineraryPrompt(plan);
       const fullText = await streamCompletion(
         [{ role: 'user', content: prompt }],
-        { onToken: setStreamText, json: true },
+        { onToken, json: true },
       );
 
       // First attempt: extract + local repair.
@@ -164,6 +171,7 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
       // Second attempt: ask the AI to repair its own malformed output with a
       // follow-up prompt before giving up.
       if (!days) {
+        setRepairing(true);
         const repaired = await streamCompletion(
           [
             { role: 'user', content: prompt },
@@ -175,7 +183,7 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
                 'Reply again with ONLY the corrected JSON object — no markdown, no prose, no code fences.',
             },
           ],
-          { onToken: setStreamText, json: true },
+          { onToken, json: true },
         );
         lastRaw = repaired;
         days = tryParseItinerary(repaired);
@@ -204,6 +212,8 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
       if (updatedPlan) await autoGenerateTodos(updatedPlan);
       onGenerated();
     } catch (err) {
+      // Whatever the AI had written when it failed, kept for the report.
+      setRawResponse((kept) => kept ?? (streamed.current || null));
       if (err instanceof MissingKeyError) {
         setError('No API key configured. Please add your API key in Settings.');
       } else if (err instanceof Error && err.message.startsWith('The response was too long')) {
@@ -213,6 +223,33 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
         setError(err instanceof Error ? err.message : 'Generation failed');
       }
       setStatus('error');
+    }
+  };
+
+  /*
+   * Everything needed to report a failure, as one JSON block: the message,
+   * the trip it was for, the provider, and what the AI sent back. Pasted into
+   * an issue or a chat, it says what went wrong without a screenshot.
+   */
+  const errorReport = () => {
+    let provider: string | undefined;
+    try { provider = getActiveProvider(); } catch { provider = undefined; }
+    return JSON.stringify({
+      error,
+      destination: plan.destination,
+      dates: { start: plan.startDate, end: plan.endDate },
+      provider,
+      at: new Date().toISOString(),
+      aiResponse: rawResponse ?? undefined,
+    }, null, 2);
+  };
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(errorReport());
+      setCopied('done');
+    } catch {
+      setCopied('failed');
     }
   };
 
@@ -251,20 +288,37 @@ export default function GenerateItinerary({ plan, onGenerated, onCancel }: Props
         </div>
       )}
       {status === 'generating' && (
-        <div className="w-full max-w-lg mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" aria-label="Generating" />
-            <span className="text-sm text-ink-secondary">Generating your itinerary…</span>
-          </div>
-          {streamText && <div className="bg-surface-overlay rounded-xl p-3 text-xs text-ink-muted font-mono max-h-32 overflow-y-auto text-left">{streamText.slice(-500)}</div>}
-        </div>
+        <GeneratingTrip text={streamText} totalDays={tripDayCount(plan.startDate, plan.endDate)} repairing={repairing} />
       )}
       {error && (
         <div className="flex items-start gap-2 mb-4 p-3 bg-status-danger/10 border border-status-danger/20 rounded-xl max-w-sm">
           <AlertTriangle size={16} className="text-status-danger shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="text-sm text-status-danger">{error}</p>
-            <button className="text-xs text-accent hover:underline mt-1" onClick={generate}>Retry</button>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+              <button className="text-xs text-accent hover:underline" onClick={generate}>Retry</button>
+              <button
+                type="button"
+                onClick={copyReport}
+                className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                data-testid="copy-error-report"
+              >
+                {copied === 'done'
+                  ? <><Check size={12} aria-hidden="true" /> Copied</>
+                  : <><Copy size={12} aria-hidden="true" /> {rawResponse ? 'Copy error and JSON' : 'Copy error details'}</>}
+              </button>
+            </div>
+            {/* The clipboard can be refused; then the report is shown to copy by hand. */}
+            {copied === 'failed' && (
+              <textarea
+                readOnly
+                value={errorReport()}
+                onFocus={(e) => e.currentTarget.select()}
+                className="mt-2 w-full h-32 bg-surface-overlay rounded-lg p-2 text-[11px] text-ink-muted font-mono"
+                aria-label="Error details to copy"
+                data-testid="error-report-text"
+              />
+            )}
             {rawResponse && (
               <details className="mt-2">
                 <summary className="text-xs text-ink-muted cursor-pointer hover:text-ink-secondary">Show what the AI returned</summary>
