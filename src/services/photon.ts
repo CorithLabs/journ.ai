@@ -77,6 +77,11 @@ export interface PhotonOptions {
    */
   osmTags?: string[];
   signal?: AbortSignal;
+  /**
+   * Called when the search could not be made or answered, so a caller can
+   * tell "nothing by that name" from "nobody answered".
+   */
+  onFail?: () => void;
 }
 
 /**
@@ -108,7 +113,10 @@ export async function photonSearch(
     for (const tag of options.osmTags ?? []) params.append('osm_tag', tag);
 
     const resp = await fetch(`${PHOTON_URL}?${params}`, { signal: options.signal });
-    if (!resp.ok) return [];
+    if (!resp.ok) {
+      options.onFail?.();
+      return [];
+    }
     const data = (await resp.json()) as { features?: PhotonFeature[] };
 
     const places: PhotonPlace[] = [];
@@ -137,6 +145,7 @@ export async function photonSearch(
     }
     return places;
   } catch {
+    options.onFail?.();
     return [];
   }
 }

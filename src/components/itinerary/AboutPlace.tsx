@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { Activity, Plan } from '../../db';
 import { useAppStore } from '../../store';
-import { fetchPlaceFacts, type PlaceFacts } from '../../services/placeFacts';
+import { factsQuery, fetchPlaceFacts, type PlaceFacts } from '../../services/placeFacts';
 import { askAboutPlace, askPlaceGuide, type GuideContext, type PlaceGuide } from '../../services/placeGuide';
 import { getActiveProvider, keyStorageFor, MissingKeyError } from '../../services/aiClient';
 import { hasStoredKey } from '../../services/aiKey';
@@ -99,23 +99,43 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
     onSave(latest.current);
   };
 
-  useEffect(() => {
-    if (act.about?.facts || !online || !act.name.trim()) return;
+  const place = {
+    name: act.name,
+    coordinates: act.coordinates,
+    city: plan.destination.split(',')[0],
+    location: act.locationName,
+  };
+
+  /*
+   * Kept facts are used as they are, unless they are not worth keeping:
+   *   - the last lookup did not reach every source (offline, a timeout),
+   *     so "nothing found" there meant "nobody answered";
+   *   - the stop has been renamed or moved since;
+   *   - they are an empty answer saved before lookups recorded either of
+   *     those, which may be exactly that kind of miss.
+   */
+  const kept = act.about?.facts;
+  const stale = !kept
+    || kept.complete === false
+    || (kept.query !== undefined && kept.query !== factsQuery(place))
+    || (kept.query === undefined && !kept.wiki && !kept.map);
+
+  const lookUp = () => {
     let live = true;
     setLoadingFacts(true);
-    fetchPlaceFacts({
-      name: act.name,
-      coordinates: act.coordinates,
-      city: plan.destination.split(',')[0],
-      location: act.locationName,
-    }).then((found) => {
+    fetchPlaceFacts(place).then((found) => {
       if (!live) return;
       setLoadingFacts(false);
       setFacts(found);
       save({ facts: found });
     });
     return () => { live = false; };
-    // Once per activity: the facts do not change while the details are open.
+  };
+
+  useEffect(() => {
+    if (!stale || !online || !act.name.trim()) return;
+    return lookUp();
+    // Once per opening: the facts do not change while the details are open.
   }, [act.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const askGuide = async () => {
@@ -149,6 +169,8 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
   const closure = closedOn(m?.openingHours, visitDate);
   const checked = facts?.checkedAt ? shortDate(facts.checkedAt.slice(0, 10)) : null;
   const nothingFound = facts && !facts.wiki && !facts.map;
+  // An empty answer only counts as one when every source answered.
+  const unreached = nothingFound && facts.complete === false;
 
   return (
     <section className="mt-4 pt-4 border-t border-white/10 space-y-4" aria-labelledby={`about-${act.id}`} data-testid="about-place">
@@ -226,8 +248,19 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
         </ul>
       )}
 
-      {nothingFound && (
-        <p className="text-xs text-ink-muted" data-testid="about-nothing">Nothing found about this place in Wikipedia or OpenStreetMap.</p>
+      {nothingFound && !loadingFacts && (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p className="text-xs text-ink-muted" data-testid={unreached ? 'about-unreached' : 'about-nothing'}>
+            {unreached
+              ? 'Could not reach Wikipedia or OpenStreetMap just now.'
+              : 'Wikipedia and OpenStreetMap have nothing under this name.'}
+          </p>
+          {online && (
+            <button type="button" onClick={lookUp} className="text-xs text-accent hover:underline" data-testid="about-check-again">
+              Check again
+            </button>
+          )}
+        </div>
       )}
       {facts && !nothingFound && (
         <p className="text-[11px] text-ink-muted">
@@ -239,6 +272,13 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
       {/* ── The AI guide ─────────────────────────────────────── */}
       {guide ? (
         <div className="rounded-xl border border-accent/25 bg-accent/5 p-3.5 space-y-3" data-testid="about-guide">
+          {/* Said plainly when there was nothing to check it against, so the
+              guide does not read as confirming what the sources could not. */}
+          {nothingFound && (
+            <p className="text-[11px] text-ink-muted" data-testid="about-guide-unchecked">
+              From the AI's general knowledge. No checked source to compare it with.
+            </p>
+          )}
           {guide.heads && guide.heads.length > 0 && (
             <ul className="space-y-1" data-testid="about-heads">
               {guide.heads.map((h) => (

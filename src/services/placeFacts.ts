@@ -46,6 +46,20 @@ export interface PlaceFacts {
   map?: MapFacts;
   /** ISO time the facts were gathered, so the card can say how old they are. */
   checkedAt: string;
+  /**
+   * Whether every source asked actually answered. False after a timeout or
+   * while offline: "nothing found" then means "nobody answered", and the
+   * lookup is tried again rather than kept.
+   */
+  complete?: boolean;
+  /** What was looked up, so a renamed or moved stop is looked up again. */
+  query?: string;
+}
+
+/** The key a stop's facts were found under. */
+export function factsQuery(place: { name: string; location?: string; coordinates?: [number, number] }): string {
+  const at = place.coordinates ? place.coordinates.map((n) => n.toFixed(3)).join(',') : '';
+  return [place.name.trim().toLowerCase(), (place.location ?? '').trim().toLowerCase(), at].join('|');
 }
 
 const WIKI_API = 'https://en.wikipedia.org/w/api.php';
@@ -73,7 +87,7 @@ function words(text: string): string[] {
  *
  * At least one distinctive word must match — "Meiji" in "Meiji Shrine" —
  * since "Shrine" alone would match every shrine in Japan. A name with no
- * distinctive word ("The Temple") falls back to its ordinary words.
+ * distinctive word ("The Temple", "Lunch") matches nothing.
  */
 export function sameNamedPlace(name: string, candidate: string, ignore: string[] = []): boolean {
   // The neighbourhood and city are where it is, not what it is called:
@@ -81,9 +95,11 @@ export function sameNamedPlace(name: string, candidate: string, ignore: string[]
   const skip = new Set(ignore.flatMap(words));
   const wanted = words(name).filter((w) => !skip.has(w));
   const distinctive = wanted.filter((w) => !GENERIC.has(w));
-  const pool = distinctive.length ? distinctive : wanted;
-  const hits = pool.filter((w) => hasWord(candidate, w)).length;
-  return hits > 0 && hits * 2 >= pool.length;
+  // A name made only of everyday words ("Lunch", "Evening walk") is not a
+  // place, and would otherwise match the "Pepper Lunch" chain.
+  if (!distinctive.length) return false;
+  const hits = distinctive.filter((w) => hasWord(candidate, w)).length;
+  return hits > 0 && hits * 2 >= distinctive.length;
 }
 
 /**
@@ -94,7 +110,26 @@ function hasWord(candidate: string, word: string): boolean {
   const parts = words(candidate);
   if (parts.includes(word)) return true;
   const compact = candidate.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  return word.length >= 5 && compact.includes(word);
+  if (word.length >= 5 && compact.includes(word)) return true;
+  // The English and the local spelling of the same name: "Residence" is
+  // the "Residenz", "Munchen" is "München". Close, on a long enough word.
+  return parts.some((p) => nearlySame(p, word));
+}
+
+/** Within one letter on a word of five or more, two on a word of eight or more. */
+function nearlySame(a: string, b: string): boolean {
+  const len = Math.min(a.length, b.length);
+  const allowed = len >= 8 ? 2 : len >= 5 ? 1 : 0;
+  if (!allowed || Math.abs(a.length - b.length) > allowed) return false;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = row;
+  }
+  return prev[b.length] <= allowed;
 }
 
 /**
@@ -127,25 +162,38 @@ function localPart(name: string): string {
   return kept.length ? kept.join(' ') : name;
 }
 
-async function json<T>(url: string, init?: RequestInit): Promise<T | null> {
+/** Whether a lookup reached its sources. A "not found" is an answer; a timeout is not. */
+interface Reach {
+  failed: boolean;
+}
+
+async function json<T>(url: string, reach: Reach, init?: RequestInit): Promise<T | null> {
   try {
     const resp = await fetch(url, init);
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (resp.status >= 500 || resp.status === 429) reach.failed = true;
+      return null;
+    }
     return (await resp.json()) as T;
   } catch {
+    reach.failed = true;
     return null;
   }
 }
 
+/** "List of royal palaces" is about many places, never the one asked for. */
+const NOT_ONE_PLACE = /^(lists? of|index of|outline of)\b/i;
+
 /** The article for a place: nearest matching one to the pin, else by name. */
-async function findArticle(name: string, at: [number, number] | undefined, city: string | undefined, ignore: string[]): Promise<string | null> {
+async function findArticle(name: string, at: [number, number] | undefined, city: string | undefined, ignore: string[], reach: Reach): Promise<string | null> {
   if (at) {
     const params = new URLSearchParams({
       action: 'query', list: 'geosearch', gscoord: `${at[1]}|${at[0]}`, gsradius: '1000',
       gslimit: '15', format: 'json', origin: '*',
     });
-    const near = await json<{ query?: { geosearch?: Array<{ title: string; dist: number }> } }>(`${WIKI_API}?${params}`);
+    const near = await json<{ query?: { geosearch?: Array<{ title: string; dist: number }> } }>(`${WIKI_API}?${params}`, reach);
     const hit = (near?.query?.geosearch ?? [])
+      .filter((g) => !NOT_ONE_PLACE.test(g.title))
       .map((g) => ({ g, score: nameScore(name, g.title, ignore) }))
       .filter(({ score }) => score > -Infinity)
       .sort((a, b) => b.score - a.score || a.g.dist - b.g.dist)[0];
@@ -154,20 +202,24 @@ async function findArticle(name: string, at: [number, number] | undefined, city:
   // No pin, or nothing near it by that name: search, and still insist on the name.
   const params = new URLSearchParams({
     action: 'query', list: 'search', srsearch: city ? `${name} ${city}` : name,
-    srlimit: '5', format: 'json', origin: '*',
+    srlimit: '6', srprop: 'redirecttitle', format: 'json', origin: '*',
   });
-  const found = await json<{ query?: { search?: Array<{ title: string }> } }>(`${WIKI_API}?${params}`);
-  return (found?.query?.search ?? []).find((s) => sameNamedPlace(name, s.title, ignore))?.title ?? null;
+  const found = await json<{ query?: { search?: Array<{ title: string; redirecttitle?: string }> } }>(`${WIKI_API}?${params}`, reach);
+  // A redirect counts as the name too: "Munich Residence" redirects to "Munich Residenz".
+  return (found?.query?.search ?? [])
+    .filter((s) => !NOT_ONE_PLACE.test(s.title))
+    .find((s) => sameNamedPlace(name, s.title, ignore) || (!!s.redirecttitle && sameNamedPlace(name, s.redirecttitle, ignore)))
+    ?.title ?? null;
 }
 
-async function wikiFacts(name: string, at: [number, number] | undefined, city: string | undefined, ignore: string[]): Promise<WikiFacts | undefined> {
-  const title = await findArticle(name, at, city, ignore);
+async function wikiFacts(name: string, at: [number, number] | undefined, city: string | undefined, ignore: string[], reach: Reach): Promise<WikiFacts | undefined> {
+  const title = await findArticle(name, at, city, ignore, reach);
   if (!title) return undefined;
   const s = await json<{
     type?: string; title?: string; extract?: string;
     content_urls?: { desktop?: { page?: string } };
     thumbnail?: { source?: string };
-  }>(WIKI_SUMMARY + encodeURIComponent(title.replace(/ /g, '_')));
+  }>(WIKI_SUMMARY + encodeURIComponent(title.replace(/ /g, '_')), reach);
   if (!s?.extract || s.type === 'disambiguation') return undefined;
   return {
     title: s.title ?? title,
@@ -201,8 +253,8 @@ function km(a: [number, number], b: [number, number]): number {
  * in Chiba can come before the one in Shibuya; only records near the pin
  * count, nearest first.
  */
-async function mapFacts(name: string, at: [number, number], ignore: string[]): Promise<MapFacts | undefined> {
-  const hit = (await photonSearch(name, { proximity: at, limit: 8 }))
+async function mapFacts(name: string, at: [number, number], ignore: string[], reach: Reach): Promise<MapFacts | undefined> {
+  const hit = (await photonSearch(name, { proximity: at, limit: 8, onFail: () => { reach.failed = true; } }))
     .filter((h) => h.osm && !NOT_THE_PLACE.test(h.kind))
     .filter((h) => sameNamedPlace(name, h.name, ignore))
     .map((h) => ({ h, d: km(at, h.coordinates), score: nameScore(name, h.name, ignore) }))
@@ -214,6 +266,7 @@ async function mapFacts(name: string, at: [number, number], ignore: string[]): P
 
   const data = await json<{ elements?: Array<{ tags?: Record<string, string> }> }>(
     `${OSM_API}/${hit.osm.type}/${hit.osm.id}.json`,
+    reach,
   );
   const t = data?.elements?.[0]?.tags;
   if (!t) return undefined;
@@ -254,9 +307,16 @@ export async function fetchPlaceFacts(place: {
       const there = new Set(words(x));
       return !(own.length && own.every((w) => there.has(w)));
     });
+  const reach: Reach = { failed: false };
   const [wiki, map] = await Promise.all([
-    name ? wikiFacts(name, place.coordinates, place.city, ignore) : Promise.resolve(undefined),
-    name && place.coordinates ? mapFacts(name, place.coordinates, ignore) : Promise.resolve(undefined),
+    name ? wikiFacts(name, place.coordinates, place.city, ignore, reach) : Promise.resolve(undefined),
+    name && place.coordinates ? mapFacts(name, place.coordinates, ignore, reach) : Promise.resolve(undefined),
   ]);
-  return { wiki, map, checkedAt: new Date().toISOString() };
+  return {
+    wiki,
+    map,
+    checkedAt: new Date().toISOString(),
+    complete: !reach.failed,
+    query: factsQuery({ name, location: place.location, coordinates: place.coordinates }),
+  };
 }

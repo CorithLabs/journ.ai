@@ -78,9 +78,43 @@ describe('what the sources say', () => {
     expect(screen.queryByText(/OpenStreetMap/)).not.toBeInTheDocument();
   });
 
-  it('says plainly when nothing was found', () => {
+  const answered = { checkedAt: facts.checkedAt, complete: true, query: 'meiji shrine|shibuya, tokyo|139.699,35.676' };
+
+  it('says plainly when the sources have nothing under that name', () => {
+    vi.mocked(fetchPlaceFacts).mockClear();
+    show(act({ about: { facts: answered } }));
+    expect(screen.getByTestId('about-nothing')).toHaveTextContent('Wikipedia and OpenStreetMap have nothing under this name.');
+    expect(fetchPlaceFacts).not.toHaveBeenCalled();
+  });
+
+  // A timeout is not an answer: the panel must not say "nothing" for it, or keep it.
+  it('says it could not reach the sources, and looks again next time', async () => {
+    vi.mocked(fetchPlaceFacts).mockClear();
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce({ checkedAt: facts.checkedAt, complete: false, query: answered.query });
+    show(act({ about: { facts: { ...answered, complete: false } } }));
+    expect(fetchPlaceFacts).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('about-unreached')).toHaveTextContent('Could not reach Wikipedia or OpenStreetMap');
+  });
+
+  it('can be asked to check again', async () => {
+    vi.mocked(fetchPlaceFacts).mockClear();
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(facts);
+    show(act({ about: { facts: answered } }));
+    fireEvent.click(screen.getByTestId('about-check-again'));
+    expect(await screen.findByTestId('about-wiki')).toBeInTheDocument();
+  });
+
+  // Saved before lookups recorded whether they were complete: may be a miss.
+  it('looks again at an empty answer kept from before', () => {
+    vi.mocked(fetchPlaceFacts).mockClear();
     show(act({ about: { facts: { checkedAt: facts.checkedAt } } }));
-    expect(screen.getByTestId('about-nothing')).toBeInTheDocument();
+    expect(fetchPlaceFacts).toHaveBeenCalledTimes(1);
+  });
+
+  it('looks again when the stop has been renamed', () => {
+    vi.mocked(fetchPlaceFacts).mockClear();
+    show(act({ name: 'Munich Residence', about: { facts: answered } }));
+    expect(fetchPlaceFacts).toHaveBeenCalledWith(expect.objectContaining({ name: 'Munich Residence' }));
   });
 });
 
@@ -111,6 +145,17 @@ describe('the AI guide', () => {
     expect(ctx).toMatchObject({ name: 'Meiji Shrine', date: '2026-10-12', when: 'Morning', likes: ['temples'] });
     expect(given).toBe(facts);
     expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ facts, guide: sampleGuide }));
+  });
+
+  // "Nothing found" followed by an explanation read as a contradiction.
+  it('says when the guide has no checked source behind it', () => {
+    show(act({ about: { facts: { checkedAt: facts.checkedAt, complete: true, query: 'x' }, guide: sampleGuide } }));
+    expect(screen.getByTestId('about-guide-unchecked')).toHaveTextContent("From the AI's general knowledge");
+  });
+
+  it('does not say so when it does', () => {
+    show(act({ about: { facts, guide: sampleGuide } }));
+    expect(screen.queryByTestId('about-guide-unchecked')).not.toBeInTheDocument();
   });
 
   it('puts what needs attention first, and says it is AI', () => {
