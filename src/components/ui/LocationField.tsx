@@ -37,8 +37,8 @@ interface Props {
  * or a Union Station on the wrong continent. Picking from the list settles it
  * now, and hands over exact coordinates so nothing is guessed at afterwards.
  *
- * Typing still works, and works alone: with no Mapbox token the list is simply
- * never offered and this is an ordinary text input.
+ * Typing still works, and works alone: offline, or when the search finds
+ * nothing, the list is simply never offered and this is an ordinary text input.
  */
 export default function LocationField({
   value,

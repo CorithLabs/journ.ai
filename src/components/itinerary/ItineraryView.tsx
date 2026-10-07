@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { getTempUnit } from '../../services/units';
 import { isBeyondForecast } from '../../services/weather';
-import { getMapboxToken } from '../../services/mapbox';
 import { streamCompletion } from '../../services/aiClient';
 import { dateForDayIndex } from '../../utils/tripDay';
 import { hasOutdoorPlans } from '../../utils/outdoor';
@@ -494,18 +493,12 @@ export default function ItineraryView({ plan }: Props) {
       />
     );
 
-  /* The two reasons there is no forecast, both fixable by the user. Shown on
-     the trip photo, where the forecast would otherwise be. */
-  const forecastNote = !weatherByDate ? (
-    isBeyondForecast(plan.startDate) ? (
-      <p className="text-xs text-ink-secondary" data-testid="weather-too-far">
-        Too far ahead to forecast — the weather appears about two weeks before you go.
-      </p>
-    ) : !getMapboxToken() ? (
-      <p className="text-xs text-ink-secondary" data-testid="weather-needs-token">
-        Add a Mapbox token in Settings to see the forecast.
-      </p>
-    ) : null
+  /* Why there is no forecast, when it is because the trip is too far off.
+     Shown on the trip photo, where the forecast would otherwise be. */
+  const forecastNote = !weatherByDate && isBeyondForecast(plan.startDate) ? (
+    <p className="text-xs text-ink-secondary" data-testid="weather-too-far">
+      Too far ahead to forecast — the weather appears about two weeks before you go.
+    </p>
   ) : null;
 
   const clipList = Array.isArray(linked) ? linked : [];

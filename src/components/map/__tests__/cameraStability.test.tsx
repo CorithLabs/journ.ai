@@ -6,9 +6,10 @@ import { db, type Plan, type Activity } from '../../../db';
 import type { BBox } from '../../../services/discover';
 
 vi.mock('dexie-react-hooks');
-vi.mock('../../../services/mapbox', async () => {
-  const actual = await vi.importActual<typeof import('../../../services/mapbox')>('../../../services/mapbox');
-  return { ...actual, getMapboxToken: () => 'pk.test', geocodePlanActivities: vi.fn(async () => new Set<string>()) };
+vi.mock('../../../services/mapbox', () => ({ getMapboxToken: () => 'pk.test', MAPBOX_TOKEN_KEY: 'aitp_mapbox_token' }));
+vi.mock('../../../services/places', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/places')>('../../../services/places');
+  return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
 });
 
 /*

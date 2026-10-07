@@ -2,13 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '../../../test/render';
 import { useLiveQuery } from 'dexie-react-hooks';
 import MapTab from '../../tabs/MapTab';
-import { getPinActivities } from '../../../services/mapbox';
+import { getPinActivities } from '../../../services/places';
 import { db, type Plan, type Activity } from '../../../db';
 
 vi.mock('dexie-react-hooks');
-vi.mock('../../../services/mapbox', async () => {
-  const actual = await vi.importActual<typeof import('../../../services/mapbox')>('../../../services/mapbox');
-  return { ...actual, getMapboxToken: () => 'pk.test', geocodePlanActivities: vi.fn(async () => new Set<string>()) };
+vi.mock('../../../services/mapbox', () => ({ getMapboxToken: () => 'pk.test', MAPBOX_TOKEN_KEY: 'aitp_mapbox_token' }));
+vi.mock('../../../services/places', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/places')>('../../../services/places');
+  return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
 });
 
 /** The map itself needs a real Mapbox GL; the pins are what this is about. */

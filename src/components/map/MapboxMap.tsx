@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { type Plan } from '../../db';
 import { getDayColor } from '../../constants/colors';
-import { totalRouteDistanceKm, type PinActivity } from '../../services/mapbox';
+import { totalRouteDistanceKm, type PinActivity } from '../../services/places';
 import type { BBox, DiscoveredPlace } from '../../services/discover';
 
 // Minimal types for CDN-loaded mapbox-gl (window.mapboxgl)

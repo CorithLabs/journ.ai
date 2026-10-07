@@ -3,12 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { Map, Settings, MapPin, X } from 'lucide-react';
 import { db } from '../../db';
 import { getDayColor } from '../../constants/colors';
-import {
-  getMapboxToken,
-  geocodePlanActivities,
-  getPinActivities,
-  type PinActivity,
-} from '../../services/mapbox';
+import { getMapboxToken } from '../../services/mapbox';
+import { geocodePlanActivities, getPinActivities, type PinActivity } from '../../services/places';
 import { useAppStore } from '../../store';
 import { todayDayIndex } from '../../utils/tripDay';
 import { useConfirm } from '../ui/ConfirmDialog';
@@ -109,7 +105,7 @@ export default function MapTab({ planId }: Props) {
 
     setGeocoding(true);
     setGeocodeError(null);
-    const failed = await geocodePlanActivities(plan, mapboxToken, (name) => {
+    const failed = await geocodePlanActivities(plan, (name) => {
       setToast({ msg: `Could not locate: ${name}` });
     });
     setGeocoding(false);

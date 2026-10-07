@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchWeather, geocodeDestination, fetchWeatherForPlan, fetchWeatherByCity } from '../weather';
 
+// Open-Meteo's place search, which now says where the city is.
 const MOCK_GEOCODE_RESPONSE = {
-  features: [{ center: [139.6917, 35.6895] }],
+  results: [{ name: 'Tokyo', latitude: 35.6895, longitude: 139.6917, country: 'Japan', feature_code: 'PPLC' }],
 };
 
 const MOCK_WEATHER_RESPONSE = {
@@ -19,19 +20,22 @@ const MOCK_WEATHER_RESPONSE = {
 
 describe('geocodeDestination', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('returns null when no token is provided', async () => {
-    const result = await geocodeDestination('Tokyo', null);
-    expect(result).toBeNull();
+  // The forecast needs no account, and now neither does finding the city.
+  it('needs no token', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => MOCK_GEOCODE_RESPONSE } as Response);
+    expect(await geocodeDestination('Tokyo')).toEqual([139.6917, 35.6895]);
+    expect(String(vi.mocked(fetch).mock.calls[0][0])).toContain('geocoding-api.open-meteo.com');
   });
 
   it('returns null when destination is empty', async () => {
-    const result = await geocodeDestination('', 'pk.test-token');
+    const result = await geocodeDestination('');
     expect(result).toBeNull();
   });
 
@@ -41,23 +45,23 @@ describe('geocodeDestination', () => {
       json: async () => MOCK_GEOCODE_RESPONSE,
     } as Response);
 
-    const result = await geocodeDestination('Tokyo', 'pk.test-token');
+    const result = await geocodeDestination('Tokyo');
     expect(result).toEqual([139.6917, 35.6895]);
   });
 
-  it('returns null when geocoding returns no features', async () => {
+  it('returns null when the place is not found', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ features: [] }),
+      json: async () => ({ results: [] }),
     } as Response);
 
-    const result = await geocodeDestination('NonExistentPlace', 'pk.test-token');
+    const result = await geocodeDestination('NonExistentPlace');
     expect(result).toBeNull();
   });
 
   it('returns null on network error', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
-    const result = await geocodeDestination('Tokyo', 'pk.test-token');
+    const result = await geocodeDestination('Tokyo');
     expect(result).toBeNull();
   });
 });
@@ -131,15 +135,11 @@ describe('fetchWeather', () => {
 
 describe('fetchWeatherForPlan', () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('returns null when no Mapbox token is provided', async () => {
-    const result = await fetchWeatherForPlan('Tokyo', '2025-07-14', '2025-07-15', null);
-    expect(result).toBeNull();
   });
 
   it('returns weather data when geocoding and fetch both succeed', async () => {
@@ -153,7 +153,7 @@ describe('fetchWeatherForPlan', () => {
         json: async () => MOCK_WEATHER_RESPONSE,
       } as Response);
 
-    const result = await fetchWeatherForPlan('Tokyo', '2025-07-14', '2025-07-15', 'pk.test');
+    const result = await fetchWeatherForPlan('Tokyo', '2025-07-14', '2025-07-15');
     expect(result).not.toBeNull();
     expect(Object.keys(result!)).toHaveLength(2);
   });
@@ -161,15 +161,10 @@ describe('fetchWeatherForPlan', () => {
   it('returns null when geocoding fails', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ features: [] }),
+      json: async () => ({ results: [] }),
     } as Response);
 
-    const result = await fetchWeatherForPlan(
-      'UnknownPlace',
-      '2025-07-14',
-      '2025-07-15',
-      'pk.test',
-    );
+    const result = await fetchWeatherForPlan('UnknownPlace', '2025-07-14', '2025-07-15');
     expect(result).toBeNull();
   });
 });
@@ -180,7 +175,7 @@ describe('fetchWeatherForPlan', () => {
  */
 describe('fetchWeatherByCity', () => {
   const ok = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
-  const geo = (lng: number, lat: number) => ok({ features: [{ center: [lng, lat] }] });
+  const geo = (lng: number, lat: number) => ok({ results: [{ name: 'X', latitude: lat, longitude: lng, feature_code: 'PPL' }] });
   const forecast = (dates: string[]) => ok({
     daily: {
       time: dates,
@@ -193,7 +188,10 @@ describe('fetchWeatherByCity', () => {
     },
   });
 
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
   afterEach(() => vi.unstubAllGlobals());
 
   it('geocodes and forecasts each city once, not once per day', async () => {
@@ -204,7 +202,7 @@ describe('fetchWeatherByCity', () => {
 
     const out = await fetchWeatherByCity(
       { '2025-08-01': 'Tokyo', '2025-08-02': 'Tokyo', '2025-08-03': 'Osaka' },
-      '2025-08-01', '2025-08-03', 'pk.test',
+      '2025-08-01', '2025-08-03',
     );
     expect(Object.keys(out ?? {}).sort()).toEqual(['2025-08-01', '2025-08-02', '2025-08-03']);
     expect(fetchMock).toHaveBeenCalledTimes(4); // two cities, geocode + forecast each
@@ -214,19 +212,19 @@ describe('fetchWeatherByCity', () => {
   it('leaves a city that will not geocode without a forecast', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(geo(139.7, 35.7)).mockResolvedValueOnce(forecast(['2025-08-01']))
-      .mockResolvedValueOnce(ok({ features: [] }));
+      .mockResolvedValueOnce(ok({ results: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const out = await fetchWeatherByCity(
       { '2025-08-01': 'Tokyo', '2025-08-02': 'Nowhere' },
-      '2025-08-01', '2025-08-02', 'pk.test',
+      '2025-08-01', '2025-08-02',
     );
     expect(out).toHaveProperty('2025-08-01');
     expect(out).not.toHaveProperty('2025-08-02');
   });
 
-  it('has nothing to say without a token', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok({ features: [] })));
-    expect(await fetchWeatherByCity({ '2025-08-01': 'Tokyo' }, '2025-08-01', '2025-08-01', null)).toBeNull();
+  it('has nothing to say when no city can be found', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok({ results: [] })));
+    expect(await fetchWeatherByCity({ '2025-08-01': 'Tokyo' }, '2025-08-01', '2025-08-01')).toBeNull();
   });
 });
