@@ -150,3 +150,10 @@ Element.prototype.scrollIntoView = vi.fn();
 // Trip photos come from Wikipedia. No test should reach the network for one,
 // and none needs a picture to check what it checks.
 vi.mock('../hooks/usePlacePhoto', () => ({ usePlacePhoto: () => null }));
+
+// Opening an activity's details looks the place up on Wikipedia and
+// OpenStreetMap. Tests stand in for both; placeFacts' own tests use the real one.
+vi.mock('../services/placeFacts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/placeFacts')>()),
+  fetchPlaceFacts: vi.fn(async () => ({ checkedAt: '2026-10-07T00:00:00.000Z' })),
+}));
