@@ -156,7 +156,6 @@ describe('saying why there is no forecast', () => {
   // Finding the city no longer needs a token, so there is none to ask for.
   it('never asks for a map token to show the weather', () => {
     useAppStore.setState({ weatherByDate: null });
-    localStorage.removeItem('aitp_mapbox_token');
     show(planWith(['Coastal hike']));
     expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
   });

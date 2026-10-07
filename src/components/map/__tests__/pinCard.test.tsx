@@ -11,7 +11,7 @@ vi.mock('../../../services/places', async () => {
   return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
 });
 
-/** The map itself needs a real Mapbox GL; the pins are what this is about. */
+/** The map itself is drawn elsewhere; the pins are what this is about. */
 let clickPin: ((pin: unknown) => void) | null = null;
 vi.mock('../PaperMap', () => ({
   default: (props: { onPinClick: (p: unknown) => void; pins: unknown[]; selectedActivityId?: string | null }) => {
