@@ -80,11 +80,20 @@ describe('what the sources say', () => {
 
   const answered = { checkedAt: facts.checkedAt, complete: true, query: 'meiji shrine|shibuya, tokyo|139.699,35.676' };
 
-  it('says plainly when the sources have nothing under that name', () => {
+  it('says plainly when the sources have nothing under that name', async () => {
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(answered);
+    show();
+    expect(await screen.findByTestId('about-nothing')).toHaveTextContent('Wikipedia and OpenStreetMap have nothing under this name.');
+  });
+
+  // An empty answer was kept for good, so the Deutsches Museum said "nothing
+  // found" long after Wikipedia would have answered.
+  it('looks again at a kept empty answer each time it is opened', async () => {
     vi.mocked(fetchPlaceFacts).mockClear();
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(facts);
     show(act({ about: { facts: answered } }));
-    expect(screen.getByTestId('about-nothing')).toHaveTextContent('Wikipedia and OpenStreetMap have nothing under this name.');
-    expect(fetchPlaceFacts).not.toHaveBeenCalled();
+    expect(fetchPlaceFacts).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('about-wiki')).toBeInTheDocument();
   });
 
   // A timeout is not an answer: the panel must not say "nothing" for it, or keep it.
@@ -98,9 +107,9 @@ describe('what the sources say', () => {
 
   it('can be asked to check again', async () => {
     vi.mocked(fetchPlaceFacts).mockClear();
-    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(facts);
-    show(act({ about: { facts: answered } }));
-    fireEvent.click(screen.getByTestId('about-check-again'));
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(answered).mockResolvedValueOnce(facts);
+    show();
+    fireEvent.click(await screen.findByTestId('about-check-again'));
     expect(await screen.findByTestId('about-wiki')).toBeInTheDocument();
   });
 
@@ -147,15 +156,17 @@ describe('the AI guide', () => {
     expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ facts, guide: sampleGuide }));
   });
 
-  // "Nothing found" followed by an explanation read as a contradiction.
-  it('says when the guide has no checked source behind it', () => {
-    show(act({ about: { facts: { checkedAt: facts.checkedAt, complete: true, query: 'x' }, guide: sampleGuide } }));
-    expect(screen.getByTestId('about-guide-unchecked')).toHaveTextContent("From the AI's general knowledge");
-  });
-
-  it('does not say so when it does', () => {
-    show(act({ about: { facts, guide: sampleGuide } }));
-    expect(screen.queryByTestId('about-guide-unchecked')).not.toBeInTheDocument();
+  // "Nothing found" above an account of the place read as a contradiction:
+  // when the sources have nothing, the guide is simply the answer.
+  it('is shown on its own when the sources have nothing', async () => {
+    const empty = { checkedAt: facts.checkedAt, complete: true, query: 'x' };
+    vi.mocked(fetchPlaceFacts).mockResolvedValueOnce(empty);
+    show(act({ about: { facts: empty, guide: sampleGuide } }));
+    await waitFor(() => expect(screen.queryByTestId('about-loading')).not.toBeInTheDocument());
+    expect(screen.getByTestId('about-guide')).toHaveTextContent('A forested Shinto shrine');
+    expect(screen.queryByTestId('about-nothing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('about-unreached')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No checked source/)).not.toBeInTheDocument();
   });
 
   it('puts what needs attention first, and says it is AI', () => {
