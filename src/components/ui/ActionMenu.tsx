@@ -37,6 +37,7 @@ interface Props {
  */
 export default function ActionMenu({ label, menuLabel, items, buttonTestId, menuTestId }: Props) {
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -44,6 +45,24 @@ export default function ActionMenu({ label, menuLabel, items, buttonTestId, menu
   const close = (refocus = true) => {
     setOpen(false);
     if (refocus) button.current?.focus();
+  };
+
+  /*
+   * Open upward when the menu would not fit below: near the bottom of the
+   * screen, or of a scrolling list (the trip list) that would clip it.
+   */
+  const toggle = () => {
+    if (!open && button.current) {
+      const b = button.current.getBoundingClientRect();
+      let bottom = window.innerHeight;
+      for (let el = button.current.parentElement; el; el = el.parentElement) {
+        const o = getComputedStyle(el).overflowY;
+        if (o === 'auto' || o === 'scroll' || o === 'hidden') { bottom = Math.min(bottom, el.getBoundingClientRect().bottom); break; }
+      }
+      const need = 48 * items.length + 24;
+      setUp(b.bottom + need > bottom && b.top - need > 0);
+    }
+    setOpen((o) => !o);
   };
 
   useEffect(() => {
@@ -105,7 +124,7 @@ export default function ActionMenu({ label, menuLabel, items, buttonTestId, menu
       <button
         ref={button}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -121,7 +140,7 @@ export default function ActionMenu({ label, menuLabel, items, buttonTestId, menu
           role="menu"
           aria-label={menuLabel}
           onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full mt-1 z-30 w-56 p-1 rounded-xl bg-surface-overlay border border-white/10 shadow-glass"
+          className={`absolute right-0 ${up ? 'bottom-full mb-1' : 'top-full mt-1'} z-30 w-56 p-1 rounded-xl bg-surface-overlay border border-white/10 shadow-glass`}
           data-testid={menuTestId}
         >
           {safe.map(render)}

@@ -1,208 +1,66 @@
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Pencil, Copy, Trash2, Download } from 'lucide-react';
-import { exportTrip, saveFile } from '../../services/tripTransfer';
-import { db, type Plan } from '../../db';
-import { v4 as uuidv4 } from 'uuid';
-import Toast from '../ui/Toast';
-import TripDetailsPanel from './TripDetailsPanel';
+import { useEffect, useRef } from 'react';
+import type { ActionMenuItem } from '../ui/ActionMenu';
 
 interface Props {
-  planId: string;
+  items: ActionMenuItem[];
   x: number;
   y: number;
   onClose: () => void;
 }
 
-export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
+/**
+ * The trip list's right-click menu: the same actions as each trip's "More
+ * actions" button, opened where the pointer is. It only offers them; the
+ * sidebar carries them out, so what follows (an Undo, a message) outlives
+ * this menu closing.
+ */
+export default function PlanContextMenu({ items, x, y, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
-  const { planId: activePlanId } = useParams<{ planId: string }>();
-  const [toast, setToast] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [editing, setEditing] = useState<Plan | null>(null);
-  const [deletedPlanId, setDeletedPlanId] = useState<string | null>(null);
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const away = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEsc);
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEsc);
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', esc);
     };
   }, [onClose]);
 
-  /*
-   * Renaming used to be a window.prompt writing straight to `destination`,
-   * which is what the map's anchors and the visa to-do are built from — so
-   * renaming "Percé" to "Gaspésie road trip" quietly repointed both at a
-   * place that does not geocode. Everything about a trip is editable in one
-   * place now, with the destination re-resolved to a country properly.
-   */
-  const handleEdit = async () => {
-    onClose();
-    const plan = await db.plans.get(planId);
-    if (plan) setEditing(plan);
-  };
-
-  const handleDuplicate = async () => {
-    onClose();
-    const plan = await db.plans.get(planId);
-    if (!plan) return;
-    const newPlan = {
-      ...plan,
-      id: uuidv4(),
-      name: `${plan.name} (copy)`,
-      destination: `${plan.destination} (copy)`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await db.plans.add(newPlan);
-    setToast('Plan duplicated');
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  // A file with the trip's words: no attached documents, nothing about keys.
-  const handleExport = async () => {
-    onClose();
-    try {
-      const { name, text } = await exportTrip(planId);
-      saveFile(name, text);
-      setToast('Trip exported');
-    } catch {
-      setToast('The trip could not be exported');
-    }
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleDeleteClick = () => {
-    setConfirmDelete(true);
-  };
-
-  const handleDeleteConfirm = async () => {
-    setConfirmDelete(false);
-    onClose();
-
-    await db.plans.update(planId, {
-      deleted: true,
-      updatedAt: new Date().toISOString(),
-    });
-
-    if (activePlanId === planId) {
-      navigate('/');
-    }
-
-    setDeletedPlanId(planId);
-    setToast('Plan deleted');
-
-    undoTimerRef.current = setTimeout(async () => {
-      // Hard delete after 5s
-      await db.plans.delete(planId);
-      setDeletedPlanId(null);
-      setToast(null);
-    }, 5000);
-  };
-
-  const handleUndo = async () => {
-    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    if (deletedPlanId) {
-      await db.plans.update(deletedPlanId, {
-        deleted: false,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    setDeletedPlanId(null);
-    setToast(null);
-  };
-
-  // Rendered outside the menu, which closes the moment the panel opens.
-  if (editing) {
-    return <TripDetailsPanel plan={editing} onClose={() => setEditing(null)} />;
-  }
+  const safe = items.filter((i) => !i.danger);
+  const risky = items.filter((i) => i.danger);
+  const row = (i: ActionMenuItem) => (
+    <button
+      key={i.label}
+      role="menuitem"
+      aria-label={i.ariaLabel}
+      data-testid={i.testId}
+      className={`flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-surface-raised transition-colors ${
+        i.danger ? 'text-status-danger' : 'text-ink-secondary hover:text-ink-primary'
+      }`}
+      onClick={() => { onClose(); i.onSelect?.(); }}
+    >
+      <span aria-hidden="true" className="shrink-0">{i.icon}</span>
+      {i.label}
+    </button>
+  );
 
   return (
-    <>
-      <div
-        ref={ref}
-        role="menu"
-        aria-label="Plan options"
-        className="fixed z-50 w-44 bg-surface-overlay border border-white/10 rounded-card shadow-glass py-1"
-        style={{ left: x, top: y }}
-      >
-        {!confirmDelete ? (
-          <>
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary hover:bg-surface-raised transition-colors"
-              onClick={handleEdit}
-            >
-              <Pencil size={14} aria-hidden="true" />
-              Trip details
-            </button>
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary hover:bg-surface-raised transition-colors"
-              onClick={handleDuplicate}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Duplicate
-            </button>
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary hover:bg-surface-raised transition-colors"
-              onClick={handleExport}
-              data-testid="plan-export"
-            >
-              <Download size={14} aria-hidden="true" />
-              Export
-            </button>
-            <hr className="border-white/5 my-1" />
-            <button
-              role="menuitem"
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-status-danger hover:bg-surface-raised transition-colors"
-              onClick={handleDeleteClick}
-            >
-              <Trash2 size={14} aria-hidden="true" />
-              Delete
-            </button>
-          </>
-        ) : (
-          <div className="px-3 py-2">
-            <p className="text-sm text-ink-primary mb-2">Delete this plan?</p>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 py-1 rounded-lg bg-status-danger text-ink-inverse text-xs font-semibold"
-                onClick={handleDeleteConfirm}
-              >
-                Delete
-              </button>
-              <button
-                className="flex-1 py-1 rounded-lg bg-surface-raised text-ink-secondary text-xs"
-                onClick={() => { setConfirmDelete(false); onClose(); }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {toast && (
-        <Toast
-          message={toast}
-          onDismiss={() => setToast(null)}
-          action={deletedPlanId ? { label: 'Undo', onClick: handleUndo } : undefined}
-        />
-      )}
-    </>
+    <div
+      ref={ref}
+      role="menu"
+      aria-label="Plan options"
+      className="fixed z-50 w-48 bg-surface-overlay border border-white/10 rounded-card shadow-glass py-1"
+      // Kept on screen when opened near the bottom or right edge.
+      style={{ left: Math.min(x, window.innerWidth - 200), top: Math.min(y, window.innerHeight - 200) }}
+    >
+      {safe.map(row)}
+      {safe.length > 0 && risky.length > 0 && <hr className="border-white/5 my-1" />}
+      {risky.map(row)}
+    </div>
   );
 }

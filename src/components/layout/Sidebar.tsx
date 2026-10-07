@@ -14,6 +14,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
+import ActionMenu from '../ui/ActionMenu';
+import { useTripActions } from '../plans/useTripActions';
 import ImportTripButton from '../plans/ImportTripButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { versionLabel } from '../../utils/appVersion';
@@ -67,6 +69,11 @@ export default function Sidebar() {
   } | null>(null);
 
   const { canInstall, triggerInstall } = usePwaInstall();
+  // Lives here, not in the menus, so an Undo outlasts the menu closing.
+  const tripActions = useTripActions({
+    // As when a trip is tapped: the drawer would cover the copy just opened.
+    onOpenTrip: () => { if (isMobile) setDrawerOpen(false); },
+  });
 
   // Read on every render rather than cached in state: the key is saved on the
   // Settings page, which doesn't unmount this sidebar, so a cached value would
@@ -240,8 +247,10 @@ export default function Sidebar() {
             <ul className="space-y-0.5" role="list">
               {plans.map((plan) => {
                 const isActive = plan.id === planId;
+                const twin = Boolean(plan.name) && plans.some((o) => o.id !== plan.id && o.destination === plan.destination);
+                const called = twin ? `${plan.destination}, ${plan.name}` : plan.destination;
                 return (
-                  <li key={plan.id}>
+                  <li key={plan.id} className="relative flex items-center">
                     <button
                       onClick={() => {
                         navigate(`/plan/${plan.id}/itinerary`);
@@ -251,7 +260,7 @@ export default function Sidebar() {
                       }}
                       onContextMenu={(e) => handleContextMenu(e, plan.id)}
                       className={`
-                        flex items-center gap-2 w-full rounded-xl px-3 py-2
+                        flex items-center gap-2 flex-1 min-w-0 rounded-xl px-3 py-2
                         text-left transition-colors group
                         focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none
                         ${isActive
@@ -275,9 +284,27 @@ export default function Sidebar() {
                           <div className="text-xs text-ink-muted truncate">
                             {formatDateRange(plan.startDate, plan.endDate)}
                           </div>
+                          {/* Two trips to one place (a duplicate, a return
+                              visit) would read the same; the name tells them
+                              apart. */}
+                          {twin && (
+                            <div className="text-xs text-ink-secondary truncate" data-testid="trip-row-name">{plan.name}</div>
+                          )}
                         </div>
                       )}
                     </button>
+                    {/* The trip's actions, reachable on a phone, where there
+                        is no right-click to open them. */}
+                    {!narrow && (
+                      <div className="shrink-0">
+                        <ActionMenu
+                          label={`More actions for ${called}`}
+                          menuLabel={`Actions for ${called}`}
+                          items={tripActions.itemsFor(plan, called)}
+                          buttonTestId="trip-menu-button"
+                        />
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -363,14 +390,15 @@ export default function Sidebar() {
       </aside>
 
       {/* Context menu */}
-      {contextMenu && (
+      {contextMenu && plans?.some((p) => p.id === contextMenu.planId) && (
         <PlanContextMenu
-          planId={contextMenu.planId}
+          items={tripActions.itemsFor(plans.find((p) => p.id === contextMenu.planId)!)}
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
         />
       )}
+      {tripActions.ui}
     </>
   );
 }

@@ -65,6 +65,28 @@ describe('Sidebar', () => {
 
   // Nothing AI-driven works without a key, so the warning is surfaced where
   // the fix is rather than only failing at the point of use.
+  // On a phone there is no right-click, so each trip carries its own menu.
+  it('gives every trip a More actions button', () => {
+    mockUseLiveQuery.mockReturnValue([
+      { id: 'a', name: 'Tokyo', destination: 'Tokyo, Japan', startDate: '2026-10-11', endDate: '2026-10-13', createdAt: '', updatedAt: '', deleted: false, itinerary: [] },
+    ]);
+    renderSidebar();
+    expect(screen.getByRole('button', { name: 'More actions for Tokyo, Japan' })).toBeInTheDocument();
+  });
+
+  // A duplicate keeps its destination, so the name is what tells the two apart.
+  it('names trips that share a destination', () => {
+    const trip = { startDate: '2026-10-11', endDate: '2026-10-13', createdAt: '', updatedAt: '', deleted: false, itinerary: [] };
+    mockUseLiveQuery.mockReturnValue([
+      { ...trip, id: 'a', name: 'Tokyo Explorer', destination: 'Tokyo, Japan' },
+      { ...trip, id: 'b', name: 'Tokyo Explorer (copy)', destination: 'Tokyo, Japan' },
+      { ...trip, id: 'c', name: 'Lisbon', destination: 'Lisbon, Portugal' },
+    ]);
+    renderSidebar();
+    expect(screen.getAllByTestId('trip-row-name').map((n) => n.textContent)).toEqual(['Tokyo Explorer', 'Tokyo Explorer (copy)']);
+    expect(screen.getByRole('button', { name: 'More actions for Tokyo, Japan, Tokyo Explorer (copy)' })).toBeInTheDocument();
+  });
+
   describe('API key warning', () => {
     it('flags the settings entry when no provider key is stored', () => {
       renderSidebar();
@@ -132,6 +154,9 @@ describe('Sidebar', () => {
     plansTable.filter.mockReturnValue({ sortBy } as unknown as ReturnType<
       typeof plansTable.filter
     >);
+    // The sidebar also clears out trips left soft-deleted by a closed session;
+    // only the list query is under test here.
+    plansTable.filter.mockClear();
 
     // Run the captured query factory — it should call
     // db.plans.filter(...).sortBy('createdAt')
