@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Paper Map Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,600;1,500&display=swap" rel="stylesheet">
+<!--
+  Mockup: the Map tab as a drawn paper map, with no Mapbox.
+
+  Pins sit at real coordinates (looked up with Photon, the free OpenStreetMap
+  search journ.ai already uses), projected onto a sheet with plain SVG. No map
+  library, no tiles, no token. Landmarks under "Discover" are real Overpass
+  results, which is what the Discover filter already queries.
+
+  Data is the seeded Tokyo demo plan.
+-->
+<style>
+  :root{
+    --base:#0a0f1a; --raised:#111827; --overlay:#1a2235;
+    --accent:#06b6d4; --accent-light:#67e8f9;
+    --ink:#f1f5f9; --ink-2:#94a3b8; --ink-3:#7c8b9f; --inverse:#0a0f1a;
+    --success:#10b981; --warning:#f59e0b;
+    --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+    --r-card:16px; --r-ctl:12px;
+    /* the sheet */
+    --paper:#f3ead5; --paper-2:#ebe0c6; --paper-ink:#5b4a2e; --paper-faint:#a8977a;
+    --serif:"Lora",Georgia,serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--base);color:var(--ink);font:15px/1.5 var(--sans)}
+  button{font:inherit;color:inherit}
+  svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;border-bottom:1px solid var(--line)}
+  .crumb{color:var(--ink-3);font-size:.85rem}.crumb b{color:var(--ink);font-weight:600}
+  .tabs{display:flex;gap:4px}
+  .tabs span{padding:7px 14px;border-radius:var(--r-ctl);font-size:.86rem;color:var(--ink-2)}
+  .tabs span.on{background:var(--overlay);color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+
+  .wrap{max-width:1280px;margin:0 auto;padding:16px 24px 32px}
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .days,.disc{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .chip{flex:none;display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);background:var(--raised);padding:7px 13px;border-radius:999px;cursor:pointer;font-weight:600;font-size:.84rem;color:var(--ink-2)}
+  .chip i{width:8px;height:8px;border-radius:50%;background:var(--c,var(--ink-2))}
+  .chip:hover{color:var(--ink);border-color:var(--c,var(--ink-2))}
+  .chip.on{background:var(--c,var(--accent));border-color:var(--c,var(--accent));color:var(--inverse)}
+  .chip.on i{background:var(--inverse)}
+  .disc .chip.on{--c:#e2c88f}
+  .chip:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px}
+
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+  .sheet-wrap{position:relative;border-radius:var(--r-card);overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.06);height:min(72vh,680px);min-height:420px;background:var(--paper)}
+  #sheet{display:block;width:100%;height:100%;touch-action:manipulation}
+  #sheet text{font-family:var(--serif)}
+  .pin{cursor:pointer}
+  .pin:focus{outline:none}
+  .pin:focus-visible .pin-body,.pin:hover .pin-body{stroke-width:3}
+
+  /* Card for a tapped pin */
+  .card{position:absolute;z-index:3;width:270px;background:var(--overlay);border:1px solid var(--line-2);border-radius:var(--r-card);box-shadow:0 12px 32px rgba(0,0,0,.45);padding:14px 16px 12px;color:var(--ink)}
+  .card[hidden]{display:none}
+  .card .k{font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--c)}
+  .card h3{margin:2px 0 2px;font:600 1.1rem/1.25 var(--serif)}
+  .card .loc{display:flex;gap:5px;align-items:center;font-size:.8rem;color:var(--ink-3)}
+  .card .loc svg{width:13px;height:13px}
+  .card p{margin:8px 0 0;font-size:.86rem;color:var(--ink-2)}
+  .card .acts{display:flex;gap:8px;margin-top:12px}
+  .card .acts a,.card .acts button{flex:1;display:inline-flex;justify-content:center;align-items:center;gap:6px;border-radius:var(--r-ctl);padding:7px 10px;font-size:.8rem;font-weight:600;text-decoration:none;border:1px solid var(--line-2);color:var(--ink);background:var(--raised);cursor:pointer}
+  .card .acts .primary{background:var(--accent);border-color:var(--accent);color:var(--inverse)}
+  .card .x{position:absolute;top:8px;right:8px;border:0;background:none;color:var(--ink-3);cursor:pointer;padding:4px;border-radius:8px}
+  .card .x:hover{color:var(--ink)}
+
+  /* Side list */
+  .side{display:grid;gap:14px}
+  .panel{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-card);padding:16px 18px;box-shadow:0 2px 12px rgba(0,0,0,.3)}
+  .panel h3{margin:0 0 2px;font:600 1.1rem/1.2 var(--serif);display:flex;justify-content:space-between;align-items:baseline}
+  .panel h3 small{font:600 .74rem var(--sans);color:var(--ink-3)}
+  .sub{margin:0 0 10px;font-size:.8rem;color:var(--ink-3)}
+  .stops{list-style:none;margin:0;padding:0}
+  .stops li{display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+  .stops li:first-child{border-top:0}
+  .stops li:hover b{color:var(--accent-light)}
+  .num{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:.72rem;font-weight:800;color:var(--inverse);background:var(--c)}
+  .stops b{display:block;font-weight:600;font-size:.9rem}
+  .stops span{font-size:.78rem;color:var(--ink-3)}
+  .leg{font-size:.72rem;color:var(--ink-3);padding:0 0 0 36px;margin:-2px 0 2px}
+  .note{font-size:.8rem;color:var(--ink-2);display:flex;gap:8px}
+  .note svg{color:var(--success);margin-top:2px}
+  .note.warn svg{color:var(--warning)}
+  .why{font-size:.78rem;color:var(--ink-3);margin:0}
+  .why b{color:var(--ink-2)}
+
+  @media (max-width:980px){
+    .grid{grid-template-columns:1fr}
+    .sheet-wrap{height:min(78vh,640px);min-height:380px}
+  }
+  @media (max-width:640px){
+    .topbar{padding:10px 16px}.tabs{display:none}
+    .wrap{padding:12px 12px 24px}
+    .bar{flex-direction:column;align-items:stretch}
+    .card{left:8px!important;right:8px;bottom:8px;top:auto!important;width:auto}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="pinico" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="crumb">Plans / <b>Tokyo Explorer</b></div>
+  <div class="tabs"><span>Itinerary</span><span>To-do</span><span>Clipboard</span><span class="on">Map</span></div>
+</header>
+
+<main class="wrap">
+  <div class="bar">
+    <nav class="days" id="days" aria-label="Show day"></nav>
+    <div class="disc" role="group" aria-label="Discover nearby">
+      <button class="chip" id="discBtn" aria-pressed="false">Discover landmarks</button>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="sheet-wrap" id="sheetWrap">
+      <svg id="sheet" role="img" aria-label="Map of the trip"></svg>
+      <div class="card" id="card" hidden role="dialog" aria-label="Stop details"></div>
+    </div>
+    <aside class="side" id="side" aria-label="Stops"></aside>
+  </div>
+</main>
+
+<script>
+/* ── Data: the seeded Tokyo plan, coordinates from Photon ─────────────── */
+var PLAN = { name: 'Tokyo Explorer', city: 'Tokyo', dates: '11–13 Oct 2026', center: [139.7454, 35.6812] };
+var COLORS = ['#06b6d4', '#0ea5e9', '#8b5cf6'];         // getDayColor()
+var INK = ['#0e7490', '#0369a1', '#6d28d9'];             // the same, deep enough to read on paper
+var DAYS = [
+  { label: 'Day 1', date: 'Sun 11', title: 'Tokyo Arrival', stops: [
+    { name: 'Tsukiji Outer Market', time: '8:00 AM', area: 'Tsukiji', at: [139.7705, 35.6654], notes: 'Arrive early for a fresh sushi breakfast.' },
+    { name: 'Senso-ji Temple', time: '10:30 AM', area: 'Asakusa', at: [139.7967, 35.7147], notes: "Tokyo's oldest temple — browse Nakamise shopping street." },
+    { name: 'Akihabara Electric Town', time: '2:00 PM', area: 'Akihabara', at: [139.7727, 35.6975], notes: 'Anime, electronics and retro arcades.' },
+    { name: 'Shibuya Crossing', time: '7:00 PM', area: 'Shibuya', at: [139.7006, 35.6595], notes: 'Iconic scramble crossing at night.' }
+  ] },
+  { label: 'Day 2', date: 'Mon 12', title: 'Culture & Parks', stops: [
+    { name: 'Meiji Shrine', time: '9:00 AM', area: 'Shibuya', at: [139.6993, 35.6764], notes: 'Forested shrine dedicated to Emperor Meiji.' },
+    { name: 'Harajuku Takeshita Street', time: '11:00 AM', area: 'Harajuku', at: [139.7050, 35.6712], notes: 'Youth fashion and crepes.' },
+    { name: 'Shinjuku Gyoen', time: '1:30 PM', area: 'Shinjuku', at: [139.7095, 35.6851], notes: 'Relaxing garden stroll.' },
+    { name: 'Omoide Yokocho', time: '7:30 PM', area: 'Shinjuku', at: [139.6995, 35.6931], notes: 'Atmospheric alley of tiny yakitori bars.' }
+  ] },
+  { label: 'Day 3', date: 'Tue 13', title: 'Day Trip', stops: [
+    { name: 'Nikko Tosho-gu Shrine', time: '9:00 AM', area: 'Nikko', town: 'Nikko', at: [139.5991, 36.7576], notes: 'Ornate UNESCO World Heritage shrine.' },
+    { name: 'Kegon Falls', time: '12:00 PM', area: 'Nikko', town: 'Nikko', at: [139.5020, 36.7380], notes: 'Dramatic 97m waterfall.' },
+    { name: 'Return to Tokyo', time: '4:00 PM', area: 'Shinjuku', at: [139.6982, 35.6906], notes: 'Train back to the city.' }
+  ] }
+];
+// Real Overpass results (tourism=attraction / historic) — what Discover already queries.
+var LANDMARKS = [
+  { name: 'Moyai Statue', at: [139.69997, 35.65729] },
+  { name: 'Kanze Noh Theater', at: [139.69357, 35.66204] },
+  { name: 'Nihonbashi Fish Market Monument', at: [139.77485, 35.68434] },
+  { name: 'Kuramae Water Museum', at: [139.79136, 35.70165] },
+  { name: 'Statue of Omura Masujiro', at: [139.74638, 35.6948] },
+  { name: 'Ichigaya Mitsuke', at: [139.7362, 35.69142] }
+];
+
+/* ── Geometry ─────────────────────────────────────────────────────────── */
+/** Anything further than this from the main group is shown off-sheet. */
+var FAR_KM = 40;
+function km(a, b) {
+  var R = 6371, toR = Math.PI / 180;
+  var dLat = (b[1] - a[1]) * toR, dLng = (b[0] - a[0]) * toR;
+  var h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * toR) * Math.cos(b[1] * toR) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function bearingWord(from, to) {
+  var dx = (to[0] - from[0]) * Math.cos(from[1] * Math.PI / 180), dy = to[1] - from[1];
+  var a = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(a / 45) % 8];
+}
+/** Split points into the main group (near their median) and the far ones. */
+function cluster(points) {
+  var lngs = points.map(function (p) { return p.at[0]; }).sort(function (a, b) { return a - b; });
+  var lats = points.map(function (p) { return p.at[1]; }).sort(function (a, b) { return a - b; });
+  var mid = [lngs[Math.floor(lngs.length / 2)], lats[Math.floor(lats.length / 2)]];
+  var near = [], far = [];
+  points.forEach(function (p) { (km(p.at, mid) <= FAR_KM ? near : far).push(p); });
+  return { near: near, far: far, mid: mid };
+}
+/**
+ * An equirectangular projection fitted to a box. Plenty for a city: the
+ * distortion over 20 km is far below what anyone could see on a sketch map.
+ */
+function fit(points, box, pad) {
+  var lat0 = points.reduce(function (s, p) { return s + p.at[1]; }, 0) / points.length;
+  var kx = Math.cos(lat0 * Math.PI / 180);
+  var xs = points.map(function (p) { return p.at[0] * kx; }), ys = points.map(function (p) { return p.at[1]; });
+  var minX = Math.min.apply(0, xs), maxX = Math.max.apply(0, xs), minY = Math.min.apply(0, ys), maxY = Math.max.apply(0, ys);
+  var span = 0.012; // a single pin still gets a neighbourhood around it
+  var dx = Math.max(maxX - minX, span), dy = Math.max(maxY - minY, span);
+  var s = Math.min((box.w - pad.l - pad.r) / dx, (box.h - pad.t - pad.b) / dy);
+  var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  var ox = box.x + pad.l + (box.w - pad.l - pad.r) / 2, oy = box.y + pad.t + (box.h - pad.t - pad.b) / 2;
+  return {
+    s: s, kx: kx,
+    xy: function (at) { return [ox + (at[0] * kx - cx) * s, oy - (at[1] - cy) * s]; },
+    ll: function (x, y) { return [((x - ox) / s + cx) / kx, cy - (y - oy) / s]; },
+    pxPerKm: s / 111.32
+  };
+}
+
+/* ── Drawing ──────────────────────────────────────────────────────────── */
+var NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent, text) {
+  var e = document.createElementNS(NS, tag);
+  for (var k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+var PIN_PATH = 'M0,0 C-3,-7 -11,-12 -11,-21 A11,11 0 1 1 11,-21 C11,-12 3,-7 0,0 Z';
+
+var state = { day: null, discover: false, open: null };
+var sheet = document.getElementById('sheet');
+var wrap = document.getElementById('sheetWrap');
+var card = document.getElementById('card');
+
+function stopsFor(day) {
+  var out = [];
+  DAYS.forEach(function (d, di) {
+    if (day !== null && di !== day) return;
+    d.stops.forEach(function (s, si) { out.push(Object.assign({ day: di, n: si + 1 }, s)); });
+  });
+  return out;
+}
+
+function draw() {
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  if (W < 120 || H < 120) return; // not laid out yet
+  var compact = W < 560;
+  sheet.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  sheet.innerHTML = '';
+
+  var defs = el('defs', {}, sheet);
+  var f = el('filter', { id: 'grain', x: 0, y: 0, width: '100%', height: '100%' }, defs);
+  el('feTurbulence', { type: 'fractalNoise', baseFrequency: '.9', numOctaves: 2, stitchTiles: 'stitch', result: 'n' }, f);
+  el('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 .35  0 0 0 0 .28  0 0 0 0 .16  0 0 0 .07 0' }, f);
+  var rg = el('radialGradient', { id: 'vig', cx: '50%', cy: '45%', r: '75%' }, defs);
+  el('stop', { offset: '60%', 'stop-color': '#f3ead5', 'stop-opacity': 0 }, rg);
+  el('stop', { offset: '100%', 'stop-color': '#c9b48a', 'stop-opacity': .45 }, rg);
+
+  // paper
+  el('rect', { x: 0, y: 0, width: W, height: H, fill: 'var(--paper)' }, sheet);
+  el('rect', { x: 0, y: 0, width: W, height: H, filter: 'url(#grain)' }, sheet);
+  el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#vig)' }, sheet);
+  var m = compact ? 10 : 16;
+  el('rect', { x: m, y: m, width: W - 2 * m, height: H - 2 * m, fill: 'none', stroke: 'var(--paper-ink)', 'stroke-width': 1.5, opacity: .7 }, sheet);
+  el('rect', { x: m + 4, y: m + 4, width: W - 2 * m - 8, height: H - 2 * m - 8, fill: 'none', stroke: 'var(--paper-ink)', 'stroke-width': .6, opacity: .5 }, sheet);
+
+  var all = stopsFor(state.day);
+  var c = cluster(all);
+  // In "all days", a day spent entirely away is a day trip: it gets an inset.
+  var insetDay = null;
+  if (state.day === null) {
+    DAYS.forEach(function (d, di) {
+      var away = all.filter(function (s) { return s.day === di && c.far.indexOf(s) >= 0; });
+      if (away.length >= 2 && insetDay === null) insetDay = di;
+    });
+  }
+  var inset = insetDay !== null ? all.filter(function (s) { return s.day === insetDay && c.far.indexOf(s) >= 0; }) : [];
+  var arrows = c.far.filter(function (s) { return inset.indexOf(s) < 0; });
+
+  var pad = compact ? { l: 46, r: 46, t: 86, b: 70 } : { l: 90, r: 90, t: 96, b: 84 };
+  var insetBox = null;
+  if (inset.length) {
+    var iw = compact ? 150 : 230, ih = compact ? 120 : 170;
+    insetBox = { x: W - m - 12 - iw, y: m + 12, w: iw, h: ih };
+    pad.r = Math.max(pad.r, compact ? 60 : iw * .55);
+  }
+  var P = fit(c.near.length ? c.near : all, { x: 0, y: 0, w: W, h: H }, pad);
+
+  graticule(P, W, H, m, compact);
+  areaLabels(c.near, P, compact);
+  title(m, compact, townOf(c.near.length ? c.near : all));
+  scaleBar(P, m, H, compact);
+  compass(W - m - (compact ? 34 : 52), insetBox ? H - m - (compact ? 40 : 56) : m + (compact ? 46 : 62), compact ? .7 : 1);
+
+  if (state.discover) landmarks(P, W, H);
+  routes(c.near, P);
+  c.near.forEach(function (s) { pin(s, P.xy(s.at), compact); });
+  arrows.forEach(function (s) { edgeArrow(s, c.mid, P, W, H, m); });
+  if (insetBox) insetMap(inset, insetBox, c.mid, compact);
+
+  side();
+  if (state.open) placeCard();
+}
+
+function graticule(P, W, H, m, compact) {
+  var g = el('g', { opacity: .55 }, sheet);
+  var tl = P.ll(m, m), br = P.ll(W - m, H - m);
+  var span = Math.min(br[0] - tl[0], tl[1] - br[1]);
+  var step = [0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5].find(function (s) { return span / s <= (compact ? 4 : 6); }) || 1;
+  var dp = step < 0.01 ? 3 : 2;
+  for (var lng = Math.ceil(tl[0] / step) * step; lng < br[0]; lng += step) {
+    var x = P.xy([lng, 0])[0];
+    el('line', { x1: x, y1: m + 4, x2: x, y2: H - m - 4, stroke: 'var(--paper-faint)', 'stroke-width': .6, 'stroke-dasharray': '2 5' }, g);
+    if (!compact && x > 300) el('text', { x: x + 3, y: H - m - 10, 'font-size': 9, fill: 'var(--paper-faint)' }, g, lng.toFixed(dp) + '°E');
+  }
+  for (var lat = Math.ceil(br[1] / step) * step; lat < tl[1]; lat += step) {
+    var y = P.xy([0, lat])[1];
+    el('line', { x1: m + 4, y1: y, x2: W - m - 4, y2: y, stroke: 'var(--paper-faint)', 'stroke-width': .6, 'stroke-dasharray': '2 5' }, g);
+    if (!compact && y > m + 90) el('text', { x: m + 8, y: y - 3, 'font-size': 9, fill: 'var(--paper-faint)' }, g, lat.toFixed(dp) + '°N');
+  }
+}
+
+/** Neighbourhoods, from the second half of each stop's location: real data. */
+function areaLabels(stops, P, compact) {
+  var groups = {};
+  stops.forEach(function (s) { (groups[s.area] = groups[s.area] || []).push(P.xy(s.at)); });
+  var g = el('g', {}, sheet);
+  Object.keys(groups).forEach(function (a) {
+    var pts = groups[a];
+    var W = wrap.clientWidth, half = a.length * (compact ? 5.5 : 8) + 10;
+    // Kept inside the frame: a name cut off at the edge reads as a mistake.
+    var x = Math.min(Math.max(pts.reduce(function (t, p) { return t + p[0]; }, 0) / pts.length, 20 + half), W - 20 - half);
+    var y = pts.reduce(function (t, p) { return t + p[1]; }, 0) / pts.length + (compact ? 16 : 20);
+    el('text', { x: x, y: y, 'text-anchor': 'middle', 'font-size': compact ? 12 : 17, 'font-style': 'italic', 'letter-spacing': '.22em',
+      fill: 'var(--paper-faint)', opacity: .75 }, g, a.toUpperCase());
+  });
+}
+
+/** The town the sheet is showing: the trip's city unless most of it is elsewhere. */
+function townOf(stops) {
+  var n = {};
+  stops.forEach(function (s) { var t = s.town || PLAN.city; n[t] = (n[t] || 0) + 1; });
+  return Object.keys(n).sort(function (a, b) { return n[b] - n[a]; })[0] || PLAN.city;
+}
+function title(m, compact, town) {
+  var g = el('g', {}, sheet);
+  var x = m + (compact ? 14 : 22), y = m + (compact ? 34 : 44);
+  el('text', { x: x, y: y, 'font-size': compact ? 22 : 30, 'font-weight': 600, fill: 'var(--paper-ink)', 'letter-spacing': '.04em' }, g, town);
+  el('text', { x: x + 1, y: y + (compact ? 16 : 20), 'font-size': compact ? 10 : 12, 'font-style': 'italic', fill: 'var(--paper-faint)' }, g,
+    state.day === null ? PLAN.name + ' · ' + PLAN.dates : DAYS[state.day].label + ' · ' + DAYS[state.day].date + ' Oct · ' + DAYS[state.day].title);
+}
+
+function scaleBar(P, m, H, compact) {
+  var want = compact ? 70 : 110;
+  var nice = [0.25, 0.5, 1, 2, 5, 10, 20, 50].reduce(function (best, k) {
+    return Math.abs(k * P.pxPerKm - want) < Math.abs(best * P.pxPerKm - want) ? k : best;
+  }, 1);
+  var len = nice * P.pxPerKm, x = m + (compact ? 14 : 22), y = H - m - (compact ? 18 : 24);
+  var g = el('g', {}, sheet);
+  el('rect', { x: x, y: y - 4, width: len / 2, height: 4, fill: 'var(--paper-ink)' }, g);
+  el('rect', { x: x + len / 2, y: y - 4, width: len / 2, height: 4, fill: 'var(--paper)', stroke: 'var(--paper-ink)', 'stroke-width': 1 }, g);
+  el('text', { x: x, y: y - 9, 'font-size': 10, fill: 'var(--paper-ink)' }, g, '0');
+  el('text', { x: x + len, y: y - 9, 'font-size': 10, fill: 'var(--paper-ink)', 'text-anchor': 'end' }, g, (nice < 1 ? nice * 1000 + ' m' : nice + ' km'));
+}
+
+function compass(cx, cy, k) {
+  var g = el('g', { transform: 'translate(' + cx + ',' + cy + ') scale(' + k + ')', opacity: .8 }, sheet);
+  el('circle', { r: 22, fill: 'none', stroke: 'var(--paper-ink)', 'stroke-width': .8 }, g);
+  el('path', { d: 'M0,-30 L6,0 L0,6 L-6,0 Z', fill: 'var(--paper-ink)' }, g);
+  el('path', { d: 'M0,30 L6,0 L0,-6 L-6,0 Z', fill: 'none', stroke: 'var(--paper-ink)', 'stroke-width': .8 }, g);
+  el('path', { d: 'M-30,0 L0,4 L30,0 L0,-4 Z', fill: 'none', stroke: 'var(--paper-ink)', 'stroke-width': .8 }, g);
+  el('text', { y: -34, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600, fill: 'var(--paper-ink)' }, g, 'N');
+}
+
+/** Each day's stops, joined in the order they are visited. */
+function routes(stops, P) {
+  var g = el('g', { fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, sheet);
+  DAYS.forEach(function (d, di) {
+    var pts = stops.filter(function (s) { return s.day === di; }).map(function (s) { return P.xy(s.at); });
+    if (pts.length < 2) return;
+    var dpath = pts.map(function (p, i) {
+      if (!i) return 'M' + p[0] + ',' + p[1];
+      // A gentle bow, so the route reads as drawn rather than ruled.
+      var q = pts[i - 1], mx = (q[0] + p[0]) / 2, my = (q[1] + p[1]) / 2;
+      var nx = -(p[1] - q[1]) * .12, ny = (p[0] - q[0]) * .12;
+      return 'Q' + (mx + nx) + ',' + (my + ny) + ' ' + p[0] + ',' + p[1];
+    }).join(' ');
+    el('path', { d: dpath, stroke: INK[di], 'stroke-width': 2.4, 'stroke-dasharray': '1 7', opacity: .9 }, g);
+  });
+}
+
+function pin(s, p, compact) {
+  var g = el('g', { class: 'pin', transform: 'translate(' + p[0] + ',' + p[1] + ')', tabindex: 0, role: 'button',
+    'aria-label': s.name + ', ' + DAYS[s.day].label + ' stop ' + s.n }, sheet);
+  el('ellipse', { cx: 0, cy: 1, rx: 6, ry: 2.2, fill: 'rgba(60,40,10,.25)' }, g);
+  el('path', { class: 'pin-body', d: PIN_PATH, fill: COLORS[s.day], stroke: INK[s.day], 'stroke-width': 2 }, g);
+  el('text', { x: 0, y: -17, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#0a0f1a', style: 'font-family:var(--sans)' }, g, String(s.n));
+  // Names when a single day is shown; with every day on the sheet they would collide.
+  if (state.day !== null && !compact) {
+    var right = p[0] < (wrap.clientWidth / 2) + 120;
+    el('text', { x: right ? 16 : -16, y: -16, 'text-anchor': right ? 'start' : 'end', 'font-size': 13, 'font-weight': 600,
+      fill: 'var(--paper-ink)', 'paint-order': 'stroke', stroke: 'var(--paper)', 'stroke-width': 4 }, g, s.name);
+  }
+  var title = el('title', {}, g, s.name);
+  g.addEventListener('click', function () { open(s); });
+  g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(s); } });
+  s._xy = p;
+}
+
+/** A stop too far to fit, drawn as an arrow at the edge pointing to it. */
+function edgeArrow(s, from, P, W, H, m) {
+  var a = P.xy(from), b = P.xy(s.at);
+  var dx = b[0] - a[0], dy = b[1] - a[1];
+  var inset = m + 30;
+  var t = Math.min(
+    dx > 0 ? (W - inset - a[0]) / dx : dx < 0 ? (inset - a[0]) / dx : Infinity,
+    dy > 0 ? (H - inset - a[1]) / dy : dy < 0 ? (inset - a[1]) / dy : Infinity);
+  var x = a[0] + dx * t, y = a[1] + dy * t, ang = Math.atan2(dy, dx) * 180 / Math.PI;
+  var g = el('g', { class: 'pin', tabindex: 0, role: 'button', 'aria-label': s.name + ', ' + Math.round(km(from, s.at)) + ' km away' }, sheet);
+  el('path', { d: 'M-14,-7 L4,0 L-14,7 Z', transform: 'translate(' + x + ',' + y + ') rotate(' + ang + ')', fill: COLORS[s.day], stroke: INK[s.day], 'stroke-width': 1.5 }, g);
+  var lx = Math.min(Math.max(x - dx * .0001, inset + 50), W - inset - 50);
+  el('text', { x: lx, y: y + (dy > 0 ? -14 : 24), 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 600,
+    fill: 'var(--paper-ink)', 'paint-order': 'stroke', stroke: 'var(--paper)', 'stroke-width': 4 }, g,
+    s.n + '. ' + s.name + ' · ' + Math.round(km(from, s.at)) + ' km ' + bearingWord(from, s.at));
+  g.addEventListener('click', function () { open(s); });
+  s._xy = [x, y];
+}
+
+/** A day trip, drawn in its own box rather than shrinking the city to fit it. */
+function insetMap(stops, box, from, compact) {
+  var g = el('g', {}, sheet);
+  el('rect', { x: box.x + 3, y: box.y + 4, width: box.w, height: box.h, fill: 'rgba(60,40,10,.12)' }, g);
+  el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: 'var(--paper-2)', stroke: 'var(--paper-ink)', 'stroke-width': 1.2 }, g);
+  var di = stops[0].day;
+  var place = stops[0].area;
+  el('text', { x: box.x + 10, y: box.y + 18, 'font-size': compact ? 11 : 13, 'font-weight': 600, fill: INK[di] }, g, DAYS[di].label + ' · ' + place);
+  el('text', { x: box.x + 10, y: box.y + (compact ? 31 : 34), 'font-size': compact ? 9 : 10.5, 'font-style': 'italic', fill: 'var(--paper-faint)' }, g,
+    Math.round(km(from, stops[0].at)) + ' km ' + bearingWord(from, stops[0].at) + ' of ' + PLAN.city);
+  var P = fit(stops, box, { l: 26, r: 26, t: compact ? 46 : 54, b: 16 });
+  var pts = stops.map(function (s) { return P.xy(s.at); });
+  if (pts.length > 1) el('path', { d: 'M' + pts.map(function (p) { return p.join(','); }).join(' L'), fill: 'none', stroke: INK[di], 'stroke-width': 2.2, 'stroke-dasharray': '1 6', 'stroke-linecap': 'round' }, g);
+  stops.forEach(function (s, i) { pin(s, pts[i], true); });
+}
+
+function landmarks(P, W, H) {
+  var g = el('g', {}, sheet);
+  LANDMARKS.forEach(function (l) {
+    var p = P.xy(l.at);
+    if (p[0] < 30 || p[0] > W - 30 || p[1] < 30 || p[1] > H - 30) return;
+    var h = el('g', { class: 'pin', transform: 'translate(' + p[0] + ',' + p[1] + ')', tabindex: 0, role: 'button', 'aria-label': l.name + ', landmark' }, g);
+    el('circle', { r: 7, fill: 'var(--paper)', stroke: 'var(--paper-ink)', 'stroke-width': 1.6 }, h);
+    el('path', { d: 'M0,-4 L1.2,-1.2 L4,-1 L1.8,.9 L2.5,3.8 L0,2.2 L-2.5,3.8 L-1.8,.9 L-4,-1 L-1.2,-1.2 Z', fill: 'var(--paper-ink)' }, h);
+    el('title', {}, h, l.name);
+    h.addEventListener('click', function () { open({ name: l.name, at: l.at, landmark: true, _xy: p }); });
+    l._xy = p;
+  });
+}
+
+/* ── Card + side list ─────────────────────────────────────────────────── */
+function open(s) { state.open = s; placeCard(); }
+function placeCard() {
+  var s = state.open; if (!s) { card.hidden = true; return; }
+  var c = s.landmark ? '#a8977a' : COLORS[s.day];
+  var maps = 'https://www.google.com/maps/search/?api=1&query=' + s.at[1].toFixed(5) + ',' + s.at[0].toFixed(5);
+  card.style.setProperty('--c', c);
+  card.innerHTML =
+    '<button class="x" aria-label="Close"><svg class="i"><use href="#x"/></svg></button>' +
+    (s.landmark
+      ? '<div class="k">Landmark · OpenStreetMap</div><h3>' + s.name + '</h3>' +
+        '<div class="acts"><button class="primary"><svg class="i"><use href="#plus"/></svg>Add to a day</button><a href="' + maps + '" target="_blank" rel="noopener"><svg class="i"><use href="#ext"/></svg>Maps</a></div>'
+      : '<div class="k">' + DAYS[s.day].label + ' · ' + s.time + '</div><h3>' + s.name + '</h3>' +
+        '<div class="loc"><svg class="i"><use href="#pinico"/></svg>' + s.area + '</div><p>' + s.notes + '</p>' +
+        '<div class="acts"><button>Open activity</button><a class="primary" href="' + maps + '" target="_blank" rel="noopener"><svg class="i"><use href="#ext"/></svg>Directions</a></div>');
+  card.hidden = false;
+  card.querySelector('.x').onclick = function () { state.open = null; card.hidden = true; };
+  var xy = s._xy || [0, 0], W = wrap.clientWidth;
+  var left = Math.min(Math.max(xy[0] - 135, 12), W - 282), top = xy[1] + 14;
+  if (top + 190 > wrap.clientHeight) top = Math.max(xy[1] - 220, 12);
+  card.style.left = left + 'px'; card.style.top = top + 'px';
+}
+
+function side() {
+  var el2 = document.getElementById('side');
+  var days = state.day === null ? DAYS.map(function (_, i) { return i; }) : [state.day];
+  var html = '';
+  days.forEach(function (di) {
+    var d = DAYS[di], total = 0, legs = [];
+    d.stops.forEach(function (s, i) { if (i) { var k = km(d.stops[i - 1].at, s.at); legs.push(k); total += k; } });
+    html += '<section class="panel" style="--c:' + COLORS[di] + '"><h3>' + d.label + ' <small>' + d.date + ' Oct</small></h3>' +
+      '<p class="sub">' + d.title + ' · ' + d.stops.length + ' stops · ' + (total < 10 ? total.toFixed(1) : Math.round(total)) + ' km between them</p><ol class="stops">';
+    d.stops.forEach(function (s, i) {
+      if (i) html += '<div class="leg">↓ ' + (legs[i - 1] < 10 ? legs[i - 1].toFixed(1) : Math.round(legs[i - 1])) + ' km</div>';
+      html += '<li data-d="' + di + '" data-i="' + i + '"><span class="num">' + (i + 1) + '</span><div><b>' + s.name + '</b><span>' + s.time + ' · ' + s.area + '</span></div></li>';
+    });
+    html += '</ol></section>';
+  });
+  html += '<section class="panel"><p class="note"><svg class="i"><use href="#check"/></svg>All 11 stops are on the map.</p></section>' +
+    '<p class="why"><b>No map service needed.</b> Places are found with free OpenStreetMap search and drawn on the sheet. Distances are as the crow flies.</p>';
+  el2.innerHTML = html;
+  el2.querySelectorAll('li[data-d]').forEach(function (li) {
+    li.onclick = function () {
+      var di = +li.dataset.d, i = +li.dataset.i, s = stopsFor(state.day).find(function (x) { return x.day === di && x.n === i + 1; });
+      // the drawn copy carries its position
+      var drawn = drawnStops.find(function (x) { return x.day === di && x.n === i + 1; });
+      open(drawn || s);
+    };
+  });
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+var drawnStops = [];
+var dayNav = document.getElementById('days');
+function chips() {
+  dayNav.innerHTML = '';
+  var all = document.createElement('button');
+  all.className = 'chip' + (state.day === null ? ' on' : ''); all.textContent = 'All days';
+  all.setAttribute('aria-pressed', state.day === null);
+  all.onclick = function () { state.day = null; state.open = null; render(); };
+  dayNav.appendChild(all);
+  DAYS.forEach(function (d, i) {
+    var b = document.createElement('button');
+    b.className = 'chip' + (state.day === i ? ' on' : ''); b.style.setProperty('--c', COLORS[i]);
+    b.innerHTML = '<i></i>' + d.label; b.setAttribute('aria-pressed', state.day === i);
+    b.onclick = function () { state.day = i; state.open = null; render(); };
+    dayNav.appendChild(b);
+  });
+}
+var discBtn = document.getElementById('discBtn');
+discBtn.onclick = function () { state.discover = !state.discover; discBtn.classList.toggle('on', state.discover); discBtn.setAttribute('aria-pressed', state.discover); render(); };
+
+function render() {
+  chips();
+  card.hidden = true;
+  // stops are re-created per draw; keep the drawn ones for the side list
+  var origPin = pin;
+  drawnStops = [];
+  pin = function (s, p, compact) { origPin(s, p, compact); drawnStops.push(s); };
+  var origArrow = edgeArrow;
+  edgeArrow = function (s, f, P, W, H, m) { origArrow(s, f, P, W, H, m); drawnStops.push(s); };
+  draw();
+  pin = origPin; edgeArrow = origArrow;
+}
+new ResizeObserver(function () { render(); }).observe(wrap);
+render();
+</script>
+</body>
+</html>
