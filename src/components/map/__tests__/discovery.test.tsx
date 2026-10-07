@@ -7,7 +7,6 @@ import * as discover from '../../../services/discover';
 import type { BBox, DiscoveredPlace } from '../../../services/discover';
 
 vi.mock('dexie-react-hooks');
-vi.mock('../../../services/mapbox', () => ({ getMapboxToken: () => 'pk.test', MAPBOX_TOKEN_KEY: 'aitp_mapbox_token' }));
 vi.mock('../../../services/places', async () => {
   const actual = await vi.importActual<typeof import('../../../services/places')>('../../../services/places');
   return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
@@ -16,7 +15,7 @@ vi.mock('../../../services/places', async () => {
 /** The real map needs Mapbox GL; this stands in for it and reports a viewport. */
 let clickPlace: ((p: DiscoveredPlace) => void) | null = null;
 let setViewport: ((b: BBox) => void) | null = null;
-vi.mock('../MapboxMap', () => ({
+vi.mock('../PaperMap', () => ({
   default: (props: {
     discovered?: DiscoveredPlace[];
     onDiscoveredClick?: (p: DiscoveredPlace) => void;

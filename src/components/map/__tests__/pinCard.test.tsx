@@ -6,7 +6,6 @@ import { getPinActivities } from '../../../services/places';
 import { db, type Plan, type Activity } from '../../../db';
 
 vi.mock('dexie-react-hooks');
-vi.mock('../../../services/mapbox', () => ({ getMapboxToken: () => 'pk.test', MAPBOX_TOKEN_KEY: 'aitp_mapbox_token' }));
 vi.mock('../../../services/places', async () => {
   const actual = await vi.importActual<typeof import('../../../services/places')>('../../../services/places');
   return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
@@ -14,7 +13,7 @@ vi.mock('../../../services/places', async () => {
 
 /** The map itself needs a real Mapbox GL; the pins are what this is about. */
 let clickPin: ((pin: unknown) => void) | null = null;
-vi.mock('../MapboxMap', () => ({
+vi.mock('../PaperMap', () => ({
   default: (props: { onPinClick: (p: unknown) => void; pins: unknown[]; selectedActivityId?: string | null }) => {
     clickPin = props.onPinClick;
     return (
