@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Button from '../ui/Button';
 import { createPortal } from 'react-dom';
-import { X, MapPin } from 'lucide-react';
+import { X, MapPin, Download } from 'lucide-react';
+import { exportTrip, saveFile } from '../../services/tripTransfer';
 import { db, type Plan, type TripLeg, type TripStop } from '../../db';
 import { LegFields, StopsFields, BorderPicker } from './TripDetailsFields';
 import { MAX_TRIP_DAYS_ERROR, exceedsMaxTripDays, maxEndDate } from '../../utils/tripDuration';
@@ -38,6 +39,7 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
   const [international, setInternational] = useState<boolean | null>(plan.international ?? null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [exported, setExported] = useState(false);
 
   const [suggestions, setSuggestions] = useState<DestinationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -224,6 +226,29 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
               {saving ? 'Saving…' : 'Save'}
             </Button>
             <Button variant="secondary" onClick={onClose} data-testid="td-cancel">Cancel</Button>
+          </div>
+
+          {/* Saved as it is now; unsaved edits above are not in the file. */}
+          <div className="border-t border-white/5 pt-3">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { name, text } = await exportTrip(plan.id);
+                  saveFile(name, text);
+                  setExported(true);
+                } catch {
+                  setError('The trip could not be exported.');
+                }
+              }}
+              className="flex items-center gap-2 text-sm text-accent hover:underline"
+              data-testid="td-export"
+            >
+              <Download size={14} aria-hidden="true" /> {exported ? 'Exported' : 'Export this trip'}
+            </button>
+            <p className="mt-1 text-xs text-ink-muted">
+              A file to open in journ.ai on another device. Attached documents and AI keys are not included.
+            </p>
           </div>
         </div>
       </div>

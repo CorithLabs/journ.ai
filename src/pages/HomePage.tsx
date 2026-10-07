@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { PlusCircle, Compass } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
+import ImportTripButton from '../components/plans/ImportTripButton';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -43,6 +44,9 @@ export default function HomePage() {
             <PlusCircle size={18} aria-hidden="true" />
             Start your first trip
           </button>
+          <div className="mt-4">
+            <ImportTripButton label="Or import a trip file" className="flex items-center gap-2 text-sm text-accent hover:underline disabled:opacity-50" />
+          </div>
         </>
       ) : (
         <p className="text-sm text-ink-secondary">
