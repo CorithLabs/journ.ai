@@ -14,20 +14,23 @@ function serve(h: {
   photon?: PhotonHit[]; osm?: Record<string, Record<string, string>>;
 }) {
   const f = vi.fn(async (url: string) => {
-    const u = String(url);
+    // By host and path, parsed, rather than by substring of the whole URL.
+    const u = new URL(String(url));
     let body: unknown;
-    if (u.includes('photon')) {
+    if (u.hostname === 'photon.komoot.io') {
       body = { features: (h.photon ?? []).map((p) => {
         const [key, value] = (p.kind ?? 'tourism:attraction').split(':');
         const [t, id] = (p.osm ?? 'W:1').split(':');
         return { geometry: { coordinates: p.at }, properties: { name: p.name, osm_key: key, osm_value: value, osm_type: t, osm_id: Number(id), extent: p.extent } };
       }) };
-    } else if (u.includes('api.openstreetmap.org')) {
-      const key = u.split('/0.6/')[1].replace('.json', '');
+    } else if (u.hostname === 'api.openstreetmap.org') {
+      const key = u.pathname.split('/0.6/')[1].replace('.json', '');
       body = h.osm?.[key] ? { elements: [{ tags: h.osm[key] }] } : undefined;
-    } else if (u.includes('geosearch')) body = h.near;
-    else if (u.includes('list=search')) body = h.search;
-    else if (u.includes('page/summary')) body = h.summary;
+    } else if (u.hostname === 'en.wikipedia.org') {
+      if (u.searchParams.get('list') === 'geosearch') body = h.near;
+      else if (u.searchParams.get('list') === 'search') body = h.search;
+      else if (u.pathname.startsWith('/api/rest_v1/page/summary/')) body = h.summary;
+    }
     return { ok: body !== undefined, json: async () => body } as Response;
   });
   vi.stubGlobal('fetch', f);
