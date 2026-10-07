@@ -5,6 +5,10 @@ import { useAppStore } from '../../store';
 import PlanBreadcrumb from './PlanBreadcrumb';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../db';
+import { itineraryStage } from '../../utils/planState';
+import AgentButton from '../agent/AgentButton';
 
 interface Tab {
   key: string;
@@ -53,6 +57,10 @@ export default function TabBar({ planId }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // The agent is held back while the intake chat is on screen, for the same
+  // reason PlanWorkspace holds back its panel: two chats at once.
+  const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
+  const agentAvailable = itineraryStage(plan) !== 'intake';
 
   const activeTab = TABS.find((t) =>
     location.pathname.endsWith(`/${t.path}`),
@@ -149,6 +157,12 @@ export default function TabBar({ planId }: Props) {
         );
       })}
       </nav>
+
+        {!isMobile && agentAvailable && (
+          <div className="ml-auto pl-2">
+            <AgentButton />
+          </div>
+        )}
 
         {/* The agent trigger sits in the bar rather than floating beside it,
             but OUTSIDE the tablist — it opens a panel, it is not a fifth tab,

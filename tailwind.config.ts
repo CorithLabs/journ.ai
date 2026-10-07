@@ -4,6 +4,10 @@ export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      /*
+       * These are what components use. They must equal the --color-* tokens
+       * in index.css, which the contrast tests measure; a test checks both.
+       */
       colors: {
         // ── Backgrounds ──────────────────────────────────────
         surface: {
@@ -16,14 +20,14 @@ export default {
         accent: {
           DEFAULT: '#06b6d4', // cyan-500 — primary CTA, active states
           light: '#67e8f9',   // cyan-300 — hover highlights, badges
-          muted: '#0e7490',   // cyan-700 — subtle borders, outlines
+          muted: '#0891b2',   // cyan-600 — subtle borders, outlines (3:1 on overlay)
           sky: '#0ea5e9',     // sky-500 — secondary accent
         },
         // ── Text ─────────────────────────────────────────────
         ink: {
           primary: '#f1f5f9',   // slate-100
           secondary: '#94a3b8', // slate-400
-          muted: '#475569',     // slate-600
+          muted: '#7c8b9f',     // clears AA on every surface; see --color-ink-muted
           inverse: '#0a0f1a',   // on accent buttons
         },
         // ── Categorical ──────────────────────────────────────
@@ -50,7 +54,7 @@ export default {
         status: {
           success: '#10b981', // emerald-500
           warning: '#f59e0b', // amber-500
-          danger: '#ef4444',  // red-500
+          danger: '#f87171',  // red-400; solid fills take ink-inverse
           info: '#06b6d4',    // same as accent
         },
       },

@@ -47,11 +47,27 @@ describe('agent trigger placement', () => {
     expect(screen.queryByTestId('agent-fab')).not.toBeInTheDocument();
   });
 
-  it('keeps the floating button on desktop, where the bar is at the top', () => {
+  /*
+   * On a desktop it used to float in the bottom-right corner of every tab,
+   * on top of the map's recentre button and the side panel. It now sits at
+   * the end of the top bar, where it covers nothing.
+   */
+  it('sits at the end of the top bar on a desktop, not floating over the page', () => {
     setViewport(DESKTOP);
-    render(<MemoryRouter><AgentButton /></MemoryRouter>);
-    expect(screen.getByTestId('agent-fab')).toBeInTheDocument();
+    vi.mocked(useLiveQuery).mockReturnValue({ itinerary: [{ dayIndex: 0, label: 'Day 1', activities: [] }] });
     render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    const button = screen.getByTestId('agent-fab');
+    expect(screen.getByTestId('tab-bar')).toContainElement(button);
+    expect(screen.getByRole('tablist')).not.toContainElement(button);
+    expect(button.className).not.toMatch(/\bfixed\b/);
     expect(screen.queryByTestId('agent-tab-btn')).not.toBeInTheDocument();
+  });
+
+  // Two chats at once is one too many.
+  it('is held back while the intake chat is on screen', () => {
+    setViewport(DESKTOP);
+    vi.mocked(useLiveQuery).mockReturnValue({ itinerary: [] });
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    expect(screen.queryByTestId('agent-fab')).not.toBeInTheDocument();
   });
 });

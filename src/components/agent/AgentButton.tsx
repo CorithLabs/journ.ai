@@ -3,8 +3,12 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useAppStore } from '../../store';
 
 /**
- * Floating "✦ AI" button fixed to the bottom-right of every tab.
- * Toggles the persistent AI agent panel.
+ * "✦ Ask AI", at the end of the tab bar on a desktop. Opens the AI agent panel.
+ *
+ * It used to float in the bottom-right corner of every tab, where it sat on
+ * top of whatever was there: the map's recentre button, the corner of the
+ * itinerary's side panel. Phones already had it in their bar; now the desktop
+ * does too, so it never covers anything.
  */
 export default function AgentButton() {
   // On phones the trigger lives in the bottom bar, so the floating button
@@ -24,12 +28,10 @@ export default function AgentButton() {
       onClick={toggle}
       data-testid="agent-fab"
       aria-label="Open AI agent"
-      // Lifted clear of the bottom tab bar on phones — at bottom-6 it sat on
-      // top of the tabs. Back to the corner at md, where the bar is at the top.
-      className="fixed bottom-24 md:bottom-6 right-6 z-30 flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-3 rounded-full shadow-glow transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+      className="shrink-0 flex items-center gap-1.5 bg-accent hover:bg-accent-light text-ink-inverse text-sm font-semibold px-3.5 py-1.5 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
     >
-      <Sparkles size={18} aria-hidden="true" />
-      AI
+      <Sparkles size={15} aria-hidden="true" />
+      Ask AI
     </button>
   );
 }

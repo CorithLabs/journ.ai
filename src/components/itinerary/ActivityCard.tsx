@@ -17,6 +17,7 @@ import { CardActionRail, CardAction } from '../ui/CardActionRail';
 import LocationField, { type PickedLocation } from '../ui/LocationField';
 import DetailModal, { DetailRow } from '../ui/DetailModal';
 import AboutPlace from './AboutPlace';
+import StopMenu from './StopMenu';
 import { fieldClass, fieldClassAuto, notesClass } from '../ui/formStyles';
 
 /**
@@ -87,9 +88,20 @@ interface Props {
    * has a hazard. Worked out by the day, which knows the forecast.
    */
   weatherTag?: { label: string; Icon: LucideIcon; className: string };
+  /**
+   * "card" stands on its own, with its actions on an edge rail (the map's
+   * pop-up). "row" is one stop in a day's list: time, place, and a single
+   * menu, so a day reads as places rather than controls.
+   */
+  variant?: 'card' | 'row';
+  /** Row only. Undefined when the stop is already first or last of the day. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
-export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, onPin, weatherTag }: Props) {
+export default function ActivityCard({
+  act, plan, siblings = [], onDel, onUpd, onPin, weatherTag, variant = 'card', onMoveUp, onMoveDown,
+}: Props) {
   const mapsUrl = act.locationName?.trim() || act.coordinates ? mapsUrlFor(act, plan) : null;
   /**
    * Closed, showing everything the activity knows, or editing it.
@@ -244,124 +256,54 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
       </div>
   );
 
-  return (
-    <div
-      className="group card-surface flex items-stretch rounded-card overflow-hidden"
-      data-testid="activity-card"
-    >
-      {/* Details take the full width of the card body. Actions live on the
-          edge rail, so the name no longer competes with three buttons for
-          room — "Visit to Royal Museum" was truncating to "Visit to Royal Mu".
+  const openDetails = () => setDetail('view');
+  const onBodyKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openDetails();
+    }
+  };
 
-          Tapping it opens everything the card had to leave out. A div rather
-          than a button because the map flag inside it is a control of its own,
-          and a button inside a button is not a thing. */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setDetail('view')}
-        onKeyDown={e => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setDetail('view');
-          }
-        }}
-        aria-label={`${act.name} — open details`}
-        className="flex-1 min-w-0 p-3 text-left cursor-pointer focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded-card"
-        data-testid="activity-card-body"
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <span
-            className="shrink-0 text-[11px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full"
-            data-testid="activity-time"
-          >
-            {slotLabel(act.time)}
-          </span>
-          {/* Kept beside the slot rather than replaced by it: a 3pm check-in
-              belongs to Noon, but 3pm is still the thing you must not miss. */}
-          {exactTime(act.time) && (
-            <span className="shrink-0 text-[11px] text-ink-muted tabular-nums" data-testid="activity-exact-time">
-              {formatTime(act.time)}
-            </span>
-          )}
-          {act.budgetWarning && (
-            <AlertTriangle size={12} className="text-status-warning shrink-0" aria-label="Budget warning" />
-          )}
-          {act.pinnedToTodo && (
-            <span className="text-[10px] text-accent" data-testid="pinned-flag">Pinned</span>
-          )}
-        </div>
-
-        {/* Wraps rather than truncating: the name is the one thing the user
-            is scanning for. */}
-        <p className="text-sm font-medium text-ink-primary leading-snug break-words">
-          {act.name}
-        </p>
-
-        {act.locationName && (
-          <p className="text-xs text-ink-muted mt-0.5 break-words">{act.locationName}</p>
-        )}
-
+  const extras = (
+    <>
         {/* Why this card is not on the map, and the way to fix it in the same
-            control. A badge that only reported the problem would leave the
-            user to go and find the field it is about. */}
-        {mapGap && (
-          <button
-            type="button"
-            // Straight into the field the flag is about, so the fix is one tap
-            // rather than "open edit, then find the right box". Stopped from
-            // bubbling, or the card underneath opens the reading view instead.
-            onClick={e => { e.stopPropagation(); fixLocation(); }}
-            className={`mt-1 inline-flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 border transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
-              mapGap.tone === 'warning'
-                ? 'text-status-warning border-status-warning/40 hover:bg-status-warning/10'
-                : 'text-ink-muted border-white/15 hover:text-ink-secondary hover:bg-white/5'
-            }`}
-            data-testid="map-gap-flag"
-            data-gap={mapGap.kind}
-          >
-            <MapPinOff size={11} aria-hidden="true" />
-            {mapGap.label}
-          </button>
-        )}
+          control. A badge that only reported the problem would leave the
+          user to go and find the field it is about. */}
+      {mapGap && (
+        <button
+          type="button"
+          // Straight into the field the flag is about, so the fix is one tap
+          // rather than "open edit, then find the right box". Stopped from
+          // bubbling, or the card underneath opens the reading view instead.
+          onClick={e => { e.stopPropagation(); fixLocation(); }}
+          className={`mt-1 inline-flex items-center gap-1 text-[11px] rounded-full px-2 py-0.5 border transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
+            mapGap.tone === 'warning'
+              ? 'text-status-warning border-status-warning/40 hover:bg-status-warning/10'
+              : 'text-ink-muted border-white/15 hover:text-ink-secondary hover:bg-white/5'
+          }`}
+          data-testid="map-gap-flag"
+          data-gap={mapGap.kind}
+        >
+          <MapPinOff size={11} aria-hidden="true" />
+          {mapGap.label}
+        </button>
+      )}
 
-        {act.notes && (
-          <p className="text-xs text-ink-secondary mt-1 line-clamp-3 break-words">{act.notes}</p>
-        )}
+      {act.notes && (
+        <p className="text-xs text-ink-secondary mt-1 line-clamp-3 break-words">{act.notes}</p>
+      )}
 
-        {weatherTag && (
-          <p className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${weatherTag.className}`} data-testid="activity-weather-tag">
-            <weatherTag.Icon size={12} aria-hidden="true" />
-            {weatherTag.label}
-          </p>
-        )}
-      </div>
+      {weatherTag && (
+        <p className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${weatherTag.className}`} data-testid="activity-weather-tag">
+          <weatherTag.Icon size={12} aria-hidden="true" />
+          {weatherTag.label}
+        </p>
+      )}
+    </>
+  );
 
-      {/* The same rail the to-do and clipboard cards use. */}
-      <CardActionRail testId="activity-actions">
-        {mapsUrl && (
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="p-2 rounded-lg text-ink-muted hover:text-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-            aria-label={`Open ${act.name} in Google Maps`}
-            title="Open in Google Maps"
-            data-testid="activity-maps"
-          >
-            <MapPin size={16} />
-          </a>
-        )}
-        <CardAction
-          icon={<Pin size={16} />}
-          label={act.pinnedToTodo ? 'Unpin from to-do' : 'Pin to to-do'}
-          onClick={onPin}
-          active={act.pinnedToTodo}
-        />
-        <CardAction icon={<Pencil size={16} />} label="Edit activity" onClick={() => setDetail('edit')} />
-        <CardAction icon={<Trash2 size={16} />} label="Delete activity" onClick={onDel} tone="danger" />
-      </CardActionRail>
-
+  const modal = (
+    <>
       {detail && (
         <DetailModal
           title={detail === 'edit' ? 'Edit activity' : act.name}
@@ -446,6 +388,152 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
           )}
         </DetailModal>
       )}
+    </>
+  );
+
+  if (variant === 'row') {
+    return (
+      <div className="flex items-start gap-3 py-3" data-testid="activity-card">
+        {/* The time in its own column, so a day scans down its times. */}
+        <div className="w-[4.5rem] shrink-0 pt-0.5">
+          <span className="block text-[11px] font-bold uppercase tracking-[0.08em] text-accent-light" data-testid="activity-time">
+            {slotLabel(act.time)}
+          </span>
+          {/* Kept beside the slot: a 3pm check-in belongs to Noon, but 3pm is
+              still the thing you must not miss. */}
+          {exactTime(act.time) && (
+            <span className="block mt-0.5 text-xs text-ink-secondary tabular-nums" data-testid="activity-exact-time">
+              {formatTime(act.time)}
+            </span>
+          )}
+        </div>
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={openDetails}
+          onKeyDown={onBodyKey}
+          aria-label={`${act.name} — open details`}
+          className="flex-1 min-w-0 -mx-1 px-1 text-left cursor-pointer rounded-lg focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          data-testid="activity-card-body"
+        >
+          <p className="text-[15px] font-semibold text-ink-primary leading-snug break-words">
+            {act.name}
+            {act.pinnedToTodo && (
+              <span className="ml-2 align-middle text-[11px] font-semibold text-accent-light" data-testid="pinned-flag">Pinned</span>
+            )}
+            {act.budgetWarning && (
+              <AlertTriangle size={12} className="inline ml-1.5 align-middle text-status-warning" aria-label="Budget warning" />
+            )}
+          </p>
+          {act.locationName && (
+            <p className="text-xs text-ink-muted mt-0.5 break-words">{act.locationName}</p>
+          )}
+          {extras}
+        </div>
+
+        <StopMenu
+          name={act.name}
+          mapsUrl={mapsUrl}
+          pinned={act.pinnedToTodo}
+          onPin={onPin}
+          onEdit={() => setDetail('edit')}
+          onDelete={onDel}
+          onMoveUp={onMoveUp}
+          onMoveDown={onMoveDown}
+        />
+        {modal}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="group card-surface flex items-stretch rounded-card overflow-hidden"
+      data-testid="activity-card"
+    >
+      {/* Details take the full width of the card body. Actions live on the
+          edge rail, so the name no longer competes with three buttons for
+          room — "Visit to Royal Museum" was truncating to "Visit to Royal Mu".
+
+          Tapping it opens everything the card had to leave out. A div rather
+          than a button because the map flag inside it is a control of its own,
+          and a button inside a button is not a thing. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setDetail('view')}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setDetail('view');
+          }
+        }}
+        aria-label={`${act.name} — open details`}
+        className="flex-1 min-w-0 p-3 text-left cursor-pointer focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded-card"
+        data-testid="activity-card-body"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="shrink-0 text-[11px] font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded-full"
+            data-testid="activity-time"
+          >
+            {slotLabel(act.time)}
+          </span>
+          {/* Kept beside the slot rather than replaced by it: a 3pm check-in
+              belongs to Noon, but 3pm is still the thing you must not miss. */}
+          {exactTime(act.time) && (
+            <span className="shrink-0 text-[11px] text-ink-muted tabular-nums" data-testid="activity-exact-time">
+              {formatTime(act.time)}
+            </span>
+          )}
+          {act.budgetWarning && (
+            <AlertTriangle size={12} className="text-status-warning shrink-0" aria-label="Budget warning" />
+          )}
+          {act.pinnedToTodo && (
+            <span className="text-[10px] text-accent" data-testid="pinned-flag">Pinned</span>
+          )}
+        </div>
+
+        {/* Wraps rather than truncating: the name is the one thing the user
+            is scanning for. */}
+        <p className="text-sm font-medium text-ink-primary leading-snug break-words">
+          {act.name}
+        </p>
+
+        {act.locationName && (
+          <p className="text-xs text-ink-muted mt-0.5 break-words">{act.locationName}</p>
+        )}
+
+        {extras}
+      </div>
+
+      {/* The same rail the to-do and clipboard cards use. */}
+      <CardActionRail testId="activity-actions">
+        {mapsUrl && (
+          <a
+            href={mapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 rounded-lg text-ink-muted hover:text-accent hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label={`Open ${act.name} in Google Maps`}
+            title="Open in Google Maps"
+            data-testid="activity-maps"
+          >
+            <MapPin size={16} />
+          </a>
+        )}
+        <CardAction
+          icon={<Pin size={16} />}
+          label={act.pinnedToTodo ? 'Unpin from to-do' : 'Pin to to-do'}
+          onClick={onPin}
+          active={act.pinnedToTodo}
+        />
+        <CardAction icon={<Pencil size={16} />} label="Edit activity" onClick={() => setDetail('edit')} />
+        <CardAction icon={<Trash2 size={16} />} label="Delete activity" onClick={onDel} tone="danger" />
+      </CardActionRail>
+
+      {modal}
     </div>
   );
 }

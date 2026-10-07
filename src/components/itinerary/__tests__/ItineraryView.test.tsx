@@ -5,6 +5,10 @@ import ItineraryView from '../ItineraryView';
 import type { Plan } from '../../../db';
 import { db } from '../../../db';
 
+/** A stop's actions live behind its "More actions" menu; open it first. */
+const openMenu = (name: string | RegExp = /More actions for/, index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: typeof name === 'string' ? `More actions for ${name}` : name })[index]);
+
 const mockPlan: Plan = {
   id: 'plan-1',
   name: 'Tokyo',
@@ -92,7 +96,8 @@ describe('ItineraryView', () => {
 
   it('calls db update when activity is deleted', async () => {
     render(<MemoryRouter><ItineraryView plan={mockPlan} /></MemoryRouter>);
-    const deleteBtn = screen.getAllByLabelText('Delete activity')[0];
+    openMenu('Tsukiji Market');
+    const deleteBtn = screen.getByLabelText('Delete activity');
     fireEvent.click(deleteBtn);
     await waitFor(() => {
       expect(db.plans.update).toHaveBeenCalled();
@@ -101,16 +106,19 @@ describe('ItineraryView', () => {
 
   // ── Pin to To-Do (Flow 11) ───────────────────────────────────────────────
 
-  it('renders pin icon on each activity card', () => {
+  it('offers pinning on every stop, from its menu', () => {
     render(<MemoryRouter><ItineraryView plan={mockPlan} /></MemoryRouter>);
-    const pinBtns = screen.getAllByLabelText('Pin to to-do');
-    expect(pinBtns.length).toBeGreaterThan(0);
+    const menus = screen.getAllByRole('button', { name: /More actions for/ });
+    expect(menus.length).toBeGreaterThan(1);
+    fireEvent.click(menus[0]);
+    expect(screen.getByLabelText('Pin to to-do')).toBeInTheDocument();
   });
 
   it('pinning an activity creates a todo item in IndexedDB', async () => {
     vi.mocked(db.todos.add).mockResolvedValue('new-todo-id');
     render(<MemoryRouter><ItineraryView plan={mockPlan} /></MemoryRouter>);
-    const pinBtn = screen.getAllByLabelText('Pin to to-do')[0];
+    openMenu('Tsukiji Market');
+    const pinBtn = screen.getByLabelText('Pin to to-do');
     fireEvent.click(pinBtn);
     await waitFor(() => {
       expect(db.todos.add).toHaveBeenCalledWith(
@@ -127,7 +135,8 @@ describe('ItineraryView', () => {
   it('pinning updates the activity pinnedToTodo flag in the plan', async () => {
     vi.mocked(db.todos.add).mockResolvedValue('new-todo-id');
     render(<MemoryRouter><ItineraryView plan={mockPlan} /></MemoryRouter>);
-    const pinBtn = screen.getAllByLabelText('Pin to to-do')[0];
+    openMenu('Tsukiji Market');
+    const pinBtn = screen.getByLabelText('Pin to to-do');
     fireEvent.click(pinBtn);
     await waitFor(() => {
       expect(db.plans.update).toHaveBeenCalledWith(
@@ -145,6 +154,7 @@ describe('ItineraryView', () => {
 
   it('already-pinned activity shows Unpin label', () => {
     render(<MemoryRouter><ItineraryView plan={mockPlanWithPinned} /></MemoryRouter>);
+    openMenu('Tsukiji Market');
     expect(screen.getByLabelText('Unpin from to-do')).toBeInTheDocument();
   });
 
@@ -155,6 +165,7 @@ describe('ItineraryView', () => {
     } as any);
     vi.mocked(db.todos.bulkDelete).mockResolvedValue(undefined);
     render(<MemoryRouter><ItineraryView plan={mockPlanWithPinned} /></MemoryRouter>);
+    openMenu('Tsukiji Market');
     const unpinBtn = screen.getByLabelText('Unpin from to-do');
     fireEvent.click(unpinBtn);
     // Asked in the app's own dialog rather than a browser one, which an
@@ -168,7 +179,8 @@ describe('ItineraryView', () => {
   it('shows toast confirmation after pinning', async () => {
     vi.mocked(db.todos.add).mockResolvedValue('new-todo-id');
     render(<MemoryRouter><ItineraryView plan={mockPlan} /></MemoryRouter>);
-    const pinBtn = screen.getAllByLabelText('Pin to to-do')[0];
+    openMenu('Tsukiji Market');
+    const pinBtn = screen.getByLabelText('Pin to to-do');
     fireEvent.click(pinBtn);
     await waitFor(() => {
       expect(screen.getByText(/"Tsukiji Market" pinned to To-Do/)).toBeInTheDocument();
