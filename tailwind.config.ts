@@ -39,6 +39,13 @@ export default {
           emerald: '#34d399',
           amber: '#fbbf24',
         },
+        // ── Weather hazards (mirrors --color-weather-* in index.css) ──
+        weather: {
+          rain: '#38bdf8',
+          snow: '#c7d2fe',
+          wind: '#fbbf24',
+          storm: '#f87171',
+        },
         // ── Status ───────────────────────────────────────────
         status: {
           success: '#10b981', // emerald-500
@@ -57,6 +64,10 @@ export default {
        *   rounded-lg     small inline affordances, icon hits  8px
        *   rounded-full   pills, chips, badges, avatars
        */
+      fontFamily: {
+        // Trip and day titles only. Everything else stays in the system sans.
+        display: ['Lora', 'Georgia', 'serif'],
+      },
       borderRadius: {
         card: '1rem',
         modal: '1.5rem',

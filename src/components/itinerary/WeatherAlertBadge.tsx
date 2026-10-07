@@ -9,7 +9,9 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { type WeatherDay } from '../../store';
-import { type WeatherAlert, detectAlerts } from '../../utils/weatherUtils';
+import { type WeatherAlert, detectAlerts, hazardsFor } from '../../utils/weatherUtils';
+import { outdoorActivities } from '../../utils/outdoor';
+import { HAZARD } from './weatherHazard';
 import { type Day } from '../../db';
 import type { Plan } from '../../db';
 import { cityForDay, swappableDays } from '../../utils/dayCity';
@@ -179,30 +181,50 @@ export default function WeatherAlertBadge({
       .join('\n');
   };
 
+  /*
+   * A band across the top of the day rather than a pill among the cards: the
+   * weather is about the whole day, and the outdoor stops it spoils are
+   * tagged where they sit. Coloured by the worst hazard, so it matches the
+   * chip on the trip photo that led here.
+   */
+  const lead = hazardsFor(weather)[0];
+  const tone = lead ? HAZARD[lead] : null;
+  const outdoor = outdoorActivities(day).length;
+
   return (
     <div
-      className="flex flex-wrap items-center gap-2 px-3 py-2 rounded-xl bg-status-warning/10 border border-status-warning/20 mt-1 mb-2"
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-4 md:px-6 py-3 border-b border-white/10 ${
+        tone ? tone.tint : 'bg-status-warning/10'
+      }`}
       data-testid="weather-alert-badge"
+      data-hazard={lead}
     >
-      {/* Alert badges */}
-      <div className="flex flex-wrap gap-1.5">
-        {alerts.map((alert: WeatherAlert) => (
-          <span
-            key={alert.label}
-            className="flex items-center gap-1 text-xs font-semibold text-status-warning bg-status-warning/10 px-2 py-0.5 rounded-full"
-            aria-label={`Weather alert: ${alert.label}`}
-          >
-            <AlertIcon icon={alert.icon} />
-            {alert.emoji} {alert.label}
-          </span>
-        ))}
+      {tone && <tone.Icon size={20} className={`${tone.text} shrink-0`} aria-hidden="true" />}
+      <div className="flex-1 min-w-[12rem]">
+        <div className="flex flex-wrap gap-x-2 gap-y-1">
+          {alerts.map((alert: WeatherAlert) => (
+            <span
+              key={alert.label}
+              className={`flex items-center gap-1 text-sm font-semibold ${tone ? tone.text : 'text-status-warning'}`}
+              aria-label={`Weather alert: ${alert.label}`}
+            >
+              {!tone && <AlertIcon icon={alert.icon} />}
+              {alert.emoji} {alert.label}
+            </span>
+          ))}
+        </div>
+        {outdoor > 0 && (
+          <p className="text-xs text-ink-secondary mt-0.5">
+            {outdoor} outdoor stop{outdoor === 1 ? '' : 's'} affected
+          </p>
+        )}
       </div>
 
       {/* Get AI suggestions button */}
       {isOffline ? (
         <button
           disabled
-          className="flex items-center gap-1 text-xs px-3 py-1 rounded-xl border border-white/10 text-ink-muted cursor-not-allowed"
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl border border-white/10 text-ink-muted cursor-not-allowed"
           title="AI unavailable offline"
           aria-disabled="true"
         >
@@ -212,7 +234,7 @@ export default function WeatherAlertBadge({
       ) : (
         <button
           onClick={() => onGetSuggestions(buildPrompt())}
-          className="flex items-center gap-1 text-xs px-3 py-1 rounded-xl bg-accent hover:bg-accent-light text-ink-inverse font-semibold transition-colors"
+          className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-xl bg-accent hover:bg-accent-light text-ink-inverse font-semibold transition-colors"
           data-testid="get-ai-suggestions-btn"
           aria-label="Get AI suggestions for this weather alert"
         >

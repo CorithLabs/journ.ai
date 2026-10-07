@@ -68,6 +68,17 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
+            // Destination photos, so a trip opened offline still has its
+            // picture. Cross-origin, so the responses are opaque.
+            urlPattern: /^https:\/\/(upload|thumb)\.wikimedia\.org\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'place-photos',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
             handler: 'CacheFirst',
             options: {
