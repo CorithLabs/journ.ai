@@ -16,6 +16,7 @@ import { nearbyAnchor, locationContext } from '../../utils/locationSearch';
 import { CardActionRail, CardAction } from '../ui/CardActionRail';
 import LocationField, { type PickedLocation } from '../ui/LocationField';
 import DetailModal, { DetailRow } from '../ui/DetailModal';
+import AboutPlace from './AboutPlace';
 import { fieldClass, fieldClassAuto, notesClass } from '../ui/formStyles';
 
 /**
@@ -76,7 +77,8 @@ interface Props {
   act: Activity;
   /** The rest of the day, for spotting two activities at the same clock time. */
   siblings?: Activity[];
-  plan: Pick<Plan, 'destination' | 'country'>;
+  /** The trip, for where and when; the rest of it lets the place guide speak to this visit. */
+  plan: Pick<Plan, 'destination' | 'country'> & Partial<Pick<Plan, 'startDate' | 'itinerary' | 'intake'>>;
   onDel: () => void;
   onUpd: (u: Partial<Activity>) => void;
   onPin: () => void;
@@ -433,6 +435,14 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
                 </DetailRow>
               )}
             </dl>
+          )}
+          {detail === 'view' && (
+            <AboutPlace
+              act={act}
+              plan={plan}
+              onSave={(about) => onUpd({ about })}
+              onAddNote={(text) => onUpd({ notes: act.notes?.trim() ? `${act.notes.trim()}\n\n${text}` : text })}
+            />
           )}
         </DetailModal>
       )}

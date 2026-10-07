@@ -24,7 +24,13 @@ export interface PhotonPlace {
   coordinates: [number, number];
   /** The OSM tag it matched, e.g. "leisure:beach_resort". */
   kind: string;
+  /** The OpenStreetMap record it came from, to read its full tags. */
+  osm?: { type: 'node' | 'way' | 'relation'; id: number };
+  /** Rough size of the feature in square degrees; 0 for a point. */
+  size?: number;
 }
+
+const OSM_TYPE = { N: 'node', W: 'way', R: 'relation' } as const;
 
 interface PhotonFeature {
   geometry?: { coordinates?: [number, number] };
@@ -39,6 +45,10 @@ interface PhotonFeature {
     state?: string;
     country?: string;
     osm_key?: string;
+    osm_type?: string;
+    osm_id?: number;
+    /** [minLon, maxLat, maxLon, minLat] for ways and relations. */
+    extent?: [number, number, number, number];
     osm_value?: string;
   };
 }
@@ -118,6 +128,11 @@ export async function photonSearch(
         address: address || name,
         coordinates: [coords[0], coords[1]],
         kind: [p.osm_key, p.osm_value].filter(Boolean).join(':'),
+        // Only when Photon says, so a result without them reads as before.
+        ...(p.osm_type && p.osm_type in OSM_TYPE && typeof p.osm_id === 'number'
+          ? { osm: { type: OSM_TYPE[p.osm_type as keyof typeof OSM_TYPE], id: p.osm_id } }
+          : {}),
+        ...(p.extent ? { size: Math.abs((p.extent[2] - p.extent[0]) * (p.extent[1] - p.extent[3])) } : {}),
       });
     }
     return places;
