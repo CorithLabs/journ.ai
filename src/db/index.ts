@@ -1,4 +1,6 @@
 import Dexie, { type Table } from 'dexie';
+import type { PlaceFacts } from '../services/placeFacts';
+import type { PlaceGuide } from '../services/placeGuide';
 
 // ─── Entity types ──────────────────────────────────────────────────────────
 
@@ -144,6 +146,15 @@ export interface Activity {
   notes: string;
   pinnedToTodo: boolean;
   budgetWarning?: boolean;
+  /**
+   * What is known about the place and the AI's guide to it, kept with the
+   * activity so it opens offline and is not paid for twice. Not indexed, so
+   * no Dexie version bump is needed.
+   */
+  about?: {
+    facts?: PlaceFacts;
+    guide?: PlaceGuide;
+  };
 }
 
 export interface TodoItem {
