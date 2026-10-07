@@ -1,15 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Map, Settings, MapPin, X } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 import { db } from '../../db';
 import { getDayColor } from '../../constants/colors';
-import { getMapboxToken } from '../../services/mapbox';
 import { geocodePlanActivities, getPinActivities, type PinActivity } from '../../services/places';
 import { useAppStore } from '../../store';
 import { todayDayIndex } from '../../utils/tripDay';
 import { useConfirm } from '../ui/ConfirmDialog';
 import Toast from '../ui/Toast';
-import MapboxMap from '../map/MapboxMap';
+import PaperMap from '../map/PaperMap';
 import ActivityCard from '../itinerary/ActivityCard';
 import {
   patchActivity,
@@ -58,7 +57,6 @@ export default function MapTab({ planId }: Props) {
   const [openPlace, setOpenPlace] = useState<DiscoveredPlace | null>(null);
   const confirm = useConfirm();
   const geocodedRef = useRef<string | null>(null);
-  const mapboxToken = getMapboxToken();
 
   // Open on today when the trip is running, otherwise on its first day. On
   // day four of a trip, day one is the least useful thing to be shown.
@@ -90,7 +88,7 @@ export default function MapTab({ planId }: Props) {
   }, []);
 
   const triggerGeocoding = useCallback(async () => {
-    if (!plan || !mapboxToken) return;
+    if (!plan) return;
     const cacheKey = `${plan.id}:${plan.updatedAt}`;
     if (geocodedRef.current === cacheKey) return;
     geocodedRef.current = cacheKey;
@@ -113,7 +111,7 @@ export default function MapTab({ planId }: Props) {
     if (failed.size > 0) {
       setGeocodeError(`${failed.size} location(s) could not be resolved`);
     }
-  }, [plan, mapboxToken]);
+  }, [plan]);
 
   useEffect(() => {
     if (plan) triggerGeocoding();
@@ -205,28 +203,6 @@ export default function MapTab({ planId }: Props) {
           className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin"
           aria-label="Loading"
         />
-      </div>
-    );
-  }
-
-  if (!mapboxToken) {
-    return (
-      <div
-        className="flex flex-col items-center justify-center h-full text-center px-6"
-        data-testid="map-no-token"
-      >
-        <Map size={48} className="text-accent-muted mb-4" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-ink-primary mb-2">Configure Mapbox Token</h2>
-        <p className="text-sm text-ink-secondary mb-4">
-          A Mapbox token is required to display the map and geocode locations.
-        </p>
-        <a
-          href="/settings"
-          className="flex items-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-2 rounded-xl transition-colors"
-        >
-          <Settings size={16} aria-hidden="true" />
-          Open Settings
-        </a>
       </div>
     );
   }
@@ -365,7 +341,7 @@ export default function MapTab({ planId }: Props) {
       </div>
 
       {/* Map area */}
-      <div className="flex-1 relative min-h-0">
+      <div className="flex-1 relative min-h-0 p-2 md:p-3">
         {selectedDayAllUnresolved && (
           <div
             className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-surface-overlay border border-white/10 rounded-card px-4 py-2 text-xs text-ink-secondary shadow-glass"
@@ -387,10 +363,9 @@ export default function MapTab({ planId }: Props) {
           </div>
         )}
 
-        <MapboxMap
-          key={`${planId}-${mapboxToken}`}
+        <PaperMap
+          key={planId}
           plan={plan}
-          token={mapboxToken}
           selectedDayIndex={debouncedDayIndex}
           pins={selectedDayPins}
           onDistanceChange={setDistance}

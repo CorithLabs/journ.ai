@@ -6,7 +6,6 @@ import { db, type Plan, type Activity } from '../../../db';
 import type { BBox } from '../../../services/discover';
 
 vi.mock('dexie-react-hooks');
-vi.mock('../../../services/mapbox', () => ({ getMapboxToken: () => 'pk.test', MAPBOX_TOKEN_KEY: 'aitp_mapbox_token' }));
 vi.mock('../../../services/places', async () => {
   const actual = await vi.importActual<typeof import('../../../services/places')>('../../../services/places');
   return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
@@ -20,7 +19,7 @@ vi.mock('../../../services/places', async () => {
 let currentPins: unknown = null;
 let rebuilds = 0;
 let setViewport: ((b: BBox) => void) | null = null;
-vi.mock('../MapboxMap', () => ({
+vi.mock('../PaperMap', () => ({
   default: (props: { pins: unknown[]; onViewportChange?: (b: BBox) => void }) => {
     // Identity, not contents: a new array is what makes the real map reframe,
     // however similar it looks.

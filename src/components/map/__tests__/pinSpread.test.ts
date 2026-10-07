@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spreadCoincident } from '../MapboxMap';
+import { spreadCoincident } from '../spread';
 import { haversineKm } from '../../../services/places';
 import type { PinActivity } from '../../../services/places';
 
