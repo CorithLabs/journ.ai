@@ -71,7 +71,7 @@ export default function PlanWorkspace() {
       <TabBar planId={planId} />
       {/* Padding, not margin: the pane still scrolls under the floating bar,
           so its last item clears the pill instead of hiding behind it. */}
-      <div className="flex-1 min-h-0 overflow-hidden pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="flex-1 min-h-0 overflow-hidden pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0">
         <Routes>
           <Route index element={<Navigate to="itinerary" replace />} />
           <Route path="itinerary" element={<ItineraryTab planId={planId} />} />

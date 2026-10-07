@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Sidebar from '../Sidebar';
 import TabBar from '../TabBar';
+import { MOBILE_HEADER_SLOT } from '../mobileHeader';
 import { setViewport, PHONE, DESKTOP } from '../../../test/viewport';
 
 vi.mock('dexie-react-hooks');
@@ -79,8 +80,28 @@ describe('Sidebar as a phone drawer', () => {
 describe('TabBar as a phone pill', () => {
   const classes = () => screen.getByTestId('tab-bar').className;
 
-  // The breadcrumb is the pill's first row, the tabs its second.
-  it('carries the breadcrumb inside the pill on a phone', () => {
+  // Inside the app shell the trip switcher goes up into the top bar, and the
+  // pill is a single row. It used to be the pill's first row, which made the
+  // bar two rows tall over every screen.
+  it('puts the trip switcher in the top bar on a phone, not in the pill', () => {
+    setViewport(PHONE);
+    vi.mocked(useLiveQuery).mockReturnValue({
+      id: 'p1', name: 'Ottawa', destination: 'Ottawa, Canada',
+      startDate: '', endDate: '', createdAt: '', updatedAt: '',
+      deleted: false, itinerary: [],
+    });
+    render(
+      <MemoryRouter>
+        <header data-testid="mobile-header"><div id={MOBILE_HEADER_SLOT} /></header>
+        <TabBar planId="p1" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('mobile-header')).toContainElement(screen.getByTestId('plan-breadcrumb'));
+    expect(screen.getByTestId('tab-bar')).not.toContainElement(screen.getByTestId('plan-breadcrumb'));
+  });
+
+  // Rendered on its own, with no shell to hold it, the pill keeps it.
+  it('carries the breadcrumb inside the pill when there is no top bar', () => {
     setViewport(PHONE);
     vi.mocked(useLiveQuery).mockReturnValue({
       id: 'p1', name: 'Ottawa', destination: 'Ottawa, Canada',

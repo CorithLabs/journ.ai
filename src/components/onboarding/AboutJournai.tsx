@@ -15,7 +15,7 @@ import { Check, Minus } from 'lucide-react';
 
 const IS = [
   'A trip planner that works in parts of the day — Morning, Noon, Evening, Night — rather than a clock you have to keep defending.',
-  'Yours alone. Trips live in this browser and any API keys are encrypted here. There is no account and no server holding them.',
+  'Yours alone. Trips live in this browser and any API keys are encrypted here. There is no account and no journ.ai server. Place names — never anything about you — go to OpenStreetMap, Wikipedia and Open-Meteo for maps, photos and weather; when you ask the AI, the trip goes to the provider you chose.',
   'Bring your own key. You pay OpenAI or Anthropic directly and at cost — or use neither and plan by hand. The map, places and weather need no key.',
   'Both ways round. The AI can draft a whole trip and change it on request; every part of it can also be built by hand.',
   'One place per trip: the itinerary, a to-do list, a clipboard for confirmations, and a map.',

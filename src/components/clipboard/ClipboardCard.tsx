@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { FileText, Paperclip, Pin, Pencil, Trash2 } from 'lucide-react';
 import type { ClipboardItem } from '../../db';
 import { TYPE_BORDER, formatFileSize, isImageMime } from './clipboardConstants';
-import { CardActionRail, CardAction } from '../ui/CardActionRail';
+import ActionMenu from '../ui/ActionMenu';
 
 interface Props {
   item: ClipboardItem;
@@ -39,10 +39,12 @@ export default function ClipboardCard({ item, onClick, onEdit, onPin, onDelete }
   const isLinked = item.linkedDayIndex !== undefined;
 
   return (
-    // A div wrapping a button, not a button: the rail's controls cannot be
+    // A div wrapping a button, not a button: its menu cannot be
     // nested inside the card's own button.
     <div
-      className={`card-surface w-full flex items-stretch border-l-2 ${border} rounded-card overflow-hidden`}
+      // Not overflow-hidden, which would clip the actions menu; lifted over the
+      // cards below while it is open.
+      className={`card-surface relative has-[[aria-expanded=true]]:z-20 w-full flex items-stretch border-l-2 ${border} rounded-card`}
       data-testid="clipboard-card"
     >
     <button
@@ -73,6 +75,11 @@ export default function ClipboardCard({ item, onClick, onEdit, onPin, onDelete }
           </span>
           <span className="text-base font-medium text-ink-primary truncate">{item.title}</span>
         </div>
+        {isLinked && (
+          <p className="mt-1 text-xs font-semibold text-accent-light" data-testid="clipboard-linked-flag">
+            Linked to Day {item.linkedDayIndex! + 1}
+          </p>
+        )}
         {item.body && (
           <p className="mt-1 text-sm text-ink-secondary line-clamp-2 whitespace-pre-wrap">
             {item.body}
@@ -91,26 +98,25 @@ export default function ClipboardCard({ item, onClick, onEdit, onPin, onDelete }
       </div>
     </button>
 
-    {/* Everything you could do to a clipboard item was a screen deep in the
-        detail view — a card had no actions on it at all. */}
+    {/* Its actions, behind one button. They used to be a rail of three icons
+        with a red bin on every card; before that, a screen deep in the detail
+        view. */}
     {(onEdit || onPin || onDelete) && (
-      <CardActionRail testId="clipboard-actions">
-        {onPin && (
-          <CardAction
-            icon={<Pin size={16} />}
-            label={isLinked ? `Unlink ${item.title} from the itinerary` : `Link ${item.title} to the itinerary`}
-            onClick={onPin}
-            active={isLinked}
-            testId="clipboard-pin"
-          />
-        )}
-        {onEdit && (
-          <CardAction icon={<Pencil size={16} />} label={`Edit ${item.title}`} onClick={onEdit} testId="clipboard-edit" />
-        )}
-        {onDelete && (
-          <CardAction icon={<Trash2 size={16} />} label={`Delete ${item.title}`} onClick={onDelete} tone="danger" testId="clipboard-delete" />
-        )}
-      </CardActionRail>
+      <div className="shrink-0 self-start pt-1 pr-1" data-testid="clipboard-actions">
+        <ActionMenu
+          label={`More actions for ${item.title}`}
+          menuLabel={`Actions for ${item.title}`}
+          items={[
+            ...(onPin ? [{
+              label: isLinked ? 'Unlink from itinerary' : 'Link to itinerary',
+              ariaLabel: isLinked ? `Unlink ${item.title} from the itinerary` : `Link ${item.title} to the itinerary`,
+              icon: <Pin size={15} />, onSelect: onPin, testId: 'clipboard-pin',
+            }] : []),
+            ...(onEdit ? [{ label: 'Edit', ariaLabel: `Edit ${item.title}`, icon: <Pencil size={15} />, onSelect: onEdit, testId: 'clipboard-edit' }] : []),
+            ...(onDelete ? [{ label: 'Delete', ariaLabel: `Delete ${item.title}`, icon: <Trash2 size={15} />, onSelect: onDelete, danger: true, testId: 'clipboard-delete' }] : []),
+          ]}
+        />
+      </div>
     )}
     </div>
   );

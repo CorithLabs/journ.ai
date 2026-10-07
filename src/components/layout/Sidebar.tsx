@@ -110,7 +110,7 @@ export default function Sidebar() {
       {isMobile && !drawerOpen && (
         <button
           onClick={() => setDrawerOpen(true)}
-          className="fixed top-3 left-3 z-40 p-2.5 rounded-card bg-surface-raised/85 backdrop-blur-glass border border-white/10 shadow-card text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+          className="fixed top-[calc(0.4375rem+env(safe-area-inset-top))] left-3 z-40 p-2.5 rounded-card bg-surface-raised/85 backdrop-blur-glass border border-white/10 shadow-card text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
           aria-label="Open navigation"
           data-testid="sidebar-open-btn"
         >

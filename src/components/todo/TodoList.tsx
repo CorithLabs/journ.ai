@@ -4,7 +4,7 @@ import DetailModal, { DetailRow } from '../ui/DetailModal';
 import { fieldClass, fieldClassAuto } from '../ui/formStyles';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import Button from '../ui/Button';
-import { CardActionRail, CardAction } from '../ui/CardActionRail';
+import ActionMenu from '../ui/ActionMenu';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { PlusCircle, Trash2, CheckSquare, Square, Pin, Pencil } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -128,7 +128,10 @@ function Row({ item, plan, onToggle, onDel, onUpd, onPin, onNavigateToDay }: Row
   };
 
   return (
-    <div className={`card-surface group flex items-stretch rounded-card border-l-2 overflow-hidden ${color}`} data-testid="task-row">
+    // Not overflow-hidden: that would clip the actions menu. The row's blur
+    // makes it a stacking context, so while its menu is open it is lifted over
+    // the rows below.
+    <div className={`card-surface group relative has-[[aria-expanded=true]]:z-20 flex items-stretch rounded-card border-l-2 ${color}`} data-testid="task-row">
       <div className="flex-1 min-w-0 flex items-center gap-3 py-2.5 px-3">
       <button onClick={onToggle} className="shrink-0 text-ink-muted hover:text-accent" aria-label={item.status === 'done' ? 'Mark incomplete' : 'Mark complete'}>
         {item.status === 'done' ? <CheckSquare size={18} className="text-status-success" /> : <Square size={18} />}
@@ -166,32 +169,19 @@ function Row({ item, plan, onToggle, onDel, onUpd, onPin, onNavigateToDay }: Row
       </div>
       </div>
 
-      {/* The same binder edge the itinerary cards use. Deleting used to be a
-          single button revealed on hover, which was unreachable by pointer
-          until you found it and never obvious at all; editing was hidden
-          behind clicking the title, which nothing suggested. */}
-      <CardActionRail testId="task-actions">
-        <CardAction
-          icon={<Pin size={14} />}
-          label={item.pinned ? `Unpin: ${item.title}` : `Pin to top: ${item.title}`}
-          onClick={onPin}
-          active={!!item.pinned}
-          testId="task-pin"
+      {/* One menu instead of a rail of three icons with a red bin on every
+          task. The pinned state still shows on the task itself. */}
+      <div className="shrink-0 self-center pr-1" data-testid="task-actions">
+        <ActionMenu
+          label={`More actions for ${item.title}`}
+          menuLabel={`Actions for ${item.title}`}
+          items={[
+            { label: item.pinned ? 'Unpin' : 'Pin to top', ariaLabel: item.pinned ? `Unpin: ${item.title}` : `Pin to top: ${item.title}`, icon: <Pin size={15} />, onSelect: onPin, testId: 'task-pin' },
+            { label: 'Edit', ariaLabel: `Edit: ${item.title}`, icon: <Pencil size={15} />, onSelect: () => setDetail('edit'), testId: 'task-edit' },
+            { label: 'Delete', ariaLabel: `Delete: ${item.title}`, icon: <Trash2 size={15} />, onSelect: onDel, danger: true, testId: 'task-delete' },
+          ]}
         />
-        <CardAction
-          icon={<Pencil size={14} />}
-          label={`Edit: ${item.title}`}
-          onClick={() => setDetail('edit')}
-          testId="task-edit"
-        />
-        <CardAction
-          icon={<Trash2 size={14} />}
-          label={`Delete: ${item.title}`}
-          onClick={onDel}
-          tone="danger"
-          testId="task-delete"
-        />
-      </CardActionRail>
+      </div>
 
       {detail && (
         <DetailModal

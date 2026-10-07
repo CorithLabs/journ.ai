@@ -7,6 +7,10 @@ import ActivityCard from '../../itinerary/ActivityCard';
 import TodoList from '../../todo/TodoList';
 import { db, type TodoItem } from '../../../db';
 
+/** A row's actions live behind its "More actions" menu; open it first. */
+const openMenu = (name: RegExp | string = /More actions for/, index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: typeof name === 'string' ? `More actions for ${name}` : name })[index]);
+
 vi.mock('dexie-react-hooks');
 
 const plan = { destination: 'Percé', country: 'Canada' };
@@ -41,6 +45,7 @@ describe('every editor ends the same way', () => {
   it('the to-do says Save, instead of saving where nobody can see it', () => {
     vi.mocked(useLiveQuery).mockReturnValue([todo]);
     render(<MemoryRouter><TodoList planId="p1" /></MemoryRouter>);
+    openMenu();
     fireEvent.click(screen.getByTestId('task-edit'));
     expect(screen.getByTestId('task-save-btn')).toHaveTextContent('Save');
   });
@@ -54,6 +59,7 @@ describe('every editor ends the same way', () => {
   it('leaves a to-do untouched when the edit is abandoned', () => {
     vi.mocked(useLiveQuery).mockReturnValue([todo]);
     render(<MemoryRouter><TodoList planId="p1" /></MemoryRouter>);
+    openMenu();
     fireEvent.click(screen.getByTestId('task-edit'));
     fireEvent.change(screen.getByLabelText('Edit title'), { target: { value: 'Changed' } });
     fireEvent.click(screen.getByTestId('task-cancel-btn'));

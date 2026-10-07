@@ -91,10 +91,10 @@ const STEP_MESSAGES: Record<IntakeStep, string> = {
  * The chips differ by travel mode — "Train tickets only", "Flights only",
  * plain "Booked" for a road trip — and the answer can also be typed freely.
  */
-function parseBookings(value: string): { travel: boolean; accommodation: boolean } {
+export function parseBookings(value: string): { travel: boolean; accommodation: boolean } {
   const v = value.toLowerCase().trim();
   if (/both/.test(v)) return { travel: true, accommodation: true };
-  if (/neither|none|not yet|^no/.test(v)) return { travel: false, accommodation: false };
+  if (/neither|none|not yet|^no\b/.test(v)) return { travel: false, accommodation: false };
 
   const accommodation = /accomm|hotel|stay/.test(v);
   const travel = /flight|ticket|train|bus|ferry|travel|car/.test(v);
