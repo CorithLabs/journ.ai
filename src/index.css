@@ -32,6 +32,14 @@
    * a dark ground anyway, and solid fills now take ink-inverse.
    */
   --color-status-danger: #f87171;
+  /*
+   * Weather hazards. Named for the weather rather than the judgement, so a
+   * wet day reads as rain, not as an error: the trip is still on.
+   */
+  --color-weather-rain: #38bdf8;
+  --color-weather-snow: #c7d2fe;
+  --color-weather-wind: #fbbf24;
+  --color-weather-storm: #f87171;
 }
 
 * {

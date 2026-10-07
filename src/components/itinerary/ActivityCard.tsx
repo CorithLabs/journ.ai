@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Button from '../ui/Button';
-import { AlertTriangle, Pin, Pencil, Trash2, MapPin, MapPinOff } from 'lucide-react';
+import { AlertTriangle, Pin, Pencil, Trash2, MapPin, MapPinOff, type LucideIcon } from 'lucide-react';
 import { type Activity, type Plan } from '../../db';
 import {
   formatTime,
@@ -80,9 +80,14 @@ interface Props {
   onDel: () => void;
   onUpd: (u: Partial<Activity>) => void;
   onPin: () => void;
+  /**
+   * What the day's weather does to this stop, when it is outdoors and the day
+   * has a hazard. Worked out by the day, which knows the forecast.
+   */
+  weatherTag?: { label: string; Icon: LucideIcon; className: string };
 }
 
-export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, onPin }: Props) {
+export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, onPin, weatherTag }: Props) {
   const mapsUrl = act.locationName?.trim() || act.coordinates ? mapsUrlFor(act, plan) : null;
   /**
    * Closed, showing everything the activity knows, or editing it.
@@ -320,6 +325,13 @@ export default function ActivityCard({ act, plan, siblings = [], onDel, onUpd, o
 
         {act.notes && (
           <p className="text-xs text-ink-secondary mt-1 line-clamp-3 break-words">{act.notes}</p>
+        )}
+
+        {weatherTag && (
+          <p className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold ${weatherTag.className}`} data-testid="activity-weather-tag">
+            <weatherTag.Icon size={12} aria-hidden="true" />
+            {weatherTag.label}
+          </p>
         )}
       </div>
 

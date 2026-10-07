@@ -146,3 +146,7 @@ window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 // Mock Element.scrollIntoView
 Element.prototype.scrollIntoView = vi.fn();
+
+// Trip photos come from Wikipedia. No test should reach the network for one,
+// and none needs a picture to check what it checks.
+vi.mock('../hooks/usePlacePhoto', () => ({ usePlacePhoto: () => null }));

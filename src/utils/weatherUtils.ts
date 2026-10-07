@@ -91,6 +91,37 @@ export function detectAlerts(day: WeatherDay): WeatherAlert[] {
   return alerts;
 }
 
+/**
+ * What the weather can do to time spent outdoors.
+ *
+ * A narrower question than detectAlerts(): heat and humidity are worth a
+ * warning, but they do not empty a market or close a viewpoint. These four
+ * do, and they are what the trip's photo and each day's card call out.
+ */
+export type WeatherHazard = 'storm' | 'snow' | 'rain' | 'wind';
+
+const HAZARD_BY_ICON: Partial<Record<WeatherIconName, WeatherHazard>> = {
+  CloudLightning: 'storm',
+  CloudSnow: 'snow',
+  CloudRain: 'rain',
+  Wind: 'wind',
+};
+
+/** Worst first, so the first hazard of a day is the one to lead with. */
+const HAZARD_ORDER: WeatherHazard[] = ['storm', 'snow', 'rain', 'wind'];
+
+/**
+ * The hazards a day carries, worst first. Built on detectAlerts() rather than
+ * beside it, so the two can never disagree about whether a day is wet.
+ */
+export function hazardsFor(day: WeatherDay): WeatherHazard[] {
+  const found = new Set(detectAlerts(day).map((a) => HAZARD_BY_ICON[a.icon]));
+  // A snow day usually clears the rain threshold too. Calling it both reads
+  // as two problems when there is one.
+  if (found.has('snow')) found.delete('rain');
+  return HAZARD_ORDER.filter((h) => found.has(h));
+}
+
 /** Convert Celsius to Fahrenheit */
 export function toFahrenheit(c: number): number {
   return Math.round((c * 9) / 5 + 32);

@@ -66,6 +66,16 @@ describe('text is readable on every surface', () => {
   );
 });
 
+describe('weather hazards are readable as text', () => {
+  // They label the day's band and the chips on the trip photo, so they are
+  // read, not just seen.
+  it.each(['weather-rain', 'weather-snow', 'weather-wind', 'weather-storm'])('%s clears AA', (tone) => {
+    for (const surface of SURFACES) {
+      expect(contrast(token(tone), token(surface))).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+});
+
 describe('controls are visible as controls', () => {
   it.each(['accent-muted', 'accent-light', 'accent-sky'])('%s clears the UI floor', (tone) => {
     for (const surface of SURFACES) {
