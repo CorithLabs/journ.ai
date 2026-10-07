@@ -174,12 +174,56 @@ describe('the practical details', () => {
   });
 });
 
+describe('names written another way', () => {
+  // An itinerary in English says "Residence"; the article says "Residenz".
+  it('matches the English and the local spelling', () => {
+    expect(sameNamedPlace('Munich Residence', 'Munich Residenz', ['Munich'])).toBe(true);
+    expect(sameNamedPlace('Residenz München', 'Munich Residenz', ['Munich'])).toBe(true);
+  });
+
+  it('does not stretch short words', () => {
+    expect(sameNamedPlace('Ueno Park', 'Uena')).toBe(false);
+  });
+
+  // The search found it by a name the article is not titled with.
+  it('counts a redirect as the name', async () => {
+    serve({ search: { query: { search: [{ title: 'Munich Residenz', redirecttitle: 'Wittelsbach Palace' }] } }, summary: summary('Munich Residenz') });
+    expect((await fetchPlaceFacts({ name: 'Wittelsbach Palace', city: 'Munich' })).wiki?.title).toBe('Munich Residenz');
+  });
+
+  // "Royal Residence" once matched "List of royal palaces".
+  it('never takes a list of places for a place', async () => {
+    serve({ search: { query: { search: [{ title: 'List of royal palaces' }, { title: 'Munich Residenz' }] } }, summary: summary('Munich Residenz') });
+    expect((await fetchPlaceFacts({ name: 'Royal Residence', city: 'Munich' })).wiki?.title).toBe('Munich Residenz');
+  });
+
+  // "Lunch" once matched the Pepper Lunch chain.
+  it('does not look up a name made only of everyday words', () => {
+    expect(sameNamedPlace('Lunch', 'Pepper Lunch')).toBe(false);
+    expect(sameNamedPlace('Evening walk', 'Evening Walk (painting)')).toBe(false);
+  });
+});
+
 describe('when the sources cannot be reached', () => {
-  it('comes back empty instead of failing', async () => {
+  it('comes back empty instead of failing, and says it is incomplete', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     const facts = await fetchPlaceFacts({ name: 'Meiji Shrine', coordinates: SHRINE });
     expect(facts.wiki).toBeUndefined();
     expect(facts.map).toBeUndefined();
     expect(facts.checkedAt).toBeTruthy();
+    expect(facts.complete).toBe(false);
+  });
+
+  it('counts a busy server as unreached, and a plain miss as an answer', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response));
+    expect((await fetchPlaceFacts({ name: 'Meiji Shrine' })).complete).toBe(false);
+    serve({ search: { query: { search: [] } } });
+    expect((await fetchPlaceFacts({ name: 'Meiji Shrine' })).complete).toBe(true);
+  });
+
+  it('records what was looked up', async () => {
+    serve({ search: { query: { search: [] } } });
+    const facts = await fetchPlaceFacts({ name: 'Meiji Shrine', location: 'Shibuya, Tokyo', coordinates: SHRINE });
+    expect(facts.query).toBe('meiji shrine|shibuya, tokyo|139.699,35.676');
   });
 });
