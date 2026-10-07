@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { spreadCoincident } from '../MapboxMap';
-import { haversineKm } from '../../../services/mapbox';
-import type { PinActivity } from '../../../services/mapbox';
+import { haversineKm } from '../../../services/places';
+import type { PinActivity } from '../../../services/places';
 
 const pin = (id: string, coords: [number, number]): PinActivity => ({
   activity: { id, name: id, time: '09:00', locationName: 'Shibuya', notes: '', pinnedToTodo: false, coordinates: coords },

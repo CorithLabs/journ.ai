@@ -153,16 +153,16 @@ describe('saying why there is no forecast', () => {
     expect(screen.getByTestId('weather-too-far')).toBeInTheDocument();
   });
 
-  it('says when the token that geocodes the city is missing', () => {
+  // Finding the city no longer needs a token, so there is none to ask for.
+  it('never asks for a map token to show the weather', () => {
     useAppStore.setState({ weatherByDate: null });
     localStorage.removeItem('aitp_mapbox_token');
     show(planWith(['Coastal hike']));
-    expect(screen.getByTestId('weather-needs-token')).toBeInTheDocument();
+    expect(screen.queryByText(/token/i)).not.toBeInTheDocument();
   });
 
   it('says nothing once there is a forecast', () => {
     show(planWith(['Coastal hike']));
     expect(screen.queryByTestId('weather-too-far')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('weather-needs-token')).not.toBeInTheDocument();
   });
 });

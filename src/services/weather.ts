@@ -1,3 +1,4 @@
+import { lookupCity } from './cityLookup';
 import { type WeatherDay } from '../store';
 
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -30,28 +31,13 @@ interface OpenMeteoResponse {
 }
 
 /**
- * Geocode a destination string to [lng, lat] using Mapbox Geocoding API.
- * Returns null if token is missing, destination is empty, or geocoding fails.
+ * Where a destination is, as [lng, lat], from Open-Meteo's own place search —
+ * the same service the forecast comes from, and like it, free and keyless.
+ * Null when the place cannot be found or the network is down.
  */
-export async function geocodeDestination(
-  destination: string,
-  mapboxToken: string | null,
-): Promise<[number, number] | null> {
-  if (!destination || !mapboxToken) return null;
-  try {
-    const encoded = encodeURIComponent(destination);
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${mapboxToken}&types=place,region,country&limit=1`;
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as {
-      features?: { center?: [number, number] }[];
-    };
-    const center = data.features?.[0]?.center;
-    if (!center || center.length < 2) return null;
-    return [center[0], center[1]];
-  } catch {
-    return null;
-  }
+export async function geocodeDestination(destination: string): Promise<[number, number] | null> {
+  if (!destination.trim()) return null;
+  return (await lookupCity(destination))?.coordinates ?? null;
 }
 
 /**
@@ -122,7 +108,7 @@ export async function fetchWeather(
 
 /**
  * Full weather fetch pipeline:
- * 1. Geocode the destination (requires Mapbox token)
+ * 1. Find the destination
  * 2. Fetch Open-Meteo forecast for those coordinates
  *
  * Returns null silently if any step fails.
@@ -131,9 +117,8 @@ export async function fetchWeatherForPlan(
   destination: string,
   startDate: string,
   endDate: string,
-  mapboxToken: string | null,
 ): Promise<Record<string, WeatherDay> | null> {
-  const coords = await geocodeDestination(destination, mapboxToken);
+  const coords = await geocodeDestination(destination);
   if (!coords) return null;
   return fetchWeather(coords[1], coords[0], startDate, endDate);
 }
@@ -153,14 +138,13 @@ export async function fetchWeatherByCity(
   cityForDate: Record<string, string>,
   startDate: string,
   endDate: string,
-  mapboxToken: string | null,
 ): Promise<Record<string, WeatherDay> | null> {
   const cities = [...new Set(Object.values(cityForDate))];
   if (!cities.length) return null;
 
   const out: Record<string, WeatherDay> = {};
   for (const city of cities) {
-    const coords = await geocodeDestination(city, mapboxToken);
+    const coords = await geocodeDestination(city);
     if (!coords) continue;
     const forecast = await fetchWeather(coords[1], coords[0], startDate, endDate);
     if (!forecast) continue;

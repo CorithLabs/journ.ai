@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Sparkles, CheckCircle2, XCircle, AlertTriangle, GripVertical } from 'lucide-react';
 import { type Day, type Activity, db } from '../../db';
 import { streamCompletion, MissingKeyError } from '../../services/aiClient';
-import { totalRouteDistanceKm } from '../../services/mapbox';
+import { totalRouteDistanceKm } from '../../services/places';
 import Toast from '../ui/Toast';
 
 interface Props { planId: string; day: Day; planStartDate: string; isOffline: boolean; }

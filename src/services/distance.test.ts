@@ -1,11 +1,11 @@
 /**
- * Vitest unit tests for haversineKm and totalRouteDistanceKm in src/services/mapbox.ts
+ * Vitest unit tests for haversineKm and totalRouteDistanceKm in src/services/places.ts
  *
  * These are pure synchronous math functions — no mocks required.
  */
 
 import { describe, it, expect } from 'vitest';
-import { haversineKm, totalRouteDistanceKm } from './mapbox';
+import { haversineKm, totalRouteDistanceKm } from './places';
 
 // ─── haversineKm ─────────────────────────────────────────────────────────────
 

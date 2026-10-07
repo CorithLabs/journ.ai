@@ -1,31 +1,4 @@
 /**
- * Geocodes a location name using the Mapbox Geocoding API.
- * Returns [lng, lat] or null if geocoding fails.
- */
-export async function geocodeLocation(
-  locationName: string,
-  mapboxToken: string,
-): Promise<[number, number] | null> {
-  if (!locationName.trim()) return null;
-
-  try {
-    const encoded = encodeURIComponent(locationName.trim());
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?access_token=${mapboxToken}&limit=1`;
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-
-    const data = (await resp.json()) as {
-      features?: Array<{ center: [number, number] }>;
-    };
-
-    if (!data.features?.length) return null;
-    return data.features[0].center; // [lng, lat]
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Calculates the straight-line (Haversine) distance in km between two [lng, lat] points.
  */
 export function haversineKm(

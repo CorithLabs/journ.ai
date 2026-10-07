@@ -5,13 +5,6 @@ import { fetchWeatherByCity } from '../services/weather';
 import { cityForDay } from '../utils/dayCity';
 import { dateForDayIndex } from '../utils/tripDay';
 
-/** The localStorage key for the Mapbox token */
-const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
-
-export function getMapboxToken(): string | null {
-  return localStorage.getItem(MAPBOX_TOKEN_KEY);
-}
-
 /**
  * Fetches weather data for the given plan on mount and stores it in Zustand
  * session state. Re-fetches whenever the planId changes.
@@ -28,7 +21,6 @@ export function useWeather(plan: Plan | null | undefined): void {
     let cancelled = false;
 
     const run = async () => {
-      const token = getMapboxToken();
       /*
        * Which city each day is in, decided from the plan rather than assumed
        * to be the destination — a Tokyo forecast is no use on the day spent
@@ -49,7 +41,6 @@ export function useWeather(plan: Plan | null | undefined): void {
         cityForDate,
         plan.startDate,
         plan.endDate,
-        token,
       );
       if (!cancelled && weather) {
         setWeather(weather);
