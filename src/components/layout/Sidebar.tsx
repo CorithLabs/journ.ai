@@ -14,6 +14,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 import PlanContextMenu from '../plans/PlanContextMenu';
+import ImportTripButton from '../plans/ImportTripButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { versionLabel } from '../../utils/appVersion';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
@@ -194,6 +195,12 @@ export default function Sidebar() {
             <PlusCircle size={16} aria-hidden="true" />
             {!narrow && <span className="text-sm">New Plan</span>}
           </button>
+          {!narrow && (
+            <ImportTripButton
+              className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl px-3 py-1.5 text-xs text-ink-secondary hover:text-ink-primary hover:bg-white/5 disabled:opacity-50"
+              onImported={() => setDrawerOpen(false)}
+            />
+          )}
         </div>
 
         {/* Plan List */}

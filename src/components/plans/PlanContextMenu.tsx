@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Pencil, Copy, Trash2 } from 'lucide-react';
+import { Pencil, Copy, Trash2, Download } from 'lucide-react';
+import { exportTrip, saveFile } from '../../services/tripTransfer';
 import { db, type Plan } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import Toast from '../ui/Toast';
@@ -67,6 +68,19 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
     };
     await db.plans.add(newPlan);
     setToast('Plan duplicated');
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // A file with the trip's words: no attached documents, nothing about keys.
+  const handleExport = async () => {
+    onClose();
+    try {
+      const { name, text } = await exportTrip(planId);
+      saveFile(name, text);
+      setToast('Trip exported');
+    } catch {
+      setToast('The trip could not be exported');
+    }
     setTimeout(() => setToast(null), 3000);
   };
 
@@ -141,6 +155,15 @@ export default function PlanContextMenu({ planId, x, y, onClose }: Props) {
             >
               <Copy size={14} aria-hidden="true" />
               Duplicate
+            </button>
+            <button
+              role="menuitem"
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-ink-secondary hover:text-ink-primary hover:bg-surface-raised transition-colors"
+              onClick={handleExport}
+              data-testid="plan-export"
+            >
+              <Download size={14} aria-hidden="true" />
+              Export
             </button>
             <hr className="border-white/5 my-1" />
             <button
