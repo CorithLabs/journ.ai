@@ -1,12 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Compass, Sparkles, Map, Check, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Compass, Sparkles, Check, ArrowRight, ShieldCheck } from 'lucide-react';
 import { setApiKey, OPENAI_KEY_STORAGE, ANTHROPIC_KEY_STORAGE } from '../../services/aiKey';
 import { setActiveProvider, type AiProvider } from '../../services/aiClient';
 import { setOnboarded } from '../../services/onboarding';
 import AboutJournai from './AboutJournai';
-
-const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
 
 const KEY_PREFIX: Record<AiProvider, string> = { openai: 'sk-', anthropic: 'sk-ant-' };
 const PROVIDER_LABEL: Record<AiProvider, string> = { openai: 'OpenAI', anthropic: 'Anthropic' };
@@ -15,8 +13,8 @@ const KEY_URL: Record<AiProvider, string> = {
   anthropic: 'https://console.anthropic.com/settings/keys',
 };
 
-type Step = 'welcome' | 'about' | 'ai' | 'map' | 'ready';
-const ORDER: Step[] = ['welcome', 'about', 'ai', 'map', 'ready'];
+type Step = 'welcome' | 'about' | 'ai' | 'ready';
+const ORDER: Step[] = ['welcome', 'about', 'ai', 'ready'];
 
 interface Props {
   onClose: () => void;
@@ -25,10 +23,10 @@ interface Props {
 /**
  * The first run.
  *
- * Both keys the app can use are optional, and saying so is the whole point of
- * this flow: a plan can be built entirely by hand, and the map is a separate
- * decision from the AI. Someone who lands on a wall of key fields with no
- * indication that they can skip assumes the app is unusable without them.
+ * The AI key is optional, and saying so is the whole point of this flow: a
+ * plan can be built entirely by hand. Someone who lands on a wall of key
+ * fields with no indication that they can skip assumes the app is unusable
+ * without them. The map, places and weather need no key at all.
  */
 export default function Onboarding({ onClose }: Props) {
   const navigate = useNavigate();
@@ -39,9 +37,6 @@ export default function Onboarding({ onClose }: Props) {
   const [key, setKey] = useState('');
   const [keyState, setKeyState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [keyError, setKeyError] = useState('');
-
-  const [token, setToken] = useState('');
-  const [tokenSaved, setTokenSaved] = useState(false);
 
   const finish = (then?: () => void) => {
     setOnboarded();
@@ -81,18 +76,6 @@ export default function Onboarding({ onClose }: Props) {
     } catch {
       setKeyState('error');
       setKeyError('Could not save the key on this device.');
-    }
-  };
-
-  const saveToken = () => {
-    const trimmed = token.trim();
-    if (!trimmed) return;
-    try {
-      localStorage.setItem(MAPBOX_TOKEN_KEY, trimmed);
-      setTokenSaved(true);
-      setToken('');
-    } catch {
-      /* storage full — the map simply stays unconfigured */
     }
   };
 
@@ -232,60 +215,15 @@ export default function Onboarding({ onClose }: Props) {
 
             <div className="flex gap-2 pt-1">
               <button
-                onClick={keyState === 'saved' ? () => setStep('map') : saveKey}
+                onClick={keyState === 'saved' ? () => setStep('ready') : saveKey}
                 disabled={keyState === 'saving' || (keyState !== 'saved' && !key.trim())}
                 className="flex-1 bg-accent hover:bg-accent-light disabled:opacity-40 disabled:cursor-not-allowed text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
                 data-testid="onboarding-save-key"
               >
                 {keyState === 'saving' ? 'Saving…' : keyState === 'saved' ? 'Continue' : 'Save key'}
               </button>
-              <button onClick={() => setStep('map')} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="onboarding-skip-ai">
+              <button onClick={() => setStep('ready')} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="onboarding-skip-ai">
                 I'll plan manually
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'map' && (
-          <div className="space-y-4" data-testid="onboarding-map">
-            <Map size={32} className="text-accent" aria-hidden="true" />
-            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
-              Put the trip on a map
-            </h2>
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              A Mapbox token draws your days as pins and routes. It is free for personal use,
-              and separate from the AI key — you can add it later in Settings.
-            </p>
-            <div className="space-y-2">
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => { setToken(e.target.value); setTokenSaved(false); }}
-                placeholder="pk.…"
-                aria-label="Mapbox access token"
-                className="w-full bg-surface-raised border border-white/10 rounded-lg px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
-                data-testid="onboarding-token-input"
-              />
-              <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-accent hover:underline">
-                Where do I get a token?
-              </a>
-              {tokenSaved && (
-                <p className="flex items-center gap-1 text-xs text-status-success" data-testid="onboarding-token-saved">
-                  <Check size={12} aria-hidden="true" /> Token saved.
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={tokenSaved ? () => setStep('ready') : saveToken}
-                disabled={!tokenSaved && !token.trim()}
-                className="flex-1 bg-accent hover:bg-accent-light disabled:opacity-40 disabled:cursor-not-allowed text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
-                data-testid="onboarding-save-token"
-              >
-                {tokenSaved ? 'Continue' : 'Save token'}
-              </button>
-              <button onClick={() => setStep('ready')} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="onboarding-skip-map">
-                Not now
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { requestOnboarding } from '../services/onboarding';
 import AboutJournai from '../components/onboarding/AboutJournai';
 import { getTempUnit, setTempUnit, type TempUnit } from '../services/units';
@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
-  Map as MapIcon,
 } from 'lucide-react';
 import {
   setApiKey,
@@ -35,7 +34,6 @@ type TestState =
   | { kind: 'valid' }
   | { kind: 'invalid'; message: string };
 
-const MAPBOX_TOKEN_KEY = 'aitp_mapbox_token';
 
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
@@ -58,11 +56,6 @@ export default function SettingsPage() {
   const [anthropicModel, setAnthropicModelState] = useState<string>(ANTHROPIC_MODELS[0].id);
   const setAiProvider = useAppStore((s) => s.setAiProvider);
 
-  const [mapboxToken, setMapboxToken] = useState('');
-  const [mapboxFormatWarning, setMapboxFormatWarning] = useState(false);
-  const [mapboxSaved, setMapboxSaved] = useState(false);
-  const [mapboxMsg, setMapboxMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cryptoOk = isCryptoAvailable();
 
@@ -71,8 +64,6 @@ export default function SettingsPage() {
     setProvider(active);
     setHasKey(hasStoredKey(keyStorageFor(active)));
     setAnthropicModelState(getAnthropicModel());
-    const stored = localStorage.getItem(MAPBOX_TOKEN_KEY);
-    if (stored) setMapboxToken(stored);
   }, []);
 
   // Model choice applies immediately — the next AI call reads it from
@@ -92,12 +83,6 @@ export default function SettingsPage() {
     setTest({ kind: 'idle' });
     setHasKey(hasStoredKey(keyStorageFor(next)));
   };
-
-  useEffect(() => {
-    return () => {
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    };
-  }, []);
 
   const onSave = async () => {
     setSaveMsg(null);
@@ -178,43 +163,6 @@ export default function SettingsPage() {
     } catch {
       setTest({ kind: 'invalid', message: `Could not reach ${label} — check your connection.` });
     }
-  };
-
-  const flashSaved = () => {
-    setMapboxSaved(true);
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    savedTimerRef.current = setTimeout(() => setMapboxSaved(false), 2000);
-  };
-
-  const onMapboxSave = () => {
-    setMapboxMsg(null);
-    setMapboxSaved(false);
-    const trimmed = mapboxToken.trim();
-
-    if (!trimmed) {
-      setMapboxFormatWarning(false);
-      setMapboxMsg({ ok: false, text: 'Please enter a token before saving.' });
-      return;
-    }
-
-    setMapboxToken(trimmed);
-    setMapboxFormatWarning(!trimmed.startsWith('pk.'));
-
-    try {
-      localStorage.setItem(MAPBOX_TOKEN_KEY, trimmed);
-      flashSaved();
-    } catch {
-      setMapboxMsg({ ok: false, text: 'Could not save token — browser storage is full.' });
-    }
-  };
-
-  const onMapboxRemove = () => {
-    localStorage.removeItem(MAPBOX_TOKEN_KEY);
-    setMapboxToken('');
-    setMapboxFormatWarning(false);
-    setMapboxSaved(false);
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-    setMapboxMsg({ ok: true, text: 'Mapbox token removed.' });
   };
 
   return (
@@ -368,88 +316,6 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section
-        className="max-w-2xl bg-surface-glass backdrop-blur-glass border border-white/5 rounded-card shadow-glass p-5"
-        aria-label="Map"
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <MapIcon size={18} className="text-accent" aria-hidden="true" />
-          <h2 className="text-lg font-semibold text-ink-primary">Map</h2>
-        </div>
-        <p className="text-sm text-ink-secondary mb-4">
-          Add your Mapbox public token to enable the map, geocoding, and route
-          visualisation.
-        </p>
-
-        <label htmlFor="mapbox-token" className="block text-sm text-ink-secondary mb-1.5">
-          Mapbox Public Token
-        </label>
-        <input
-          id="mapbox-token"
-          type="text"
-          value={mapboxToken}
-          onChange={(e) => {
-            setMapboxToken(e.target.value);
-            setMapboxFormatWarning(false);
-            setMapboxMsg(null);
-          }}
-          placeholder="pk.…"
-          autoComplete="off"
-          spellCheck={false}
-          data-testid="mapbox-token-input"
-          className={fieldOnCard}
-        />
-
-        <p className="mt-1.5 text-xs text-ink-muted">
-          Get your free token at mapbox.com — starts with pk.
-        </p>
-
-        {mapboxFormatWarning && (
-          <p
-            role="alert"
-            className="mt-1.5 text-xs text-status-warning"
-            data-testid="mapbox-format-warning"
-          >
-            Mapbox public tokens usually start with &quot;pk.&quot;. Saved anyway — double-check it&apos;s correct.
-          </p>
-        )}
-
-        <div className="flex items-center gap-2 mt-4">
-          <button
-            onClick={onMapboxSave}
-            data-testid="mapbox-save-btn"
-            className="bg-accent hover:bg-accent-light text-ink-inverse font-semibold px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          >
-            Save
-          </button>
-          <button
-            onClick={onMapboxRemove}
-            data-testid="mapbox-remove-btn"
-            className="border border-accent-muted text-accent hover:bg-accent/10 px-4 py-2 rounded-xl text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          >
-            Remove
-          </button>
-          {mapboxSaved && (
-            <span
-              role="status"
-              className="flex items-center gap-1 text-sm text-status-success"
-              data-testid="mapbox-saved-confirmation"
-            >
-              <CheckCircle2 size={16} /> Saved
-            </span>
-          )}
-        </div>
-
-        {mapboxMsg && (
-          <p
-            role="status"
-            className={`mt-3 text-sm ${mapboxMsg.ok ? 'text-status-success' : 'text-status-danger'}`}
-            data-testid="mapbox-msg"
-          >
-            {mapboxMsg.text}
-          </p>
-        )}
-      </section>
       {/* Weather is fetched for every plan already; this decides how it reads. */}
       <section className="border-t border-white/5 pt-4 mt-4">
         <h2 className="text-lg font-semibold text-ink-primary mb-1">Temperature</h2>

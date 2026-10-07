@@ -12,7 +12,7 @@ vi.mock('../../../services/places', async () => {
   return { ...actual, geocodePlanActivities: vi.fn(async () => new Set<string>()) };
 });
 
-/** The real map needs Mapbox GL; this stands in for it and reports a viewport. */
+/** Stands in for the drawn map and reports a viewport. */
 let clickPlace: ((p: DiscoveredPlace) => void) | null = null;
 let setViewport: ((b: BBox) => void) | null = null;
 vi.mock('../PaperMap', () => ({

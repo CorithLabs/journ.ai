@@ -1,23 +1,17 @@
 /**
- * OpenStreetMap search, for the places Mapbox does not carry.
+ * OpenStreetMap search: every place lookup in the app.
  *
- * "Kitsilano Beach, Vancouver" is the case that prompted this: Mapbox returned
- * nothing usable, Google found it instantly, and OSM has had it named for
- * years. That is the shape of the gap — beaches, parks, viewpoints, trails and
- * other named geography are where OSM is strongest and Mapbox thinnest.
- *
- * It is a fallback rather than a replacement, because the gap runs both ways:
- * Mapbox and Google are better on commercial POIs — chains, hotels, shops —
- * and swapping outright would fix a beach and break a ramen shop. Asking the
- * second one only when the first found nothing roughly doubles the recall for
- * one extra request, paid only on the failures.
+ * It started as the fallback for the places Mapbox did not carry — "Kitsilano
+ * Beach, Vancouver" found nothing there, and OSM has had it named for years.
+ * Beaches, parks, viewpoints and trails are where OSM is strongest, and it
+ * needs no key, so it became the only search when Mapbox was removed.
  *
  * Photon rather than Nominatim: Nominatim's usage policy caps callers at one
  * request per second and asks that it not be used for autocomplete, which is
  * most of what this app needs a geocoder for. Photon is built for as-you-type
  * search and needs no key. It is still a free community service — every call
- * here is either a user keystroke that already debounced, or a retry after a
- * miss, and nothing polls it.
+ * here is either a user keystroke that already debounced, or a lookup whose
+ * answer is kept on the activity, and nothing polls it.
  */
 
 const PHOTON_URL = 'https://photon.komoot.io/api/';
