@@ -254,7 +254,7 @@ describe('placing a whole plan', () => {
     const f = answer((url) => (isPhoton(url) ? photonBody([{ at: [139.7967, 35.7148] }]) : cityBody(TOKYO, 'Tokyo')));
     await geocodePlanActivities(plan([{ name: 'Senso-ji', locationName: 'Senso-ji' }]));
     expect(calls(f)[0]).toContain('open-meteo');
-    expect(calls(f)[1]).toContain('photon');
+    expect(calls(f).some(isPhoton)).toBe(true);
   });
 
   it('looks up an activity that was given no location, using its name', async () => {
@@ -304,7 +304,88 @@ describe('placing a whole plan', () => {
     const f = answer((url) => (isPhoton(url) ? photonBody([{ at: [139.7016, 35.658] }]) : cityBody(TOKYO)));
     await geocodePlanActivities(plan([{ name: 'A', locationName: 'Shibuya' }]));
     await geocodePlanActivities(plan([{ name: 'B', locationName: 'Ginza' }]));
-    expect(calls(f).filter((u) => u.includes('open-meteo'))).toHaveLength(1);
+    expect(calls(f).filter((u) => u.includes('open-meteo') && u.includes('name=Tokyo'))).toHaveLength(1);
+  });
+});
+
+/*
+ * A location is often only a town or a district. Searched as text near the
+ * trip, "Nikko, Japan" found a hotel called Nikko in central Tokyo, and every
+ * stop "in Shibuya" shared the middle of Shibuya.
+ */
+describe('a location that is only a town', () => {
+  const TOKYO: At = [139.6917, 35.6895];
+  const NIKKO: At = [139.6167, 36.75];
+  const TOSHOGU: At = [139.5991, 36.7576];
+  const plan = (name: string, locationName: string): Plan => ({
+    id: 'p', name: 'Tokyo', destination: 'Tokyo, Japan', startDate: '2026-10-11', endDate: '2026-10-13',
+    createdAt: '', updatedAt: '', deleted: false,
+    itinerary: [{ dayIndex: 0, label: 'Day 1', activities: [
+      { id: 'a', name, time: 'morning', locationName, notes: '', pinnedToTodo: false },
+    ] }],
+  });
+  const saved = () => (vi.mocked(db.plans.update).mock.calls[0][1] as { itinerary: Plan['itinerary'] }).itinerary[0].activities[0];
+
+  beforeEach(() => {
+    vi.spyOn(db.plans, 'update').mockResolvedValue(1);
+  });
+
+  it('finds the town first, then the activity inside it', async () => {
+    const f = answer((url) =>
+      isPhoton(url)
+        ? photonBody([{ at: [139.7726, 35.6262], name: 'Hotel Nikko Tokyo' }, { at: TOSHOGU, name: 'Tōshō-gū' }])
+        : url.includes('name=Nikko') ? cityBody(NIKKO, 'Nikkō') : cityBody(TOKYO, 'Tokyo'));
+    await geocodePlanActivities(plan('Nikko Tosho-gu Shrine', 'Nikko, Japan'));
+    expect(saved().coordinates).toEqual(TOSHOGU);
+    // Looked for by its own name, near the town.
+    const asked = calls(f).filter(isPhoton).at(-1)!;
+    expect(asked).toContain('Nikko Tosho-gu Shrine');
+    expect(asked).toContain(`lat=${NIKKO[1]}`);
+  });
+
+  it('settles for the town when nothing inside it matches the name', async () => {
+    answer((url) => (isPhoton(url) ? photonBody([]) : url.includes('name=Nikko') ? cityBody(NIKKO, 'Nikko') : cityBody(TOKYO, 'Tokyo')));
+    await geocodePlanActivities(plan('Day out', 'Nikko, Japan'));
+    expect(saved().coordinates).toEqual(NIKKO);
+  });
+
+  // "Return to Tokyo" is not the "Return of Ultraman" artwork nearby.
+  it('does not take a nearby place that only shares a word like "return"', async () => {
+    answer((url) => (isPhoton(url)
+      ? photonBody([{ at: [139.6077, 35.6375], name: 'Return of Ultraman Gate', kind: 'tourism:artwork' }])
+      : cityBody(TOKYO, 'Tokyo')));
+    await geocodePlanActivities(plan('Return to Tokyo', 'Tokyo, Japan'));
+    expect(saved().coordinates).toEqual(TOKYO);
+  });
+
+  // The search ranked a small shrine 24km away above the real grounds.
+  it('takes the nearest match inside the town, not the first', async () => {
+    const SHIBUYA: At = [139.6965, 35.6634];
+    answer((url) => {
+      if (!isPhoton(url)) return cityBody(TOKYO, 'Tokyo');
+      if (url.includes('Meiji')) {
+        return photonBody([
+          { at: [139.915, 35.797], name: 'Meiji Shrine', kind: 'amenity:place_of_worship' },
+          { at: [139.702, 35.672], name: 'Meiji Shrine Museum', kind: 'tourism:museum' },
+        ]);
+      }
+      return photonBody([{ at: SHIBUYA, name: 'Shibuya', kind: 'place:suburb' }]);
+    });
+    await geocodePlanActivities(plan('Meiji Shrine', 'Shibuya, Tokyo'));
+    expect(saved().coordinates).toEqual([139.702, 35.672]);
+  });
+
+  // "Harajuku, Tokyo" is not the Harajuku in Saitama.
+  it('does not take a namesake town in another prefecture', async () => {
+    answer((url) => {
+      if (isPhoton(url)) return photonBody([{ at: [139.7053, 35.6687], name: 'Takeshita Street' }]);
+      if (url.includes('name=Harajuku')) {
+        return { results: [{ name: 'Harajuku', latitude: 35.9, longitude: 139.35, admin1: 'Saitama', country: 'Japan', feature_code: 'PPL' }] };
+      }
+      return cityBody(TOKYO, 'Tokyo');
+    });
+    await geocodePlanActivities(plan('Harajuku Takeshita Street', 'Harajuku, Tokyo'));
+    expect(saved().coordinates).toEqual([139.7053, 35.6687]);
   });
 });
 

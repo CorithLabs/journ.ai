@@ -709,6 +709,9 @@ export default function ItineraryView({ plan }: Props) {
                           {sortByTime(day.activities).map((act, ai, sorted) => (
                             <div key={act.id}>
                               <ActivityCard act={act} plan={plan} siblings={day.activities}
+                                variant="row"
+                                onMoveUp={ai === 0 ? undefined : () => moveAct(day.dayIndex, act.id, 'up')}
+                                onMoveDown={ai === sorted.length - 1 ? undefined : () => moveAct(day.dayIndex, act.id, 'down')}
                                 weatherTag={hazard && isLikelyOutdoor(act)
                                   ? { label: HAZARD[hazard].stop, Icon: HAZARD[hazard].Icon, className: HAZARD[hazard].text }
                                   : undefined}
@@ -728,14 +731,6 @@ export default function ItineraryView({ plan }: Props) {
                                   onOpen={() => navigate(`/plan/${plan.id}/clipboard/${c.id}?from=itinerary`)}
                                 />
                               ))}
-                              {/* The only way to reorder on touch — HTML5 drag and drop
-                                  does not fire on mobile — so these get real tap
-                                  targets rather than the 16px-tall text links they
-                                  were, which were effectively unhittable on a phone. */}
-                              <div className="flex gap-1 mt-0.5 pl-6">
-                                <button disabled={ai === 0} onClick={() => moveAct(day.dayIndex, act.id, 'up')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} up`}>&#8593; Move up</button>
-                                <button disabled={ai === sorted.length - 1} onClick={() => moveAct(day.dayIndex, act.id, 'down')} className="text-xs text-ink-muted hover:text-ink-primary disabled:opacity-30 px-2 py-2 md:py-0.5 rounded-lg" aria-label={`Move ${act.name} down`}>&#8595; Move down</button>
-                              </div>
                               {/* Anything booked for this part of the day, shown
                                   where it happens rather than in a list apart. */}
                               {dayClips

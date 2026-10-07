@@ -1,5 +1,5 @@
 import { type Activity } from '../../db';
-import { totalRouteDistance } from './geocoding';
+import { totalRouteDistanceKm as totalRouteDistance } from '../../services/places';
 
 export interface OptimisedActivity {
   activity: Activity;

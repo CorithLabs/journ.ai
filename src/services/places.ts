@@ -54,6 +54,20 @@ export interface GeocodeOptions {
    * location means the city, and is a fair answer.
    */
   rejectCityItself?: boolean;
+  /**
+   * How far from the anchors a result may be, in km. The trip-wide guard by
+   * default; much tighter when looking for a named place inside a town that
+   * has already been found.
+   */
+  maxKm?: number;
+  /**
+   * Only accept a result whose name shares a real word with this one. Used
+   * when looking for an activity inside a town, where a loose match is worse
+   * than none: "Return to Tokyo" is not a street that happens to be nearby.
+   */
+  nameLike?: string;
+  /** The town being searched inside, whose name does not count toward a match. */
+  townName?: string;
 }
 
 /** A resolved place: where it is, and what the map data calls it. */
@@ -61,6 +75,8 @@ export interface GeocodedPlace {
   coordinates: [number, number];
   /** The full address, e.g. "Ichiran, 1-22-7 Jinnan, Shibuya, Tokyo". */
   address: string;
+  /** True when the result is an area — a town, ward or district — not a place in it. */
+  area?: boolean;
 }
 
 /**
@@ -81,26 +97,68 @@ function isAreaOnly(hit: PhotonPlace): boolean {
   return AREA.test(hit.kind);
 }
 
+/** The words of a name worth matching on: "Nikko Tosho-gu Shrine" → nikko, tosho, shrine. */
+function words(name: string): Set<string> {
+  return new Set(
+    name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .split(/[^a-z0-9]+/).filter((w) => w.length >= 4),
+  );
+}
+
+/**
+ * Words that say what someone is doing, not where. "Return to Tokyo" is not
+ * the "Return of Ultraman" artwork for sharing one of them.
+ */
+const GENERIC = new Set([
+  'return', 'visit', 'tour', 'trip', 'walk', 'lunch', 'dinner', 'breakfast', 'brunch', 'drinks',
+  'check', 'back', 'head', 'explore', 'free', 'time', 'morning', 'afternoon', 'evening', 'night',
+  'from', 'into', 'with', 'around', 'near', 'train', 'transfer', 'arrive', 'arrival', 'depart', 'departure',
+]);
+
+/**
+ * Whether a result's name is plausibly the activity: at least half of the
+ * activity's own distinctive words appear in it. The town's name does not
+ * count — "Nikko Tosho-gu Shrine" inside Nikko is matched on Tosho-gu.
+ */
+function namesMatch(activity: string, result: string, town?: string): boolean {
+  const skip = town ? words(town) : new Set<string>();
+  const wanted = [...words(activity)].filter((w) => !GENERIC.has(w) && !skip.has(w));
+  if (!wanted.length) return false;
+  const got = words(result);
+  const hits = wanted.filter((w) => got.has(w)).length;
+  return hits > 0 && hits * 2 >= wanted.length;
+}
+
 /** The first result that passes the guards. */
 function firstAcceptable(
   hits: PhotonPlace[],
   anchors: Array<[number, number]>,
   options: GeocodeOptions,
 ): GeocodedPlace | null {
-  for (const hit of hits) {
+  /*
+   * Inside a town, the nearest match wins rather than the first: the search's
+   * own ranking put a small "Meiji Shrine" 24km away in Chiba above the
+   * shrine's grounds 1.5km from Shibuya.
+   */
+  const ordered = options.nameLike && anchors.length
+    ? [...hits].sort((a, b) => haversineKm(anchors[0], a.coordinates) - haversineKm(anchors[0], b.coordinates))
+    : hits;
+  for (const hit of ordered) {
     // Proximity only ranks; it does not filter. A name with no local match
     // still returns the far-away one, which is what put pins on other
     // continents even with a bias applied.
-    if (anchors.length && !anchors.some((a) => haversineKm(a, hit.coordinates) <= MAX_ACTIVITY_DISTANCE_KM)) {
+    const limit = options.maxKm ?? MAX_ACTIVITY_DISTANCE_KM;
+    if (anchors.length && !anchors.some((a) => haversineKm(a, hit.coordinates) <= limit)) {
       continue;
     }
+    if (options.nameLike && !namesMatch(options.nameLike, hit.name, options.townName)) continue;
     if (
       options.rejectCityItself &&
       (isAreaOnly(hit) || anchors.some((a) => haversineKm(a, hit.coordinates) <= CITY_ITSELF_KM))
     ) {
       continue;
     }
-    return { coordinates: hit.coordinates, address: hit.address };
+    return { coordinates: hit.coordinates, address: hit.address, area: isAreaOnly(hit) };
   }
   return null;
 }
@@ -221,6 +279,79 @@ export function tripCityContexts(
   return out;
 }
 
+/** "Nikkō" and "Nikko" are the same town. */
+function bare(name: string): string {
+  return name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+}
+
+/** How far a named place may sit from the town its location names, in km. */
+const WITHIN_TOWN_KM = 25;
+
+/**
+ * Where one activity is.
+ *
+ * A location is often only a town or a district — "Nikko, Japan", "Shibuya,
+ * Tokyo" — and searching for that text near the trip finds the wrong thing:
+ * a hotel called Nikko in central Tokyo, or the middle of Shibuya for every
+ * stop that happens to be there, so Meiji Shrine and the Crossing share a pin.
+ *
+ * So the town is found first, as a town (Open-Meteo is a gazetteer and good at
+ * exactly this), and then the activity's own name is looked for inside it —
+ * Tosho-gu near Nikko, Meiji Shrine near Shibuya. When the name finds nothing
+ * there, the town is still the honest answer: that is where the traveller said
+ * it was.
+ */
+async function locateActivity(
+  act: Activity,
+  owner: { coords: [number, number]; context: string } | undefined,
+  allAnchors: Array<[number, number]>,
+): Promise<GeocodedPlace | null> {
+  const stated = act.locationName.trim();
+  const name = act.name.trim();
+
+  // Nothing stated: the name is a guess, held to the stricter standard.
+  if (!stated) {
+    return geocodePlace(name, {
+      rejectCityItself: true,
+      proximity: owner?.coords,
+      anchors: allAnchors,
+      context: owner?.context,
+    });
+  }
+
+  const withinTown = async (area: [number, number], townName: string) =>
+    name && bare(name) !== bare(stated)
+      ? geocodePlace(name, {
+          rejectCityItself: true, proximity: area, anchors: [area], maxKm: WITHIN_TOWN_KM, nameLike: name, townName,
+        })
+      : null;
+
+  /*
+   * The town has to be the one meant. "Harajuku, Tokyo" is not the Harajuku
+   * in Saitama: whatever follows the comma must be part of where the town is,
+   * or the city of the trip it sits beside.
+   */
+  const [head, ...qualifiers] = stated.split(',').map((p) => p.trim()).filter(Boolean);
+  const town = await lookupCity(stated);
+  const nearTrip = (at: [number, number]) =>
+    !allAnchors.length || allAnchors.some((a) => haversineKm(a, at) <= MAX_ACTIVITY_DISTANCE_KM);
+  const qualified = (t: NonNullable<typeof town>) =>
+    qualifiers.every((q) =>
+      bare(t.label).includes(bare(q)) ||
+      (owner && bare(owner.context).startsWith(bare(q)) && haversineKm(owner.coords, t.coordinates) <= WITHIN_TOWN_KM));
+  if (town && bare(town.name) === bare(head) && qualified(town) && nearTrip(town.coordinates)) {
+    return (await withinTown(town.coordinates, town.name)) ?? { coordinates: town.coordinates, address: town.label, area: true };
+  }
+
+  const place = await geocodePlace(stated, {
+    proximity: owner?.coords,
+    anchors: allAnchors,
+    context: owner?.context,
+  });
+  if (place?.area) return (await withinTown(place.coordinates, head)) ?? place;
+  return place;
+}
+
 /**
  * Find every activity in a plan that has a name or location but no
  * coordinates, and save what was found. Returns the IDs that could not be
@@ -264,13 +395,8 @@ export async function geocodePlanActivities(
        * a card that was never looked up at all, because the location field was
        * left empty. "Senso-ji Temple" is a perfectly good query on its own,
        * and hand-added cards almost never carry a separate location.
-       *
-       * Named guesses are held to a stricter standard (rejectCityItself), or
-       * "Lunch" would pin the middle of Tokyo.
        */
-      const stated = act.locationName.trim();
-      const query = stated || act.name.trim();
-      if (!query) continue;
+      if (!act.locationName.trim() && !act.name.trim()) continue;
 
       // Bias toward the city the activity names, so "Todai-ji, Nara" resolves
       // near Nara rather than wherever the trip happens to start.
@@ -278,12 +404,7 @@ export async function geocodePlanActivities(
       const owner =
         anchored.find((a) => haystack.includes(a.city.toLowerCase())) ?? primary;
 
-      const place = await geocodePlace(query, {
-        rejectCityItself: !stated,
-        proximity: owner?.coords,
-        anchors: allAnchors,
-        context: owner?.context,
-      });
+      const place = await locateActivity(act, owner, allAnchors);
       if (place) {
         day.activities[i] = {
           ...act,

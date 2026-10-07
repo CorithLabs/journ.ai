@@ -73,7 +73,6 @@ describe('the optional keys', () => {
   it('lets both keys be skipped outright', () => {
     toKeyStep();
     fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
-    fireEvent.click(screen.getByTestId('onboarding-skip-map'));
     expect(screen.getByTestId('onboarding-ready')).toBeInTheDocument();
   });
 
@@ -98,12 +97,12 @@ describe('the optional keys', () => {
     expect(screen.getByTestId('onboarding-key-saved')).toBeInTheDocument();
   });
 
-  it('stores the Mapbox token where the map looks for it', () => {
+  // The map needs no token any more, so there is nothing to ask for.
+  it('does not ask for a map token', () => {
     toKeyStep();
     fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
-    fireEvent.change(screen.getByTestId('onboarding-token-input'), { target: { value: 'pk.abc' } });
-    fireEvent.click(screen.getByTestId('onboarding-save-token'));
-    expect(localStorage.getItem('aitp_mapbox_token')).toBe('pk.abc');
+    expect(screen.getByTestId('onboarding-ready')).toBeInTheDocument();
+    expect(screen.queryByText(/mapbox/i)).not.toBeInTheDocument();
   });
 });
 
@@ -113,7 +112,6 @@ describe('finishing', () => {
     fireEvent.click(screen.getByTestId('onboarding-next'));
     fireEvent.click(screen.getByTestId('onboarding-about-next'));
     fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
-    fireEvent.click(screen.getByTestId('onboarding-skip-map'));
     fireEvent.click(screen.getByTestId('onboarding-create-plan'));
     expect(hasOnboarded()).toBe(true);
     expect(onClose).toHaveBeenCalled();

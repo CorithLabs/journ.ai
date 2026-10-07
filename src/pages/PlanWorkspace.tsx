@@ -7,7 +7,6 @@ import TodoTab from '../components/tabs/TodoTab';
 import MapTab from '../components/tabs/MapTab';
 import ClipboardTab from '../components/tabs/ClipboardTab';
 import ClipboardItemDetail from '../components/clipboard/ClipboardItemDetail';
-import AgentButton from '../components/agent/AgentButton';
 import AgentPanel from '../components/agent/AgentPanel';
 import DemoBanner from '../components/plans/DemoBanner';
 import { useAppStore } from '../store';
@@ -40,12 +39,8 @@ function PlanWeatherLoader({ planId }: { planId: string }) {
 function GatedAgent({ planId }: { planId: string }) {
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
   if (itineraryStage(plan) === 'intake') return null;
-  return (
-    <>
-      <AgentButton />
-      <AgentPanel planId={planId} />
-    </>
-  );
+  // The button that opens it lives in the tab bar.
+  return <AgentPanel planId={planId} />;
 }
 
 export default function PlanWorkspace() {

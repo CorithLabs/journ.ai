@@ -5,6 +5,10 @@ import ItineraryView from '../ItineraryView';
 import { db, type Plan } from '../../../db';
 import { setViewport, DESKTOP } from '../../../test/viewport';
 
+/** A stop's actions live behind its "More actions" menu; open it first. */
+const openMenu = (name: string | RegExp = /More actions for/, index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: typeof name === 'string' ? `More actions for ${name}` : name })[index]);
+
 vi.mock('dexie-react-hooks');
 vi.mock('../../../db', async () => {
   const actual = await vi.importActual<typeof import('../../../db')>('../../../db');
@@ -69,6 +73,7 @@ describe('parts of the day on a card', () => {
 describe('moving a card through the day', () => {
   it('moves it into the next part of the day', async () => {
     render(<ItineraryView plan={planWith(['morning', 'evening'])} />);
+    openMenu('Act 0');
     fireEvent.click(screen.getByLabelText('Move Act 0 down'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
     expect(persisted().find(a => a.id === 'a0')!.time).toBe('evening');
@@ -78,6 +83,7 @@ describe('moving a card through the day', () => {
   // the time is left alone.
   it('reorders within a part of the day without changing the time', async () => {
     render(<ItineraryView plan={planWith(['evening', 'evening'])} />);
+    openMenu('Act 1');
     fireEvent.click(screen.getByLabelText('Move Act 1 up'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
     const out = persisted();
@@ -92,6 +98,7 @@ describe('moving a card through the day', () => {
    */
   it('lands below a neighbour that has an exact time', async () => {
     render(<ItineraryView plan={planWith(['morning', '15:00'])} />);
+    openMenu('Act 0');
     fireEvent.click(screen.getByLabelText('Move Act 0 down'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
     const out = persisted();
@@ -101,7 +108,10 @@ describe('moving a card through the day', () => {
 
   it('does not offer a move off either end of the day', () => {
     render(<ItineraryView plan={planWith(['morning', 'night'])} />);
+    openMenu('Act 0');
     expect(screen.getByLabelText('Move Act 0 up')).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    openMenu('Act 1');
     expect(screen.getByLabelText('Move Act 1 down')).toBeDisabled();
   });
 });

@@ -122,3 +122,31 @@ describe('modals arrive rather than appearing', () => {
     expect(/@keyframes panel-in[^}]*}[^}]*translateY/.test(CSS)).toBe(true);
   });
 });
+
+/*
+ * The contrast fixes above were made in index.css, but components draw with
+ * Tailwind classes, whose colours come from tailwind.config.ts. The two had
+ * drifted: muted text stayed at #475569 (about 2.5:1) on screen for months
+ * while these tests passed against the corrected token. Every colour both
+ * define must be the same colour.
+ */
+describe('what is measured is what is drawn', () => {
+  const TW = readFileSync(resolve(__dirname, '../../tailwind.config.ts'), 'utf-8');
+  const colours = TW.slice(TW.indexOf('colors:'), TW.indexOf('borderRadius'));
+  const pairs: Array<[string, string]> = [];
+  for (const [, group, body] of colours.matchAll(/(\w+):\s*\{([^{}]*)\}/g)) {
+    for (const [, key, hex] of body.matchAll(/(\w+):\s*'(#[0-9a-fA-F]{6})'/g)) {
+      pairs.push([key === 'DEFAULT' ? group : `${group}-${key}`, hex]);
+    }
+  }
+  const shared = pairs.filter(([name]) => new RegExp(`--color-${name}:`).test(CSS));
+
+  it('compares a real set of colours', () => {
+    expect(shared.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it.each(shared)('%s is the same in Tailwind and index.css', (name, hex) => {
+    expect(hex.toLowerCase()).toBe(token(name).toLowerCase());
+  });
+});
+

@@ -57,6 +57,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The street map's renderer is a megabyte. It is fetched the first
+        // time the map is opened, not on install for people who never do.
+        globIgnores: ['**/maplibre-gl-*'],
         /*
          * Take over immediately instead of waiting for every tab to close.
          * Without this a browser can keep serving the previous build long
@@ -68,6 +71,22 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
+            urlPattern: /\/assets\/maplibre-gl-.*\.(js|css)$/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'map-renderer', expiration: { maxEntries: 4 } },
+          },
+          {
+            // Street tiles, the style, fonts and icons. Kept, so a city looked
+            // at once still has its streets offline.
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'street-map',
+              expiration: { maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             // Destination photos, so a trip opened offline still has its
             // picture. Cross-origin, so the responses are opaque.
             urlPattern: /^https:\/\/(upload|thumb)\.wikimedia\.org\/.*/i,
@@ -76,17 +95,6 @@ export default defineConfig({
               cacheName: 'place-photos',
               expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
               cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'mapbox-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
-              },
             },
           },
         ],

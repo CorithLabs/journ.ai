@@ -1,1 +1,1 @@
-export { default as MapboxMap } from './MapboxMap';
+export { default as PaperMap } from './PaperMap';
