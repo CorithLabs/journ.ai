@@ -115,8 +115,10 @@ export default function Onboarding({ onClose }: Props) {
             <div className="flex gap-3 items-start bg-surface-raised border border-white/10 rounded-card p-3">
               <ShieldCheck size={16} className="text-accent shrink-0 mt-0.5" aria-hidden="true" />
               <p className="text-xs text-ink-secondary leading-relaxed">
-                Everything stays on this device. Your trips live in this browser, and any API
-                keys you add are encrypted here — there is no account and no server holding them.
+                Your trips live in this browser and any API keys are encrypted here — there is
+                no account and no journ.ai server. To find maps, photos and weather, place names
+                (never anything about you) go to OpenStreetMap, Wikipedia and Open-Meteo. When
+                you ask the AI, the trip goes to the provider you chose.
               </p>
             </div>
             <div className="flex gap-2 pt-1">

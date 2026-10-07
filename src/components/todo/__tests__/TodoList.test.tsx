@@ -5,6 +5,10 @@ import TodoList from '../TodoList';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../../db';
 
+/** A row's actions live behind its "More actions" menu; open it first. */
+const openMenu = (name: RegExp | string = /More actions for/, index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: typeof name === 'string' ? `More actions for ${name}` : name })[index]);
+
 vi.mock('dexie-react-hooks');
 
 const today = new Date().toISOString().split('T')[0];
@@ -132,6 +136,7 @@ describe('TodoList', () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
 
+    openMenu();
     fireEvent.click(screen.getByTestId('task-edit'));
 
     expect(await screen.findByLabelText('Edit title')).toBeInTheDocument();
@@ -145,6 +150,7 @@ describe('TodoList', () => {
   it('saving an updated title calls db.todos.update', async () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    openMenu();
     fireEvent.click(screen.getByTestId('task-edit'));
     const editInput = await screen.findByLabelText('Edit title');
     fireEvent.change(editInput, { target: { value: 'Book flights to Osaka' } });
@@ -161,6 +167,7 @@ describe('TodoList', () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     vi.mocked(db.todos.delete).mockResolvedValue(undefined);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    openMenu(/More actions for Book flights/i);
     const delBtn = screen.getByLabelText(/delete: book flights/i);
     fireEvent.click(delBtn);
     await waitFor(() => {
@@ -174,6 +181,7 @@ describe('TodoList', () => {
     vi.mocked(db.todos.delete).mockResolvedValue(undefined);
     vi.mocked(db.todos.add).mockResolvedValue('todo-1');
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    openMenu(/More actions for Book flights/i);
     const delBtn = screen.getByLabelText(/delete: book flights/i);
     fireEvent.click(delBtn);
     const undoBtn = await screen.findByText('Undo');

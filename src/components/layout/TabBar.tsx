@@ -1,4 +1,5 @@
-import { useRef, KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState, KeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles } from 'lucide-react';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useAppStore } from '../../store';
@@ -9,6 +10,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { itineraryStage } from '../../utils/planState';
 import AgentButton from '../agent/AgentButton';
+import { MOBILE_HEADER_SLOT } from './mobileHeader';
 
 interface Tab {
   key: string;
@@ -62,6 +64,14 @@ export default function TabBar({ planId }: Props) {
   const plan = useLiveQuery(() => db.plans.get(planId), [planId]);
   const agentAvailable = itineraryStage(plan) !== 'intake';
 
+  // On a phone the trip switcher goes up into the shell's top bar, which
+  // keeps the bottom bar to one row. Without a shell (a test rendering the
+  // bar alone) it stays in the bar.
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setHeaderSlot(isMobile ? document.getElementById(MOBILE_HEADER_SLOT) : null);
+  }, [isMobile]);
+
   const activeTab = TABS.find((t) =>
     location.pathname.endsWith(`/${t.path}`),
   )?.key ?? 'itinerary';
@@ -93,7 +103,8 @@ export default function TabBar({ planId }: Props) {
     /*
      * Phone: a floating pill fixed above the home indicator and inset from
      * both edges, so nothing is clipped by rounded screen corners or the
-     * gesture area. The breadcrumb is its first row, the tabs its second.
+     * gesture area. The breadcrumb sits in the shell's top bar, so the pill
+     * is one row of tabs.
      * Desktop: the ordinary top strip, breadcrumb inline at the left.
      *
      * The container is a plain element and the tablist is nested inside it.
@@ -111,9 +122,13 @@ export default function TabBar({ planId }: Props) {
       }
       data-testid="tab-bar"
     >
-      <div className={isMobile ? 'px-1.5 pb-1.5 min-w-0' : 'shrink-0 max-w-[40%]'}>
-        <PlanBreadcrumb planId={planId} />
-      </div>
+      {headerSlot
+        ? createPortal(<PlanBreadcrumb planId={planId} />, headerSlot)
+        : (
+          <div className={isMobile ? 'px-1.5 pb-1.5 min-w-0' : 'shrink-0 max-w-[40%]'}>
+            <PlanBreadcrumb planId={planId} />
+          </div>
+        )}
 
       <div className={isMobile ? 'flex items-stretch' : 'contents'}>
       <nav

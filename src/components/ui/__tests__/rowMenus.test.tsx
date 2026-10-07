@@ -29,23 +29,31 @@ beforeEach(() => {
   vi.spyOn(db.todos, 'delete').mockResolvedValue(undefined);
 });
 
+
+/** A row's actions live behind its "More actions" menu; open it first. */
+const openMenu = (name: RegExp | string = /More actions for/, index = 0) =>
+  fireEvent.click(screen.getAllByRole('button', { name: typeof name === 'string' ? `More actions for ${name}` : name })[index]);
+
 /*
- * Deleting a to-do was one button revealed on hover — unreachable by pointer
- * until you found it, and never obvious. Editing was hidden behind clicking
- * the title, which nothing suggested. A clipboard card had no actions at all;
- * everything was a screen deep in the detail view.
+ * Deleting a to-do was once one button revealed on hover, and a clipboard card
+ * had no actions at all. Then every row got a rail of three icons with a red
+ * bin, which made a list read as controls. Now each row has one "More actions"
+ * button, always visible, and the menu names each action in words.
  */
-describe('to-do cards carry their actions on the edge', () => {
+describe('to-do rows keep their actions in one menu', () => {
   it('offers edit, pin and delete', () => {
     showTodos([todo()]);
-    const rail = screen.getByTestId('task-actions');
-    expect(rail).toContainElement(screen.getByTestId('task-edit'));
-    expect(rail).toContainElement(screen.getByTestId('task-pin'));
-    expect(rail).toContainElement(screen.getByTestId('task-delete'));
+    expect(screen.getByTestId('task-actions')).toContainElement(screen.getByRole('button', { name: 'More actions for Book the ferry' }));
+    openMenu('Book the ferry');
+    const menu = screen.getByRole('menu');
+    expect(menu).toContainElement(screen.getByTestId('task-edit'));
+    expect(menu).toContainElement(screen.getByTestId('task-pin'));
+    expect(menu).toContainElement(screen.getByTestId('task-delete'));
   });
 
   it('opens the title for editing', () => {
     showTodos([todo()]);
+    openMenu('Book the ferry');
     fireEvent.click(screen.getByTestId('task-edit'));
     expect(screen.getByLabelText('Edit title')).toHaveValue('Book the ferry');
   });
@@ -54,6 +62,7 @@ describe('to-do cards carry their actions on the edge', () => {
   // things that matter get lost in it.
   it('pins a task, and says which are pinned', async () => {
     showTodos([todo()]);
+    openMenu('Book the ferry');
     fireEvent.click(screen.getByTestId('task-pin'));
     await waitFor(() => expect(db.todos.update).toHaveBeenCalledWith('t1', expect.objectContaining({ pinned: true })));
   });
@@ -61,6 +70,8 @@ describe('to-do cards carry their actions on the edge', () => {
   it('unpins one that already is', async () => {
     showTodos([todo({ pinned: true })]);
     expect(screen.getByTestId('task-pinned-flag')).toBeInTheDocument();
+    openMenu('Book the ferry');
+    expect(screen.getByTestId('task-pin')).toHaveTextContent('Unpin');
     fireEvent.click(screen.getByTestId('task-pin'));
     await waitFor(() => expect(db.todos.update).toHaveBeenCalledWith('t1', expect.objectContaining({ pinned: false })));
   });
@@ -74,76 +85,93 @@ describe('to-do cards carry their actions on the edge', () => {
     expect(titles[0]).toContain('Pinned one');
   });
 
-  it('names the task in each control, since the rail has no room for text', () => {
+  it('names the task in each action', () => {
     showTodos([todo()]);
+    openMenu('Book the ferry');
     expect(screen.getByLabelText('Delete: Book the ferry')).toBeInTheDocument();
     expect(screen.getByLabelText('Pin to top: Book the ferry')).toBeInTheDocument();
   });
 });
 
-describe('clipboard cards carry theirs too', () => {
+describe('clipboard cards do the same', () => {
   const handlers = { onEdit: vi.fn(), onPin: vi.fn(), onDelete: vi.fn(), onClick: vi.fn() };
 
-  it('offers edit, pin and delete', () => {
+  it('offers edit, link and delete', () => {
     render(<ClipboardCard item={clip()} {...handlers} />);
-    const rail = screen.getByTestId('clipboard-actions');
-    expect(rail).toContainElement(screen.getByTestId('clipboard-edit'));
-    expect(rail).toContainElement(screen.getByTestId('clipboard-pin'));
-    expect(rail).toContainElement(screen.getByTestId('clipboard-delete'));
+    openMenu('Auberge booking');
+    const menu = screen.getByRole('menu');
+    expect(menu).toContainElement(screen.getByTestId('clipboard-edit'));
+    expect(menu).toContainElement(screen.getByTestId('clipboard-pin'));
+    expect(menu).toContainElement(screen.getByTestId('clipboard-delete'));
   });
 
-  it('calls each without opening the card', () => {
+  it('acts without opening the card', () => {
     render(<ClipboardCard item={clip()} {...handlers} />);
+    openMenu('Auberge booking');
     fireEvent.click(screen.getByTestId('clipboard-delete'));
     expect(handlers.onDelete).toHaveBeenCalled();
     expect(handlers.onClick).not.toHaveBeenCalled();
   });
 
-  // Pin means linked to a day here — the itinerary card's Pin in reverse.
-  it('shows a linked item as pinned, and offers to unlink it', () => {
+  // The link is a state, so it shows on the card, not only in the menu.
+  it('shows a linked item as linked, and offers to unlink it', () => {
     render(<ClipboardCard item={clip({ linkedDayIndex: 1 })} {...handlers} />);
-    expect(screen.getByTestId('clipboard-pin')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('clipboard-linked-flag')).toHaveTextContent('Linked to Day 2');
+    openMenu('Auberge booking');
     expect(screen.getByLabelText(/Unlink Auberge booking/)).toBeInTheDocument();
   });
 
   it('offers to link one that is not', () => {
     render(<ClipboardCard item={clip()} {...handlers} />);
-    expect(screen.getByTestId('clipboard-pin')).not.toHaveAttribute('aria-pressed');
+    expect(screen.queryByTestId('clipboard-linked-flag')).not.toBeInTheDocument();
+    openMenu('Auberge booking');
     expect(screen.getByLabelText(/Link Auberge booking/)).toBeInTheDocument();
   });
 
   // The card is a button; its controls cannot be nested inside it.
-  it('keeps the rail outside the card button', () => {
+  it('keeps the menu outside the card button', () => {
     render(<ClipboardCard item={clip()} {...handlers} />);
     const open = screen.getByLabelText('Hotel: Auberge booking');
-    expect(open).not.toContainElement(screen.getByTestId('clipboard-delete'));
+    expect(open).not.toContainElement(screen.getByRole('button', { name: 'More actions for Auberge booking' }));
   });
 
-  it('renders no rail at all when nothing can be done', () => {
+  it('shows no menu at all when nothing can be done', () => {
     render(<ClipboardCard item={clip()} onClick={vi.fn()} />);
     expect(screen.queryByTestId('clipboard-actions')).not.toBeInTheDocument();
   });
 });
 
-/*
- * A delete that looks like every other control until you hover it tells a
- * user nothing at the moment they are deciding where to press — and on a
- * phone there is no hover at all.
- */
-describe('what the colours say', () => {
-  it('marks delete as destructive at rest', () => {
+// The rows clipped their content for the old rail, and the opened menu was
+// cut off at the row's edge, showing one item of three.
+describe('an open menu is not cut off', () => {
+  it('does not clip a to-do row, and lifts it while its menu is open', () => {
     showTodos([todo()]);
-    expect(screen.getByTestId('task-delete').className).toContain('text-status-danger');
+    const row = screen.getByTestId('task-row');
+    expect(row.className).not.toContain('overflow-hidden');
+    expect(row.className).toContain('has-[[aria-expanded=true]]:z-20');
   });
 
-  it('leaves the other controls neutral until used', () => {
+  it('does not clip a clipboard card', () => {
+    render(<ClipboardCard item={clip()} onEdit={vi.fn()} onClick={vi.fn()} />);
+    expect(screen.getByTestId('clipboard-card').className).not.toContain('overflow-hidden');
+  });
+});
+
+describe('what the colours say', () => {
+  // Red belongs where the choice is made, not on every row at rest.
+  it('keeps red off the row, and puts it on Delete in the menu', () => {
     showTodos([todo()]);
-    expect(screen.getByTestId('task-edit').className).toContain('text-ink-muted');
+    expect(screen.getByTestId('task-row').querySelector('.text-status-danger')).toBeNull();
+    openMenu('Book the ferry');
+    expect(screen.getByTestId('task-delete').className).toContain('text-status-danger');
     expect(screen.getByTestId('task-edit').className).not.toContain('text-status-danger');
   });
 
-  it('still lights an action that is already on', () => {
-    showTodos([todo({ pinned: true })]);
-    expect(screen.getByTestId('task-pin').className).toContain('text-accent');
+  it('sets Delete apart from the other actions', () => {
+    showTodos([todo()]);
+    openMenu('Book the ferry');
+    const items = screen.getAllByRole('menuitem');
+    expect(items.at(-1)).toBe(screen.getByTestId('task-delete'));
+    expect(screen.getByRole('separator')).toBeInTheDocument();
   });
 });

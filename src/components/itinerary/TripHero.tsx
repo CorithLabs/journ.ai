@@ -154,7 +154,7 @@ export default function TripHero({
         </div>
       </div>
 
-      <figure className="relative m-0 min-h-[300px] md:min-h-[360px] overflow-hidden bg-gradient-to-br from-[#0f2236] via-[#0b1322] to-[#1b1533]" data-testid="trip-photo">
+      <figure className="relative m-0 min-h-[220px] md:min-h-[360px] overflow-hidden bg-gradient-to-br from-[#0f2236] via-[#0b1322] to-[#1b1533]" data-testid="trip-photo">
         {photo ? (
           <img
             src={photo.src}
