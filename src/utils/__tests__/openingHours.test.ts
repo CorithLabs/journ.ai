@@ -45,5 +45,6 @@ describe('hours a person can read', () => {
 
   it('says open all hours plainly', () => {
     expect(readableHours('24/7')).toEqual(['Open 24 hours']);
+    expect(readableHours('sunrise-sunset')).toEqual(['Sunrise to sunset']);
   });
 });

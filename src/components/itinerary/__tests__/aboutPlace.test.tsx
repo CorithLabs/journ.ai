@@ -61,8 +61,8 @@ describe('what the sources say', () => {
 
   it('shows the hours, fee and the name to show a driver', () => {
     show(act({ about: { facts } }));
+    expect(screen.getByTestId('about-hours')).toHaveTextContent('Sunrise to sunset');
     const chips = screen.getByTestId('about-map-facts');
-    expect(chips).toHaveTextContent('sunrise-sunset');
     expect(chips).toHaveTextContent('Free');
     expect(chips).toHaveTextContent('明治神宮');
   });
@@ -81,6 +81,23 @@ describe('what the sources say', () => {
   it('says plainly when nothing was found', () => {
     show(act({ about: { facts: { checkedAt: facts.checkedAt } } }));
     expect(screen.getByTestId('about-nothing')).toBeInTheDocument();
+  });
+});
+
+// Checked without AI, from the hours: the demo trip had Shinjuku Gyoen on a Monday.
+describe('a closed day', () => {
+  const gyoen = act({ id: 'g', name: 'Shinjuku Gyoen' });
+  const onMonday = { ...plan, itinerary: [{ dayIndex: 1, label: 'Day 2', activities: [gyoen] }] }; // 11 Oct + 1 = Mon 12 Oct
+  const withHours = (hours: string) => ({ ...gyoen, about: { facts: { map: { openingHours: hours }, checkedAt: facts.checkedAt } } });
+
+  it('is called out when the place says it is shut that day', () => {
+    render(<AboutPlace act={withHours('Mo off; Tu-Su 09:00-16:30')} plan={onMonday} onSave={vi.fn()} onAddNote={vi.fn()} />);
+    expect(screen.getByTestId('about-closed')).toHaveTextContent('Closed on Mondays, and it is planned for Mon 12 Oct.');
+  });
+
+  it('stays quiet when it is open', () => {
+    render(<AboutPlace act={withHours('Tu off; Mo,We-Su 09:00-16:30')} plan={onMonday} onSave={vi.fn()} onAddNote={vi.fn()} />);
+    expect(screen.queryByTestId('about-closed')).not.toBeInTheDocument();
   });
 });
 

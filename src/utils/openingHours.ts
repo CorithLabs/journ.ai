@@ -104,7 +104,8 @@ export function readableHours(hours: string): string[] {
       .replace(/\bPH\b/g, 'public holidays')
       .replace(/(\d{2}:\d{2})-(\d{2}:\d{2})/g, '$1–$2')
       .replace(/(\d{1,2} [A-Z][a-z]{2})-(\d)/g, '$1 – $2')
-      .replace(/([A-Za-z]{3})-([A-Za-z]{3})/g, '$1–$2')
+      .replace(/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)-(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/g, '$1–$2')
+      .replace(/\bsunrise-sunset\b/gi, 'Sunrise to sunset')
       .replace(/,/g, ', ');
     return off ? `Closed ${body}` : body;
   });
