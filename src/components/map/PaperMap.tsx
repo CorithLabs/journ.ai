@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { LocateFixed } from 'lucide-react';
 import type { Plan } from '../../db';
 import { getDayColor } from '../../constants/colors';
 import { totalRouteDistanceKm, haversineKm, type PinActivity } from '../../services/places';
@@ -7,6 +8,7 @@ import { tripRoute } from '../../utils/travel';
 import { dayPlace } from '../../utils/dayPlace';
 import { dateRange } from '../../utils/dateText';
 import { spreadCoincident } from './spread';
+import { canDrawStreets, type BaseView } from './PaperBaseMap';
 import {
   directionWord,
   districtOf,
@@ -52,6 +54,9 @@ const FOUND = '#047857';
 /** Used until the sheet has been measured, and where it cannot be (tests). */
 const FALLBACK = { w: 720, h: 540 };
 
+// The street map and its renderer arrive only when the map is opened.
+const PaperBaseMap = lazy(() => import('./PaperBaseMap'));
+
 const PIN_PATH = 'M0,0 C-3,-7 -11,-12 -11,-21 A11,11 0 1 1 11,-21 C11,-12 3,-7 0,0 Z';
 
 interface Item {
@@ -92,6 +97,14 @@ export default function PaperMap({
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState(FALLBACK);
+  /*
+   * The city under the pins: real streets when they can be drawn, the plain
+   * sheet when they cannot — offline, no WebGL, or the tiles would not load.
+   * Either way the sheet looks like the same piece of paper.
+   */
+  const [streets, setStreets] = useState(canDrawStreets);
+  const [baseView, setBaseView] = useState<BaseView | null>(null);
+  const [recentre, setRecentre] = useState(0);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -140,10 +153,25 @@ export default function PaperMap({
     const framed = nearItems.length ? nearItems : items;
     const P = fitProjection(framed.length ? framed.map((i) => i.at) : [mid], { x: 0, y: 0, w: W, h: H }, pad);
 
-    return { nearItems, insetItems, arrowItems, insetBox, P, mid };
+    // The same stops, as bounds for the street map to frame.
+    const pts = framed.length ? framed.map((i) => i.at) : [mid];
+    const span = 0.006; // a single pin still gets its streets around it
+    const lngs = pts.map((p) => p[0]);
+    const lats = pts.map((p) => p[1]);
+    const frame: [LngLat, LngLat] = [
+      [Math.min(...lngs) - span, Math.min(...lats) - span],
+      [Math.max(...lngs) + span, Math.max(...lats) + span],
+    ];
+    const padding = { top: pad.t, bottom: pad.b, left: pad.l, right: pad.r };
+
+    return { nearItems, insetItems, arrowItems, insetBox, P: P as Projection, mid, frame, padding };
   }, [items, selectedDayIndex, W, H, compact, m]);
 
-  const { nearItems, insetItems, arrowItems, insetBox, P, mid } = layout;
+  const { nearItems, insetItems, arrowItems, insetBox, mid, frame, padding } = layout;
+  // Over the street map, things go where the map says; on plain paper, where the fit does.
+  const onStreets = streets && !!baseView;
+  const P: Projection = onStreets ? { xy: baseView!.xy, ll: baseView!.ll, pxPerKm: baseView!.pxPerKm } : layout.P;
+  const frameKey = `${selectedDayIndex ?? 'all'}:${pins.map((p) => p.activity.id).join(',')}`;
 
   // The day's straight-line route, for the strip under the map.
   useEffect(() => {
@@ -160,14 +188,19 @@ export default function PaperMap({
   const lastBox = useRef('');
   useEffect(() => {
     if (!items.length) return;
-    const [w, n] = P.ll(m, m);
-    const [e, s] = P.ll(W - m, H - m);
-    const bbox: BBox = [w, s, e, n];
+    let bbox: BBox;
+    if (onStreets) {
+      bbox = baseView!.bounds;
+    } else {
+      const [w, n] = P.ll(m, m);
+      const [e, s] = P.ll(W - m, H - m);
+      bbox = [w, s, e, n];
+    }
     const key = bbox.map((v) => v.toFixed(4)).join(',');
     if (key === lastBox.current) return;
     lastBox.current = key;
     viewportRef.current?.(bbox);
-  }, [P, items.length, W, H, m]);
+  }, [P, items.length, W, H, m, onStreets, baseView]);
 
   const day = selectedDayIndex !== null ? plan.itinerary.find((d) => d.dayIndex === selectedDayIndex) : null;
   const destinationName = plan.destination.split(',')[0].trim();
@@ -185,7 +218,27 @@ export default function PaperMap({
       role="group"
       aria-label={`Map showing itinerary for ${plan.destination}`}
     >
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: 'block' }}>
+      {streets && (
+        <Suspense fallback={null}>
+          <PaperBaseMap
+            frame={frame}
+            padding={padding}
+            frameKey={frameKey}
+            recentre={recentre}
+            onView={setBaseView}
+            onUnavailable={() => { setStreets(false); setBaseView(null); }}
+          />
+        </Suspense>
+      )}
+      {/* Over the street map the sheet only draws; dragging goes to the map,
+          and only the pins and markers take a tap. */}
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height="100%"
+        className="absolute inset-0"
+        style={{ display: 'block', pointerEvents: onStreets ? 'none' : undefined }}
+      >
         <defs>
           <filter id="paper-grain" x="0" y="0" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves={2} stitchTiles="stitch" result="n" />
@@ -197,14 +250,31 @@ export default function PaperMap({
           </radialGradient>
         </defs>
 
-        <rect width={W} height={H} fill={PAPER} />
-        <rect width={W} height={H} filter="url(#paper-grain)" />
-        <rect width={W} height={H} fill="url(#paper-vignette)" />
+        {!onStreets && <rect width={W} height={H} fill={PAPER} />}
+        {/* Grain only on plain paper: over the street map it renders as a
+            solid sheet in Chrome, and the tiles are already paper-coloured. */}
+        {!onStreets && <rect width={W} height={H} filter="url(#paper-grain)" />}
+        <rect width={W} height={H} fill="url(#paper-vignette)" opacity={onStreets ? 0.7 : 1} />
         <rect x={m} y={m} width={W - 2 * m} height={H - 2 * m} fill="none" stroke={INK} strokeWidth={1.5} opacity={0.7} />
         <rect x={m + 4} y={m + 4} width={W - 2 * m - 8} height={H - 2 * m - 8} fill="none" stroke={INK} strokeWidth={0.6} opacity={0.5} />
 
-        {items.length > 0 && <Graticule P={P} W={W} H={H} m={m} compact={compact} />}
-        <Districts items={nearItems} P={P} W={W} compact={compact} cities={cities} />
+        {/* The street map has its own streets and names; these are for plain paper. */}
+        {!onStreets && items.length > 0 && <Graticule P={P} W={W} H={H} m={m} compact={compact} />}
+        {!onStreets && <Districts items={nearItems} P={P} W={W} compact={compact} cities={cities} />}
+
+        {onStreets && (
+          <rect
+            x={m + (compact ? 6 : 10)}
+            y={m + (compact ? 8 : 10)}
+            width={Math.max(title.length * (compact ? 13 : 18), subtitle.length * (compact ? 5.4 : 6.4)) + (compact ? 22 : 30)}
+            height={compact ? 52 : 66}
+            rx={4}
+            fill={PAPER}
+            fillOpacity={0.9}
+            stroke={INK}
+            strokeOpacity={0.35}
+          />
+        )}
 
         <text x={m + (compact ? 14 : 22)} y={m + (compact ? 34 : 44)} fontFamily={SERIF} fontSize={compact ? 22 : 30} fontWeight={600} fill={INK}>
           {title}
@@ -213,10 +283,13 @@ export default function PaperMap({
           {subtitle}
         </text>
 
-        {items.length > 0 && <ScaleBar P={P} m={m} H={H} compact={compact} />}
+        {items.length > 0 && <ScaleBar P={P} m={m} H={H} compact={compact} backed={onStreets} />}
+        {/* Top right unless the inset is there; then bottom right on paper, or
+            bottom left over the street map, whose credit and recentre button
+            take the bottom right. */}
         <Compass
-          cx={W - m - (compact ? 34 : 52)}
-          cy={insetBox ? H - m - (compact ? 40 : 56) : m + (compact ? 46 : 62)}
+          cx={insetBox && onStreets ? m + (compact ? 40 : 58) : W - m - (compact ? 34 : 52)}
+          cy={insetBox ? H - m - (compact ? 74 : 96) : m + (compact ? 46 : 62)}
           k={compact ? 0.7 : 1}
         />
 
@@ -232,7 +305,7 @@ export default function PaperMap({
               tabIndex={0}
               aria-label={`${place.name} — add to your trip`}
               data-testid="discovered-pin"
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer', pointerEvents: 'auto' }}
               onClick={open}
               onKeyDown={(e) => activate(e, open)}
             >
@@ -282,6 +355,19 @@ export default function PaperMap({
           />
         )}
       </svg>
+
+      {onStreets && (
+        <button
+          type="button"
+          onClick={() => setRecentre((n) => n + 1)}
+          className="absolute right-3 bottom-10 z-[1] p-2 rounded-xl bg-[#f8f1e1]/95 border border-[#5b4a2e]/30 text-[#5b4a2e] shadow-card hover:bg-[#f8f1e1]"
+          aria-label="Show the whole day again"
+          title="Show the whole day again"
+          data-testid="paper-recentre"
+        >
+          <LocateFixed size={16} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }
@@ -373,7 +459,7 @@ function Pin({ item, xy, selected, label, labelRight, onClick, small }: {
       aria-label={`Pin ${pin.sequenceNumber}: ${pin.activity.name}`}
       aria-pressed={selected}
       data-testid="paper-pin"
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', pointerEvents: 'auto' }}
       onClick={onClick}
       onKeyDown={(e) => activate(e, onClick)}
     >
@@ -411,7 +497,7 @@ function EdgeArrow({ item, from, to, km, dir, box, onClick }: {
   const text = `${item.pin.sequenceNumber}. ${item.pin.activity.name} · ${Math.round(km)} km ${dir}`;
   return (
     <g role="button" tabIndex={0} aria-label={`Pin ${item.pin.sequenceNumber}: ${item.pin.activity.name}, ${Math.round(km)} km ${dir}`}
-      data-testid="paper-edge-arrow" style={{ cursor: 'pointer' }} onClick={onClick} onKeyDown={(e) => activate(e, onClick)}>
+      data-testid="paper-edge-arrow" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={onClick} onKeyDown={(e) => activate(e, onClick)}>
       <path d="M-14,-7 L4,0 L-14,7 Z" transform={`translate(${x},${y}) rotate(${angle})`} fill={color} stroke={inkOf(color)} strokeWidth={1.5} />
       <text x={lx} y={y + (below ? 26 : -14)} textAnchor="middle" fontSize={12} fontWeight={600} fontFamily={SERIF}
         fill={INK} paintOrder="stroke" stroke={PAPER} strokeWidth={4}>
@@ -441,7 +527,7 @@ function Inset({ items, box, from, cityName, plan, compact, selectedActivityId, 
   const pts = items.map((i) => P.xy(i.at));
   const km = Math.round(haversineKm(from, items[0].at));
   return (
-    <g data-testid="paper-inset">
+    <g data-testid="paper-inset" style={{ pointerEvents: 'auto' }}>
       <rect x={box.x + 3} y={box.y + 4} width={box.w} height={box.h} fill="rgba(60,40,10,.12)" />
       <rect x={box.x} y={box.y} width={box.w} height={box.h} fill={PAPER_2} stroke={INK} strokeWidth={1.2} />
       <text x={box.x + 10} y={box.y + 18} fontSize={compact ? 11 : 13} fontWeight={600} fontFamily={SERIF} fill={ink}>
@@ -461,13 +547,14 @@ function Inset({ items, box, from, cityName, plan, compact, selectedActivityId, 
   );
 }
 
-function ScaleBar({ P, m, H, compact }: { P: Projection; m: number; H: number; compact: boolean }) {
+function ScaleBar({ P, m, H, compact, backed }: { P: Projection; m: number; H: number; compact: boolean; backed?: boolean }) {
   const km = niceScaleKm(P.pxPerKm, compact ? 70 : 110);
   const len = km * P.pxPerKm;
   const x = m + (compact ? 14 : 22);
   const y = H - m - (compact ? 18 : 24);
   return (
     <g aria-label={`Scale: ${km < 1 ? `${km * 1000} metres` : `${km} km`}`} data-testid="paper-scale">
+      {backed && <rect x={x - 8} y={y - 22} width={len + 16} height={28} rx={4} fill={PAPER} fillOpacity={0.9} />}
       <rect x={x} y={y - 4} width={len / 2} height={4} fill={INK} />
       <rect x={x + len / 2} y={y - 4} width={len / 2} height={4} fill={PAPER} stroke={INK} strokeWidth={1} />
       <text x={x} y={y - 9} fontSize={10} fill={INK} fontFamily={SERIF}>0</text>
