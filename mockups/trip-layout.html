@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Trip Layout Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&display=swap" rel="stylesheet">
+<!--
+  Mockup: the "trip itinerary" page layout (hero, transport strip, day jump
+  pills, timeline of day cards, side panel) in journ.ai's own tokens.
+  Data is the seeded Tokyo demo plan plus arrival/departure legs, so every
+  field shown maps to Plan / Day / Activity / TodoItem / ClipboardItem.
+-->
+<style>
+  :root{
+    /* journ.ai tokens (src/index.css + tailwind.config.ts) */
+    --base:#0a0f1a; --raised:#111827; --overlay:#1a2235;
+    --accent:#06b6d4; --accent-light:#67e8f9; --accent-muted:#0891b2; --sky:#0ea5e9;
+    --ink:#f1f5f9; --ink-2:#94a3b8; --ink-3:#7c8b9f; --inverse:#0a0f1a;
+    --success:#10b981; --warning:#f59e0b; --danger:#f87171;
+    --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+    --r-card:16px; --r-ctl:12px;
+    --shadow-card:0 2px 12px rgba(0,0,0,.3);
+    --serif:"Lora",Georgia,serif;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{margin:0;background:var(--base);color:var(--ink);font:15px/1.55 var(--sans)}
+  button{font:inherit;color:inherit}
+  svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+  /* ── App shell (simplified) ───────────────────────────── */
+  .shell{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100dvh}
+  .side{background:var(--raised);border-right:1px solid var(--line);padding:18px 14px;position:sticky;top:0;height:100dvh}
+  .brand{font-weight:700;letter-spacing:-.01em;padding:4px 8px 18px}
+  .brand b{color:var(--accent)}
+  .side h4{margin:0 8px 8px;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+  .plan-link{display:flex;justify-content:space-between;padding:9px 10px;border-radius:var(--r-ctl);color:var(--ink-2);font-size:.9rem}
+  .plan-link.on{background:rgba(6,182,212,.12);color:var(--ink);box-shadow:inset 2px 0 0 var(--accent)}
+  .plan-link small{color:var(--ink-3)}
+  .main{min-width:0}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 28px;border-bottom:1px solid var(--line);background:rgba(10,15,26,.85);backdrop-filter:blur(12px)}
+  .crumb{color:var(--ink-3);font-size:.85rem}.crumb b{color:var(--ink);font-weight:600}
+  .tabs{display:flex;gap:4px}
+  .tabs span{padding:7px 14px;border-radius:var(--r-ctl);font-size:.86rem;color:var(--ink-2)}
+  .tabs span.on{background:var(--overlay);color:var(--ink);box-shadow:inset 0 -2px 0 var(--accent)}
+
+  .page{max-width:1160px;margin:0 auto;padding:28px 28px 80px}
+
+  /* ── Hero ─────────────────────────────────────────────── */
+  .hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);background:var(--raised);border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;box-shadow:var(--shadow-card)}
+  .hero-copy{padding:clamp(28px,5vw,56px);display:flex;flex-direction:column;justify-content:center}
+  .route{display:flex;align-items:center;gap:10px;color:var(--accent-light);font-weight:700;font-size:.76rem;letter-spacing:.12em;text-transform:uppercase}
+  .route:before{content:"";width:30px;height:2px;background:var(--accent)}
+  h1{font:600 clamp(2.2rem,4.6vw,3.9rem)/1.04 var(--serif);letter-spacing:-.035em;margin:16px 0 14px;max-width:13ch}
+  .hero-copy>p{margin:0;color:var(--ink-2);max-width:52ch;font-size:1.02rem}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;border:1px solid var(--line-2);background:var(--overlay);font-size:.82rem;font-weight:600;color:var(--ink)}
+  .chip.soft{color:var(--ink-2);font-weight:500}
+
+  /* Right side: destination photo (Wikipedia lead image for plan.destination)
+     with the trip's weather laid over it. */
+  :root{--rain:#38bdf8;--snow:#c7d2fe;--wind:#fbbf24;--storm:#f87171}
+  .hero-photo{position:relative;min-height:340px;margin:0;background:#0f2236;overflow:hidden}
+  .hero-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:60% 50%}
+  .hero-photo:after{content:"";position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(10,15,26,.55) 0%,transparent 34%,transparent 46%,rgba(10,15,26,.88) 100%)}
+  .photo-inner{position:absolute;z-index:1;inset:0;padding:18px;display:flex;flex-direction:column;justify-content:space-between;gap:12px}
+  .credit{position:absolute;z-index:1;right:10px;bottom:6px;font-size:.66rem;color:rgba(241,245,249,.6)}
+  .credit a{color:inherit}
+
+  /* Weather alerts, top of the photo. Only rendered when detectAlerts() finds one. */
+  .alerts{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .alert{display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 9px;border-radius:999px;cursor:pointer;
+    background:rgba(10,15,26,.66);backdrop-filter:blur(12px);border:1px solid color-mix(in srgb,var(--k) 55%,transparent);
+    color:var(--ink);font-size:.82rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  .alert svg{color:var(--k)}
+  .alert span{color:var(--ink-2);font-weight:500}
+  .alert:hover,.alert:focus-visible{border-color:var(--k);outline:none}
+
+  .wx{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .wx div{background:rgba(10,15,26,.6);backdrop-filter:blur(12px);border:1px solid var(--line-2);border-radius:var(--r-ctl);padding:9px 11px}
+  .wx div.hit{border-color:color-mix(in srgb,var(--k) 70%,transparent);background:color-mix(in srgb,var(--k) 16%,rgba(10,15,26,.7))}
+  .wx b{display:flex;justify-content:space-between;align-items:center;font-size:.7rem;color:var(--ink-2);font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+  .wx b svg{width:14px;height:14px;color:var(--k,var(--ink-2))}
+  .wx span{font-size:1.15rem;font-weight:700}
+  .wx em{display:block;font-style:normal;font-size:.76rem;color:var(--ink-2)}
+  .wx div.hit em{color:var(--k)}
+
+  /* Same alert, on the day it affects */
+  .wxband{display:flex;align-items:center;gap:12px;padding:11px 24px;border-bottom:1px solid var(--line);
+    background:linear-gradient(90deg,color-mix(in srgb,var(--k) 18%,transparent),transparent 80%)}
+  .wxband>svg{width:22px;height:22px;color:var(--k)}
+  .wxband div{flex:1;min-width:0;font-size:.88rem;line-height:1.35}
+  .wxband strong{display:block;color:var(--ink)}
+  .wxband span{color:var(--ink-2);font-size:.8rem}
+  .wxband button{flex:none;border:1px solid color-mix(in srgb,var(--k) 55%,transparent);background:transparent;color:var(--k);border-radius:var(--r-ctl);padding:6px 11px;font-size:.8rem;font-weight:600;cursor:pointer}
+  .tag.wx-hit{color:var(--k);display:inline-flex;align-items:center;gap:4px}
+  .tag.wx-hit svg{width:13px;height:13px}
+  .jump button .wi{display:inline-flex;margin-left:-2px}
+  .jump button .wi svg{width:14px;height:14px;color:var(--k)}
+  .jump button.active .wi svg{color:var(--inverse)}
+
+  /* Mockup-only scenario switch */
+  .mock{position:fixed;right:16px;bottom:16px;z-index:20;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;background:var(--overlay);border:1px dashed var(--line-2);box-shadow:var(--shadow-card);font-size:.76rem}
+  .mock em{font-style:normal;color:var(--ink-3);padding:0 8px}
+  .mock button{white-space:nowrap;border:0;background:none;padding:6px 10px;border-radius:999px;cursor:pointer;color:var(--ink-2);font-weight:600}
+  .mock button.on{background:var(--accent);color:var(--inverse)}
+
+  /* ── Transport strip (plan.arrival / plan.departure) ──── */
+  .legs{margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);border-radius:var(--r-card);overflow:hidden;border:1px solid rgba(6,182,212,.3);background:linear-gradient(90deg,rgba(6,182,212,.14),rgba(14,165,233,.08))}
+  .leg{padding:18px 22px;border-right:1px solid rgba(6,182,212,.2)}
+  .leg:last-child{border-right:0}
+  .leg-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .leg strong{display:flex;align-items:center;gap:8px;font-size:1.05rem}
+  .leg strong svg{color:var(--accent-light)}
+  .leg time{font-weight:700;font-variant-numeric:tabular-nums}
+  .leg p{margin:4px 0 0;font-size:.84rem;color:var(--ink-2)}
+  .leg.missing p{color:var(--warning)}
+
+  /* ── Sticky day bar ───────────────────────────────────── */
+  .daybar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 -28px;padding:14px 28px;background:rgba(10,15,26,.88);backdrop-filter:blur(12px);border-bottom:1px solid transparent;transition:border-color .2s}
+  .daybar.stuck{border-bottom-color:var(--line)}
+  .jump{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+  .jump::-webkit-scrollbar{display:none}
+  .jump button{flex:none;display:flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--raised);padding:7px 14px;border-radius:999px;cursor:pointer;font-weight:600;font-size:.86rem;color:var(--ink-2)}
+  .jump button i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+  .jump button:hover{border-color:var(--c);color:var(--ink)}
+  .jump button.active{background:var(--c);border-color:var(--c);color:var(--inverse)}
+  .jump button.active i{background:var(--inverse)}
+  .jump button:focus-visible{outline:2px solid var(--accent-light);outline-offset:2px}
+  .actions{display:flex;gap:8px;flex:none}
+  .btn{display:inline-flex;align-items:center;gap:6px;border-radius:var(--r-ctl);padding:8px 14px;font-weight:600;font-size:.86rem;cursor:pointer;border:1px solid var(--line-2);background:var(--raised)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--inverse)}
+
+  /* ── Content grid ─────────────────────────────────────── */
+  .content{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:32px;margin-top:22px;align-items:start}
+  .timeline{position:relative}
+  .timeline:before{content:"";position:absolute;left:25px;top:20px;bottom:20px;width:2px;background:linear-gradient(var(--line-2),var(--line))}
+  .day{position:relative;display:grid;grid-template-columns:52px minmax(0,1fr);gap:20px;padding-bottom:28px;scroll-margin-top:80px}
+  .day:last-child{padding-bottom:0}
+  .dot{position:relative;z-index:1;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;text-align:center;line-height:1.05;background:var(--raised);border:2px solid var(--c);color:var(--ink);box-shadow:0 0 0 6px var(--base)}
+  .dot b{display:block;font-size:1.05rem}
+  .dot small{font-size:.6rem;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+  .day.today .dot{background:var(--c);color:var(--inverse)}
+  .day.today .dot small{color:var(--inverse)}
+  .card{background:var(--raised);border:1px solid var(--line);border-top:3px solid var(--c);border-radius:var(--r-card);box-shadow:var(--shadow-card);overflow:hidden}
+  .day-head{padding:20px 24px 14px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+  .day-label{margin:0;color:var(--c);font-weight:700;font-size:.74rem;letter-spacing:.1em;text-transform:uppercase}
+  h2{font:600 clamp(1.4rem,2.6vw,1.85rem)/1.15 var(--serif);letter-spacing:-.02em;margin:4px 0 0}
+  .meta{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:.76rem;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2);white-space:nowrap}
+  .pill.warn{color:var(--warning);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.08)}
+  .pill.rain{color:var(--sky);border-color:rgba(14,165,233,.4);background:rgba(14,165,233,.08)}
+
+  .stops{list-style:none;margin:0;padding:0 24px 8px}
+  .stop{display:grid;grid-template-columns:86px minmax(0,1fr);gap:16px;padding:15px 0;border-top:1px solid var(--line)}
+  .stop time{font-weight:700;font-size:.86rem;color:var(--accent-light);font-variant-numeric:tabular-nums}
+  .stop time.slot{color:var(--ink-2);font-weight:600}
+  .stop h3{margin:0;font-size:1rem;line-height:1.35}
+  .loc{display:flex;align-items:center;gap:5px;margin:2px 0 4px;font-size:.82rem;color:var(--ink-3)}
+  .loc svg{width:13px;height:13px}
+  .stop p{margin:0;color:var(--ink-2);font-size:.92rem}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:.74rem;font-weight:700;color:var(--success)}
+  .tag.todo{color:var(--accent-light)}
+  .tag.warn{color:var(--warning)}
+  .note{margin:6px 24px 22px;padding:12px 14px;border-radius:var(--r-ctl);background:var(--overlay);border:1px solid var(--line);font-size:.88rem;color:var(--ink-2);display:flex;gap:10px}
+  .note svg{color:var(--accent-light);margin-top:2px}
+  .note strong{color:var(--ink)}
+  .add{display:flex;align-items:center;gap:6px;margin:0 24px 18px;padding:0;border:0;background:none;color:var(--success);font-size:.82rem;font-weight:600;cursor:pointer}
+
+  /* ── Side panel ───────────────────────────────────────── */
+  aside{position:sticky;top:76px;display:grid;gap:16px;max-height:calc(100dvh - 92px);overflow:auto;scrollbar-width:thin}
+  .panel{background:var(--raised);border:1px solid var(--line);border-radius:var(--r-card);padding:20px;box-shadow:var(--shadow-card)}
+  .panel h3{display:flex;justify-content:space-between;align-items:baseline;font:600 1.1rem/1.2 var(--serif);margin:0 0 12px}
+  .panel h3 small{font:600 .74rem var(--sans);color:var(--ink-3)}
+  .checklist{list-style:none;margin:0;padding:0}
+  .checklist li{position:relative;padding:0 0 11px 26px;font-size:.88rem;color:var(--ink-2)}
+  .checklist li:last-child{padding-bottom:0}
+  .checklist li:before{content:"";position:absolute;left:0;top:.25em;width:14px;height:14px;border-radius:4px;border:2px solid var(--accent-muted)}
+  .checklist li.done{color:var(--ink-3);text-decoration:line-through}
+  .checklist li.done:before{background:var(--success);border-color:var(--success)}
+  .checklist em{display:block;font-style:normal;font-size:.74rem;color:var(--ink-3);text-decoration:none}
+  .clip{display:block;padding:10px 0;border-top:1px solid var(--line);font-size:.86rem}
+  .clip:first-of-type{border-top:0;padding-top:0}
+  .clip b{display:block;font-weight:600}
+  .clip span{color:var(--ink-3);font-size:.78rem}
+  .prefs{display:flex;flex-wrap:wrap;gap:6px}
+  .prefs .pill.like{color:var(--success);border-color:rgba(16,185,129,.35)}
+  .prefs .pill.dislike{color:var(--danger);border-color:rgba(248,113,113,.35)}
+  .small{font-size:.78rem;color:var(--ink-3);margin:12px 0 0}
+
+  .tabbar{display:none}
+
+  /* ── Tablet ───────────────────────────────────────────── */
+  @media (max-width:1080px){
+    .shell{grid-template-columns:1fr}.side{display:none}
+    .content{grid-template-columns:1fr}
+    aside{position:static;max-height:none;overflow:visible;grid-template-columns:repeat(2,minmax(0,1fr))}
+    aside .panel:last-child{grid-column:1/-1}
+  }
+  /* ── Phone ────────────────────────────────────────────── */
+  @media (max-width:640px){
+    body{font-size:15px}
+    .topbar{padding:10px 16px}.tabs{display:none}
+    .page{padding:16px 16px 96px}
+    .hero{grid-template-columns:1fr}.hero-copy{padding:26px 20px}.hero-photo{min-height:320px}.photo-inner{padding:14px}
+    .wxband{padding:10px 16px;flex-wrap:wrap}.wxband button{margin-left:34px}
+    .mock{bottom:calc(64px + env(safe-area-inset-bottom));right:50%;transform:translateX(50%)}
+    .legs{grid-template-columns:1fr}.leg{border-right:0;border-bottom:1px solid rgba(6,182,212,.2)}.leg:last-child{border-bottom:0}
+    .daybar{margin:0 -16px;padding:10px 16px}
+    .actions .btn span{display:none}
+    .timeline:before{left:17px}
+    .day{grid-template-columns:36px minmax(0,1fr);gap:10px}
+    .dot{width:36px;height:36px;box-shadow:0 0 0 4px var(--base)}.dot small{display:none}.dot b{font-size:.9rem}
+    .day-head{padding:16px 16px 10px;flex-direction:column;gap:10px}
+    .meta{flex-direction:row;flex-wrap:wrap;align-items:center}
+    .stops{padding:0 16px 6px}
+    /* time above the title rather than eating a column */
+    .stop{grid-template-columns:1fr;gap:2px;padding:13px 0}
+    .note{margin:6px 16px 18px}.add{margin:0 16px 16px}
+    aside{grid-template-columns:1fr}
+    .tabbar{display:flex;position:fixed;inset:auto 0 0 0;z-index:10;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(17,24,39,.95);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+    .tabbar span{font-size:.72rem;color:var(--ink-2);padding:6px 10px;border-radius:var(--r-ctl)}
+    .tabbar span.on{color:var(--accent-light);background:rgba(6,182,212,.12)}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+  <symbol id="train" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="13" rx="2"/><path d="M4 11h16M12 3v8M8 19l-2 3M16 19l2 3M8 16h.01M16 16h.01"/></symbol>
+  <symbol id="pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="clip" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></symbol>
+  <symbol id="copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="rain" viewBox="0 0 24 24"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2M16 14v6M8 14v6M12 16v6"/></symbol>
+  <symbol id="snow" viewBox="0 0 24 24"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2M8 15h.01M8 19h.01M12 17h.01M12 21h.01M16 15h.01M16 19h.01"/></symbol>
+  <symbol id="wind" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2"/></symbol>
+  <symbol id="storm" viewBox="0 0 24 24"><path d="M6 16.3A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 .5 9M13 11l-3 5h4l-3 5"/></symbol>
+  <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></symbol>
+  <symbol id="cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="spark" viewBox="0 0 24 24"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></symbol>
+</svg>
+
+<div class="shell">
+  <nav class="side" aria-label="Plans">
+    <div class="brand">journ<b>.ai</b></div>
+    <h4>Plans</h4>
+    <div class="plan-link on">Tokyo Explorer <small>Oct</small></div>
+    <div class="plan-link">Lisbon long weekend <small>Nov</small></div>
+    <div class="plan-link">Banff &amp; Jasper <small>Feb</small></div>
+  </nav>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">Plans / <b>Tokyo Explorer</b></div>
+      <div class="tabs"><span class="on">Itinerary</span><span>Map</span><span>To-do</span><span>Clipboard</span></div>
+    </header>
+
+    <main class="page">
+      <!-- plan.name, plan.destination, plan.arrival.city, plan.stops, intake -->
+      <section class="hero" aria-labelledby="trip-title">
+        <div class="hero-copy">
+          <div class="route">Toronto → Tokyo · Nikko</div>
+          <h1 id="trip-title">Tokyo Explorer</h1>
+          <p>Three days built around street food, temples and anime, with one day trip out to Nikko, and the busiest spots timed to miss the crowds.</p>
+          <div class="chips">
+            <span class="chip">9–11 Oct 2026 · 3 nights</span>
+            <span class="chip soft">In 3 days</span>
+            <span class="chip soft">2 travellers</span>
+            <span class="chip soft">Mid budget</span>
+          </div>
+        </div>
+        <figure class="hero-photo">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Skyscrapers_of_Shinjuku_2009_January.jpg/1280px-Skyscrapers_of_Shinjuku_2009_January.jpg"
+               alt="Shinjuku skyscrapers, Tokyo" />
+          <div class="photo-inner">
+            <div class="alerts" id="alerts" aria-label="Weather alerts"></div>
+            <div class="wx" id="wx" aria-label="Trip forecast"></div>
+          </div>
+          <figcaption class="credit">Shinjuku · <a href="https://commons.wikimedia.org/wiki/File:Skyscrapers_of_Shinjuku_2009_January.jpg" target="_blank" rel="noopener">Wikimedia Commons</a></figcaption>
+        </figure>
+      </section>
+
+      <!-- plan.arrival / plan.stops / plan.departure -->
+      <section class="legs" aria-label="Getting there and back">
+        <div class="leg">
+          <div class="leg-top"><strong><svg class="i"><use href="#plane"/></svg>YYZ → NRT</strong><time>13:25</time></div>
+          <p>Thu 8 Oct · arrives Fri 9 Oct 15:40 local</p>
+        </div>
+        <div class="leg">
+          <div class="leg-top"><strong><svg class="i"><use href="#train"/></svg>Tokyo → Nikko</strong><time>07:40</time></div>
+          <p>Sun 11 Oct · day trip, back same evening</p>
+        </div>
+        <div class="leg missing">
+          <div class="leg-top"><strong><svg class="i"><use href="#plane"/></svg>HND → YYZ</strong><time>—</time></div>
+          <p>Mon 12 Oct · add a departure time</p>
+        </div>
+      </section>
+
+      <div class="daybar" id="daybar">
+        <nav class="jump" aria-label="Jump to a day">
+          <button class="active" data-target="day-0" style="--c:#06b6d4"><i></i>Fri 9<span class="wi"></span></button>
+          <button data-target="day-1" style="--c:#0ea5e9"><i></i>Sat 10<span class="wi"></span></button>
+          <button data-target="day-2" style="--c:#8b5cf6"><i></i>Sun 11<span class="wi"></span></button>
+        </nav>
+        <div class="actions">
+          <button class="btn" id="copyBtn"><svg class="i"><use href="#copy"/></svg><span>Copy summary</span></button>
+          <button class="btn primary"><svg class="i"><use href="#spark"/></svg><span>Ask agent</span></button>
+        </div>
+      </div>
+
+      <div class="content">
+        <div class="timeline">
+
+          <!-- Day 0 · getDayColor(0) -->
+          <article class="day" id="day-0" data-day="0" style="--c:#06b6d4">
+            <div class="dot"><span><b>9</b><small>Fri</small></span></div>
+            <div class="card">
+              <div class="wxslot"></div>
+              <header class="day-head">
+                <div><p class="day-label">Day 1 · Friday · arrival</p><h2>Tokyo Arrival</h2></div>
+                <div class="meta"><span class="pill">Est. $80–140/day</span><span class="pill wxpill"></span></div>
+              </header>
+              <ol class="stops">
+                <li class="stop"><time>3:40 PM</time><div><h3>Land at Narita</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Narita International (NRT)</div><p>Narita Express to Shinjuku, about 80 minutes. Suica works on it.</p></div></li>
+                <li class="stop"><time>6:00 PM</time><div><h3>Check in + drop bags</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Shinjuku Grand, Kabukicho</div><p>Confirmation TK-2025-88421. Breakfast included.</p><div class="tags"><span class="tag">Booked · from Clipboard</span></div></div></li>
+                <li class="stop" data-outdoor><time class="slot">Evening</time><div><h3>Shibuya Crossing</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Shibuya, Tokyo</div><p>Iconic scramble crossing at night. Keep it short; it's day zero.</p></div></li>
+              </ol>
+              <div class="note"><svg class="i"><use href="#clip"/></svg><div><strong>Hotel: Shinjuku Grand.</strong> Check-in 3pm, free breakfast. 2-chome, Kabukicho, Shinjuku.</div></div>
+              <button class="add"><svg class="i"><use href="#plus"/></svg>Add activity</button>
+            </div>
+          </article>
+
+          <!-- Day 1 -->
+          <article class="day" id="day-1" data-day="1" style="--c:#0ea5e9">
+            <div class="dot"><span><b>10</b><small>Sat</small></span></div>
+            <div class="card">
+              <div class="wxslot"></div>
+              <header class="day-head">
+                <div><p class="day-label">Day 2 · Saturday · Tokyo</p><h2>Culture &amp; Parks</h2></div>
+                <div class="meta"><span class="pill">Est. $70–120/day</span><span class="pill wxpill"></span></div>
+              </header>
+              <ol class="stops">
+                <li class="stop" data-outdoor><time>8:00 AM</time><div><h3>Tsukiji Outer Market</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Tsukiji, Tokyo</div><p>Arrive early for a fresh sushi breakfast, before the stalls get busy.</p></div></li>
+                <li class="stop" data-outdoor><time>10:30 AM</time><div><h3>Senso-ji Temple</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Asakusa, Tokyo</div><p>Tokyo's oldest temple. Browse Nakamise shopping street on the way in.</p><div class="tags"><span class="tag todo">Pinned to to-do</span></div></div></li>
+                <li class="stop"><time>2:00 PM</time><div><h3>Akihabara Electric Town</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Akihabara, Tokyo</div><p>Anime, electronics and retro arcades. Mostly indoors, which suits the forecast.</p></div></li>
+                <li class="stop" data-outdoor><time>7:30 PM</time><div><h3>Omoide Yokocho</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Shinjuku, Tokyo</div><p>Atmospheric alley of tiny yakitori bars.</p><div class="tags"><span class="tag warn">Over your daily budget</span></div></div></li>
+              </ol>
+              <button class="add"><svg class="i"><use href="#plus"/></svg>Add activity</button>
+            </div>
+          </article>
+
+          <!-- Day 2 -->
+          <article class="day" id="day-2" data-day="2" style="--c:#8b5cf6">
+            <div class="dot"><span><b>11</b><small>Sun</small></span></div>
+            <div class="card">
+              <div class="wxslot"></div>
+              <header class="day-head">
+                <div><p class="day-label">Day 3 · Sunday · day trip</p><h2>Nikko</h2></div>
+                <div class="meta"><span class="pill">Est. $90–160/day</span><span class="pill wxpill"></span></div>
+              </header>
+              <ol class="stops">
+                <li class="stop"><time>7:40 AM</time><div><h3>Tobu Limited Express to Nikko</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Asakusa Station</div><p>About two hours. Reserve seats the day before.</p><div class="tags"><span class="tag todo">Pinned to to-do</span></div></div></li>
+                <li class="stop" data-outdoor><time>10:00 AM</time><div><h3>Nikko Tosho-gu Shrine</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Nikko, Japan</div><p>Ornate UNESCO World Heritage shrine.</p></div></li>
+                <li class="stop" data-outdoor><time>12:30 PM</time><div><h3>Kegon Falls</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Nikko, Japan</div><p>Dramatic 97m waterfall. Bus from Nikko station, about 45 minutes.</p></div></li>
+                <li class="stop"><time>4:00 PM</time><div><h3>Return to Tokyo</h3><div class="loc"><svg class="i"><use href="#pin"/></svg>Tokyo, Japan</div><p>Train back to the city.</p></div></li>
+              </ol>
+              <button class="add"><svg class="i"><use href="#plus"/></svg>Add activity</button>
+            </div>
+          </article>
+        </div>
+
+        <aside aria-label="Trip notes">
+          <section class="panel">
+            <h3>To-do <small>3 of 5 open</small></h3>
+            <ul class="checklist">
+              <li class="done">Book flights to Tokyo</li>
+              <li class="done">Book accommodation for each night</li>
+              <li>Get travel insurance<em>Document</em></li>
+              <li>Reserve Tobu Express seats<em>Booking · Sun 11</em></li>
+              <li>Add a departure time<em>Booking</em></li>
+            </ul>
+          </section>
+          <section class="panel">
+            <h3>Clipboard <small>2 linked</small></h3>
+            <div class="clip"><b>Hotel: Shinjuku Grand</b><span>Note · Day 1 · 3pm</span></div>
+            <div class="clip"><b>AC001 boarding pass</b><span>Boarding Pass · Thu 8</span></div>
+            <p class="small">Times are local to each city.</p>
+          </section>
+          <section class="panel">
+            <h3>Trip style</h3>
+            <div class="prefs">
+              <span class="pill like">street food</span><span class="pill like">temples</span><span class="pill like">anime</span>
+              <span class="pill dislike">crowds</span>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="mock" role="group" aria-label="Mockup weather preview"><em>Mockup</em>
+  <button class="on" data-s="forecast">Rain + wind</button><button data-s="snow">Snow</button><button data-s="clear">Clear</button>
+</div>
+
+<nav class="tabbar" aria-label="Tabs"><span class="on">Itinerary</span><span>Map</span><span>To-do</span><span>Clipboard</span></nav>
+
+<script>
+/*
+ * Weather per trip day, in services/weather.ts's WeatherDay shape. Alerts use
+ * the same rules as utils/weatherUtils.ts detectAlerts().
+ */
+var DAYS = [{ label: 'Fri 9' }, { label: 'Sat 10' }, { label: 'Sun 11' }];
+var SCENARIOS = {
+  forecast: [{ code: 1, precip: 10, wind: 14, tMax: 22 }, { code: 63, precip: 70, wind: 22, tMax: 18 }, { code: 3, precip: 20, wind: 56, tMax: 17 }],
+  snow: [{ code: 2, precip: 10, wind: 12, tMax: 6 }, { code: 73, precip: 80, wind: 18, tMax: 1 }, { code: 3, precip: 20, wind: 20, tMax: 3 }],
+  clear: [{ code: 0, precip: 0, wind: 10, tMax: 23 }, { code: 1, precip: 5, wind: 12, tMax: 22 }, { code: 2, precip: 10, wind: 15, tMax: 21 }]
+};
+function chance(w) { return w.precip + '% chance · ' + w.tMax + '° high'; }
+var KIND = {
+  storm: { icon: 'storm', c: 'var(--storm)', title: 'Thunderstorms', short: 'Storms', line: chance, stop: 'Outdoors · storms' },
+  snow: { icon: 'snow', c: 'var(--snow)', title: 'Snow expected', short: 'Snow', line: chance, stop: 'Outdoors · snow' },
+  rain: { icon: 'rain', c: 'var(--rain)', title: 'Rain likely', short: 'Rain', line: chance, stop: 'Outdoors · may be wet' },
+  wind: { icon: 'wind', c: 'var(--wind)', title: 'High winds', short: 'Wind', line: function (w) { return 'Gusts to ' + w.wind + ' km/h · ' + w.tMax + '° high'; }, stop: 'Exposed · windy' }
+};
+function alertsFor(w) {
+  var a = [];
+  if (w.code >= 95 && w.code <= 99) a.push('storm');
+  if (w.code >= 71 && w.code <= 77) a.push('snow');
+  else if (w.precip >= 60 || (w.code >= 51 && w.code <= 67) || (w.code >= 80 && w.code <= 82)) a.push('rain');
+  if (w.wind >= 50) a.push('wind');
+  return a;
+}
+function sky(w) { return w.code <= 1 ? ['sun', 'Clear'] : ['cloud', 'Cloudy']; }
+function ico(id) { return '<svg class="i" aria-hidden="true"><use href="#' + id + '"/></svg>'; }
+
+function render(name) {
+  var data = SCENARIOS[name];
+  var alertsEl = document.getElementById('alerts');
+  var wxEl = document.getElementById('wx');
+  alertsEl.innerHTML = '';
+  wxEl.innerHTML = '';
+  data.forEach(function (w, i) {
+    var kinds = alertsFor(w);
+    var k = KIND[kinds[0]];
+    var day = document.querySelector('[data-day="' + i + '"]');
+    var pillBtn = document.querySelector('.jump [data-target="day-' + i + '"]');
+    var wi = pillBtn.querySelector('.wi');
+
+    // 1. On the photo: one chip per alert, which jumps to that day.
+    kinds.forEach(function (kind) {
+      var K = KIND[kind];
+      var b = document.createElement('button');
+      b.className = 'alert';
+      b.style.setProperty('--k', K.c);
+      b.innerHTML = ico(K.icon) + K.title + ' <span>· ' + DAYS[i].label + '</span>';
+      b.onclick = function () { day.scrollIntoView({ block: 'start' }); };
+      alertsEl.appendChild(b);
+    });
+
+    // 2. Forecast tile, tinted when the day is hit.
+    var t = document.createElement('div');
+    var s = sky(w);
+    if (k) { t.className = 'hit'; t.style.setProperty('--k', k.c); }
+    var detail = !k ? s[1] : kinds[0] === 'wind' ? w.wind + ' km/h' : k.short + ' ' + w.precip + '%';
+    t.innerHTML = '<b>' + DAYS[i].label + ico(k ? k.icon : s[0]) + '</b><span>' + w.tMax + '°</span><em>' + detail + '</em>';
+    wxEl.appendChild(t);
+
+    // 3. On the day itself: band, header pill, affected outdoor stops, day-button icon.
+    var slot = day.querySelector('.wxslot');
+    var pill = day.querySelector('.wxpill');
+    var outdoor = day.querySelectorAll('[data-outdoor]');
+    slot.innerHTML = '';
+    day.querySelectorAll('.tag.wx-hit').forEach(function (n) { n.remove(); });
+    day.querySelectorAll('.tags:empty').forEach(function (n) { n.remove(); });
+    wi.innerHTML = '';
+    pill.removeAttribute('style');
+    if (k) {
+      var titles = kinds.map(function (kind) { return KIND[kind].title; }).join(' + ');
+      slot.innerHTML = '<div class="wxband" style="--k:' + k.c + '">' + ico(k.icon) +
+        '<div><strong>' + titles + '</strong><span>' + k.line(w) + ' · ' + outdoor.length + ' outdoor stop' + (outdoor.length === 1 ? '' : 's') + ' affected</span></div>' +
+        '<button type="button">See swaps</button></div>';
+      pill.style.color = k.c;
+      pill.style.borderColor = 'color-mix(in srgb,' + k.c + ' 45%,transparent)';
+      pill.innerHTML = ico(k.icon) + w.tMax + '° · ' + k.short.toLowerCase();
+      outdoor.forEach(function (li) {
+        var tags = li.querySelector('.tags');
+        if (!tags) { tags = document.createElement('div'); tags.className = 'tags'; li.lastElementChild.appendChild(tags); }
+        var tg = document.createElement('span');
+        tg.className = 'tag wx-hit';
+        tg.style.setProperty('--k', k.c);
+        tg.innerHTML = ico(k.icon) + k.stop;
+        tags.prepend(tg);
+      });
+      wi.style.setProperty('--k', k.c);
+      wi.innerHTML = ico(k.icon);
+      pillBtn.setAttribute('aria-label', DAYS[i].label + ', ' + titles);
+    } else {
+      pill.innerHTML = ico(s[0]) + w.tMax + '° ' + s[1].toLowerCase();
+      pillBtn.removeAttribute('aria-label');
+    }
+  });
+  alertsEl.hidden = !alertsEl.children.length;
+}
+
+// Mockup-only: preview the different weather states.
+document.querySelectorAll('.mock button').forEach(function (b) {
+  b.onclick = function () {
+    document.querySelectorAll('.mock button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    render(b.dataset.s);
+  };
+});
+render('forecast');
+
+(function(){
+  var buttons=[].slice.call(document.querySelectorAll('.jump button'));
+  buttons.forEach(function(b){
+    b.addEventListener('click',function(){
+      var t=document.getElementById(b.dataset.target);
+      if(t) t.scrollIntoView({block:'start'});
+    });
+  });
+  if('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(entries){
+      var v=entries.filter(function(e){return e.isIntersecting}).sort(function(a,b){return b.intersectionRatio-a.intersectionRatio})[0];
+      if(!v) return;
+      buttons.forEach(function(b){
+        var on=b.dataset.target===v.target.id;
+        b.classList.toggle('active',on);
+        // Keep the active pill in view on phones without moving the page.
+        if(on) b.parentNode.scrollTo({left:b.offsetLeft-16});
+      });
+    },{rootMargin:'-20% 0px -60% 0px',threshold:[0,.25,.5]});
+    document.querySelectorAll('.day').forEach(function(d){io.observe(d)});
+    var bar=document.getElementById('daybar');
+    new IntersectionObserver(function(e){bar.classList.toggle('stuck',e[0].intersectionRatio<1)},{threshold:[1],rootMargin:'-1px 0px 0px 0px'}).observe(bar);
+  }
+})();
+</script>
+</body>
+</html>
