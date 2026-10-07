@@ -111,14 +111,16 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
    *   - the last lookup did not reach every source (offline, a timeout),
    *     so "nothing found" there meant "nobody answered";
    *   - the stop has been renamed or moved since;
-   *   - they are an empty answer saved before lookups recorded either of
-   *     those, which may be exactly that kind of miss.
+   *   - they are empty. An empty answer is cheap to ask again and was often
+   *     wrong (a source hiccup, an older and weaker search), and keeping it
+   *     left "nothing found" on a place as well known as the Deutsches
+   *     Museum.
    */
   const kept = act.about?.facts;
   const stale = !kept
     || kept.complete === false
     || (kept.query !== undefined && kept.query !== factsQuery(place))
-    || (kept.query === undefined && !kept.wiki && !kept.map);
+    || (!kept.wiki && !kept.map);
 
   const lookUp = () => {
     let live = true;
@@ -171,6 +173,9 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
   const nothingFound = facts && !facts.wiki && !facts.map;
   // An empty answer only counts as one when every source answered.
   const unreached = nothingFound && facts.complete === false;
+  // Once the AI guide is there it is the answer: a line saying the sources had
+  // nothing, above an account of the place, read as a contradiction.
+  const sayNothing = nothingFound && !loadingFacts && !guide;
 
   return (
     <section className="mt-4 pt-4 border-t border-white/10 space-y-4" aria-labelledby={`about-${act.id}`} data-testid="about-place">
@@ -248,7 +253,7 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
         </ul>
       )}
 
-      {nothingFound && !loadingFacts && (
+      {sayNothing && (
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="text-xs text-ink-muted" data-testid={unreached ? 'about-unreached' : 'about-nothing'}>
             {unreached
@@ -272,13 +277,6 @@ export default function AboutPlace({ act, plan, onSave, onAddNote }: Props) {
       {/* ── The AI guide ─────────────────────────────────────── */}
       {guide ? (
         <div className="rounded-xl border border-accent/25 bg-accent/5 p-3.5 space-y-3" data-testid="about-guide">
-          {/* Said plainly when there was nothing to check it against, so the
-              guide does not read as confirming what the sources could not. */}
-          {nothingFound && (
-            <p className="text-[11px] text-ink-muted" data-testid="about-guide-unchecked">
-              From the AI's general knowledge. No checked source to compare it with.
-            </p>
-          )}
           {guide.heads && guide.heads.length > 0 && (
             <ul className="space-y-1" data-testid="about-heads">
               {guide.heads.map((h) => (
