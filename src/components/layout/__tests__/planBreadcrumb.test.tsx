@@ -18,7 +18,7 @@ const plan = {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  useAppStore.setState({ activeTab: 'todo' });
+  useAppStore.setState({ activeTab: 'essentials' });
 });
 afterEach(() => vi.unstubAllGlobals());
 

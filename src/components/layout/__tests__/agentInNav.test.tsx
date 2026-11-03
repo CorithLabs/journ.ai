@@ -30,7 +30,7 @@ describe('agent trigger placement', () => {
     setViewport(PHONE);
     render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
     expect(screen.getByRole('tablist')).not.toContainElement(screen.getByTestId('agent-tab-btn'));
-    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
   });
 
   it('toggles the panel', () => {

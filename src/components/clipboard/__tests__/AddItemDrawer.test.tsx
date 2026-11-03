@@ -100,7 +100,7 @@ describe('ClipboardTab', () => {
         <ClipboardTab planId="plan-1" />
       </MemoryRouter>,
     );
-    expect(screen.getByText('No items yet')).toBeInTheDocument();
+    expect(screen.getByTestId('saved-empty')).toHaveTextContent('Boarding passes, check-ins and booking emails go here.');
   });
 
   it('opens the add drawer when clicking Add item', async () => {
@@ -116,7 +116,7 @@ describe('ClipboardTab', () => {
     });
   });
 
-  it('renders saved items as cards grouped by type', () => {
+  it('renders saved items as cards, in one Saved list', () => {
     vi.mocked(useLiveQuery).mockReturnValue([noteItem]);
     render(
       <MemoryRouter>
@@ -124,7 +124,7 @@ describe('ClipboardTab', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('Packing reminders')).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: /note items/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /saved/i })).toBeInTheDocument();
   });
 
   it('shows a loading spinner while items are undefined', () => {

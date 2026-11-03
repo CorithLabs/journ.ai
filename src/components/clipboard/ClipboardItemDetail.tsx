@@ -46,8 +46,8 @@ export default function ClipboardItemDetail({ planId }: Props) {
    * a day is reachable from the itinerary, and landing in the clipboard after
    * following it there loses the user's place in a trip they were reading.
    */
-  const cameFrom = searchParams.get('from') === 'itinerary' ? 'itinerary' : 'clipboard';
-  const backLabel = cameFrom === 'itinerary' ? 'Back to itinerary' : 'Back to clipboard';
+  const cameFrom = searchParams.get('from') === 'itinerary' ? 'itinerary' : 'essentials';
+  const backLabel = cameFrom === 'itinerary' ? 'Back to itinerary' : 'Back to essentials';
   useEffect(() => {
     if (wantsEdit && item) {
       setTitle(item.title);
@@ -86,10 +86,10 @@ export default function ClipboardItemDetail({ planId }: Props) {
       <div className="flex flex-col items-center justify-center h-full text-center px-6">
         <p className="text-sm text-ink-secondary mb-3">This item could not be found.</p>
         <button
-          onClick={() => navigate(`/plan/${planId}/clipboard`)}
+          onClick={() => navigate(`/plan/${planId}/essentials`)}
           className="text-sm text-accent hover:underline"
         >
-          Back to clipboard
+          Back to essentials
         </button>
       </div>
     );

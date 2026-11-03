@@ -133,9 +133,9 @@ describe('going back', () => {
     expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to itinerary');
   });
 
-  it('returns to the clipboard otherwise', () => {
+  it('returns to essentials otherwise', () => {
     show();
-    expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to clipboard');
+    expect(screen.getByTestId('detail-back-btn')).toHaveAccessibleName('Back to essentials');
   });
 
   it('keeps the itinerary origin while editing', () => {

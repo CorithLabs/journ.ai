@@ -16,9 +16,8 @@ interface Props {
 
 const TAB_LABELS: Record<ActiveTab, string> = {
   itinerary: 'Itinerary',
-  todo: 'To-Do',
+  essentials: 'Essentials',
   map: 'Map',
-  clipboard: 'Clipboard',
 };
 
 /**

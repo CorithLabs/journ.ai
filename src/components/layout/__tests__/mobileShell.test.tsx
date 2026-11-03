@@ -127,7 +127,7 @@ describe('TabBar as a phone pill', () => {
     expect(screen.getByRole('tablist')).not.toContainElement(
       screen.getByTestId('plan-breadcrumb'),
     );
-    expect(screen.getAllByRole('tab')).toHaveLength(4);
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
   });
 
   // A full-width in-flow bar was being clipped at the screen edges.

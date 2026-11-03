@@ -4,16 +4,15 @@ import { MemoryRouter } from 'react-router-dom';
 import TabBar from '../TabBar';
 
 describe('TabBar', () => {
-  it('renders four tabs', () => {
+  it('renders three tabs', () => {
     render(
       <MemoryRouter initialEntries={['/plan/test-plan-id/itinerary']}>
         <TabBar planId="test-plan-id" />
       </MemoryRouter>,
     );
     expect(screen.getByTestId('tab-itinerary')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-todo')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-essentials')).toBeInTheDocument();
     expect(screen.getByTestId('tab-map')).toBeInTheDocument();
-    expect(screen.getByTestId('tab-clipboard')).toBeInTheDocument();
   });
 
   it('marks the active tab with aria-selected', () => {
@@ -24,7 +23,7 @@ describe('TabBar', () => {
     );
     const itineraryTab = screen.getByTestId('tab-itinerary');
     expect(itineraryTab).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('tab-todo')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByTestId('tab-essentials')).toHaveAttribute('aria-selected', 'false');
   });
 
   it('renders tab labels', () => {
@@ -34,17 +33,17 @@ describe('TabBar', () => {
       </MemoryRouter>,
     );
     expect(screen.getByText('Itinerary')).toBeInTheDocument();
-    expect(screen.getByText('To-Do')).toBeInTheDocument();
+    expect(screen.getByText('Essentials')).toBeInTheDocument();
     expect(screen.getByText('Map')).toBeInTheDocument();
-    expect(screen.getByText('Clipboard')).toBeInTheDocument();
   });
 });
 
 describe('the order of the tabs', () => {
-  it('runs itinerary, to-do, clipboard, map', () => {
+  // To-Do and Clipboard became one tab, Essentials.
+  it('runs itinerary, essentials, map', () => {
     render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
     expect(screen.getAllByRole('tab').map(t => t.textContent))
-      .toEqual(['Itinerary', 'To-Do', 'Clipboard', 'Map']);
+      .toEqual(['Itinerary', 'Essentials', 'Map']);
   });
 
   // Arrow-key traversal walks the same array, so the two cannot disagree.

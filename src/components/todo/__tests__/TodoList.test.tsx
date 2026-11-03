@@ -58,18 +58,20 @@ describe('TodoList', () => {
 
   // ── Add/Edit/Delete (Flow 10, Story 1) ──────────────────────────────────
 
-  it('renders tasks grouped by category', () => {
+  it('lists open tasks under To sort, and folds done ones away', () => {
     vi.mocked(useLiveQuery).mockReturnValue(mockTodos);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByText('Book flights to Tokyo')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /to sort/i })).toHaveTextContent('Book flights to Tokyo');
+    expect(screen.queryByText('Pack rain jacket')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('done-toggle'));
     expect(screen.getByText('Pack rain jacket')).toBeInTheDocument();
   });
 
-  it('renders category section headers', () => {
+  // One list: the category headings split a short list into shorter ones.
+  it('does not split the list by category', () => {
     vi.mocked(useLiveQuery).mockReturnValue(mockTodos);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByRole('region', { name: /booking tasks/i })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: /packing tasks/i })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /booking tasks/i })).not.toBeInTheDocument();
   });
 
   it('shows add form when clicking Add task', async () => {
@@ -210,11 +212,11 @@ describe('TodoList', () => {
 
   // ── Progress / Complete (Flow 10, Story 2) ──────────────────────────────
 
-  it('shows progress bar when tasks exist', () => {
+  it('counts what is left to sort, and what is done', () => {
     vi.mocked(useLiveQuery).mockReturnValue(mockTodos);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByRole('progressbar')).toBeInTheDocument();
-    expect(screen.getByText('1 of 2 complete')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /to sort/i })).toHaveTextContent('1');
+    expect(screen.getByTestId('done-toggle')).toHaveTextContent('Done (1)');
   });
 
   it('hides progress bar when no tasks', () => {
@@ -227,7 +229,7 @@ describe('TodoList', () => {
     const allDone = mockTodos.map((t) => ({ ...t, status: 'done' }));
     vi.mocked(useLiveQuery).mockReturnValue(allDone);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByText('✓ All done!')).toBeInTheDocument();
+    expect(screen.getByTestId('to-sort-empty')).toHaveTextContent('All sorted.');
   });
 
   it('toggles task status on checkbox click', async () => {
@@ -246,6 +248,7 @@ describe('TodoList', () => {
   it('toggles a done task back to todo on checkbox click', async () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[1]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('done-toggle'));
     const checkbox = screen.getByLabelText('Mark incomplete');
     fireEvent.click(checkbox);
     await waitFor(() => {
@@ -259,16 +262,42 @@ describe('TodoList', () => {
   it('completed tasks appear with line-through text', () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[1]]); // status: done
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('done-toggle'));
     const titleBtn = screen.getByText('Pack rain jacket');
     expect(titleBtn.className).toContain('line-through');
   });
 
   // ── Generated badge ──────────────────────────────────────────────────────
 
-  it('shows Generated badge on auto-generated tasks', () => {
+  // A badge on most rows said nothing about any one of them.
+  it('does not badge auto-generated tasks in the list', () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByText('Generated')).toBeInTheDocument();
+    expect(screen.queryByText('Generated')).not.toBeInTheDocument();
+  });
+
+  // ── Attach proof ─────────────────────────────────────────────────────────
+
+  // Most tasks are finished by getting something: saving it ticks the task.
+  it('saves the proof for a task and ticks it off', async () => {
+    vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Book flights to Tokyo' }));
+    fireEvent.click(screen.getByTestId('task-attach'));
+    // Named after the task, without the "Book".
+    expect(screen.getByTestId('title-input')).toHaveValue('flights to Tokyo');
+    fireEvent.click(screen.getByTestId('save-item-btn'));
+    await waitFor(() => expect(db.clipboard.add).toHaveBeenCalledWith(expect.objectContaining({ title: 'flights to Tokyo', planId: 'plan-1' })));
+    await waitFor(() => expect(db.todos.update).toHaveBeenCalledWith('todo-1', expect.objectContaining({ status: 'done' })));
+    expect(await screen.findByText('Saved, and ticked off')).toBeInTheDocument();
+  });
+
+  it('does not offer to attach proof to a task already done', () => {
+    vi.mocked(useLiveQuery).mockReturnValue([mockTodos[1]]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('done-toggle'));
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Pack rain jacket' }));
+    expect(screen.queryByTestId('task-attach')).not.toBeInTheDocument();
   });
 
   // ── Pin from itinerary (Flow 11) ─────────────────────────────────────────

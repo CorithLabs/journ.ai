@@ -3,9 +3,8 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import TabBar from '../components/layout/TabBar';
 import ItineraryTab from '../components/tabs/ItineraryTab';
-import TodoTab from '../components/tabs/TodoTab';
 import MapTab from '../components/tabs/MapTab';
-import ClipboardTab from '../components/tabs/ClipboardTab';
+import EssentialsTab from '../components/tabs/EssentialsTab';
 import ClipboardItemDetail from '../components/clipboard/ClipboardItemDetail';
 import AgentPanel from '../components/agent/AgentPanel';
 import DemoBanner from '../components/plans/DemoBanner';
@@ -75,9 +74,11 @@ export default function PlanWorkspace() {
         <Routes>
           <Route index element={<Navigate to="itinerary" replace />} />
           <Route path="itinerary" element={<ItineraryTab planId={planId} />} />
-          <Route path="todo" element={<TodoTab planId={planId} />} />
+          <Route path="essentials" element={<EssentialsTab planId={planId} />} />
+          {/* To-Do and Clipboard are one tab now; old links still land there. */}
+          <Route path="todo" element={<Navigate to={`/plan/${planId}/essentials`} replace />} />
           <Route path="map" element={<MapTab planId={planId} />} />
-          <Route path="clipboard" element={<ClipboardTab planId={planId} />} />
+          <Route path="clipboard" element={<Navigate to={`/plan/${planId}/essentials`} replace />} />
           <Route path="clipboard/:itemId" element={<ClipboardItemDetail planId={planId} />} />
           <Route path="*" element={<Navigate to="itinerary" replace />} />
         </Routes>

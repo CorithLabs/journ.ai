@@ -26,12 +26,12 @@ afterEach(() => vi.unstubAllGlobals());
  * ways to do one job, each with its own idea of how to leave.
  */
 describe('adding a to-do', () => {
-  it('offers the way in beside the list, not as a link in the header', () => {
+  // Each section of Essentials adds its own kind of thing, from its heading.
+  it('offers the way in beside the list it adds to', () => {
     show(() => <TodoList planId="p1" />);
     const add = screen.getByTestId('add-task-btn');
-    expect(add).toHaveTextContent('Add task');
-    // Green, like the + between itinerary cards, against the red that removes.
-    expect(add.className).toContain('text-status-success');
+    expect(add).toHaveAccessibleName('Add task');
+    expect(screen.getByRole('region', { name: /to sort/i })).toContainElement(add);
   });
 
   it('opens as a dialog', () => {
@@ -72,8 +72,8 @@ describe('adding a clipboard item', () => {
   it('offers the same way in', () => {
     show(() => <ClipboardTab planId="p1" />);
     const add = screen.getByTestId('add-item-btn');
-    expect(add).toHaveTextContent('Add item');
-    expect(add.className).toContain('text-status-success');
+    expect(add).toHaveAccessibleName('Add item');
+    expect(screen.getByRole('region', { name: /saved/i })).toContainElement(add);
   });
 
   // Was a drawer sliding in from the right — a third thing to learn.
