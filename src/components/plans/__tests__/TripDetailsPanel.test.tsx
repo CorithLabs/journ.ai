@@ -114,17 +114,50 @@ describe('the country cannot go stale', () => {
   });
 });
 
-// Silently deleting a day the user had filled in would be worse than a range
-// that no longer lines up, so the days are left alone and the mismatch said.
+/*
+ * The days follow the dates. They used to be left as they were with a note,
+ * so a one-day trip stretched to five still showed one day.
+ */
 describe('changing the dates of a plan that has days', () => {
-  it('warns rather than rewriting the itinerary', async () => {
-    show();
-    fireEvent.change(screen.getByTestId('td-end'), { target: { value: '2025-08-09' } });
-    expect(screen.getByTestId('td-dates-warning')).toBeInTheDocument();
+  const act = (id: string, name: string) => ({ id, name, time: 'morning', locationName: '', notes: '', pinnedToTodo: false });
+  const threeDays: Plan = {
+    ...plan,
+    startDate: '2025-08-01', endDate: '2025-08-03',
+    itinerary: [
+      { dayIndex: 0, label: 'Day 1 — Fri 1 Aug', activities: [act('a', 'Rocher Percé')] },
+      { dayIndex: 1, label: 'Day 2 — Gannets on Bonaventure', activities: [] },
+      { dayIndex: 2, label: 'Day 3 — Sun 3 Aug', activities: [act('b', 'Forillon'), act('c', 'Gaspé')] },
+    ],
+  };
 
+  it('adds days to the end of a longer trip, and says so first', async () => {
+    show({ ...plan, startDate: '2025-08-01', endDate: '2025-08-01', itinerary: [{ dayIndex: 0, label: 'Day 1 — Fri 1 Aug', activities: [act('a', 'Rocher Percé')] }] });
+    fireEvent.change(screen.getByTestId('td-end'), { target: { value: '2025-08-03' } });
+    expect(screen.getByTestId('td-dates-warning')).toHaveTextContent('2 empty days will be added to the end.');
     fireEvent.click(screen.getByTestId('td-save'));
     await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
-    expect(saved().itinerary).toBeUndefined();
+    const days = saved().itinerary!;
+    expect(days.map((d) => d.label)).toEqual(['Day 1 — Fri 1 Aug', 'Day 2 — Sat 2 Aug', 'Day 3 — Sun 3 Aug']);
+    expect(days[0].activities[0].name).toBe('Rocher Percé');
+  });
+
+  it('says which days a shorter trip loses, with their stops, before saving', async () => {
+    show(threeDays);
+    fireEvent.change(screen.getByTestId('td-end'), { target: { value: '2025-08-02' } });
+    expect(screen.getByTestId('td-dates-warning')).toHaveTextContent('Day 3 will be removed, with 2 stops.');
+    fireEvent.click(screen.getByTestId('td-save'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    expect(saved().itinerary).toHaveLength(2);
+  });
+
+  // The days keep their order; their dates move with the start.
+  it('moves every day with a new start date, keeping themed labels', async () => {
+    show(threeDays);
+    fireEvent.change(screen.getByTestId('td-start'), { target: { value: '2025-08-08' } });
+    fireEvent.change(screen.getByTestId('td-end'), { target: { value: '2025-08-10' } });
+    fireEvent.click(screen.getByTestId('td-save'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    expect(saved().itinerary!.map((d) => d.label)).toEqual(['Day 1 — Fri 8 Aug', 'Day 2 — Gannets on Bonaventure', 'Day 3 — Sun 10 Aug']);
   });
 
   it('says nothing when the dates have not moved', () => {

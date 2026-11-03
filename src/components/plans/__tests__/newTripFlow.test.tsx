@@ -161,10 +161,49 @@ describe('tickets', () => {
     await show();
     await goTo('Tokyo, Japan');
     fireEvent.click(screen.getByTestId('mode-flight'));
-    fireEvent.click(screen.getByTestId('one-way'));
+    fireEvent.click(screen.getByTestId('round-trip'));
     await create();
     expect(created().arrival).toBeDefined();
     expect(created().departure).toBeUndefined();
+  });
+});
+
+/*
+ * Round trip sits beside the dates, on by default. Off, the end date slides
+ * away: a one-way trip has none to ask for.
+ */
+describe('round trip or one way', () => {
+  it('is a round trip by default, with both dates', async () => {
+    await show();
+    expect(screen.getByTestId('round-trip')).toBeChecked();
+    expect(screen.getByTestId('end-date-input')).toBeEnabled();
+    expect(screen.getByTestId('trip-dates')).toHaveStyle({ gridTemplateColumns: '1fr 1fr' });
+  });
+
+  it('folds the end date away for one way', async () => {
+    await show();
+    fireEvent.click(screen.getByTestId('round-trip'));
+    expect(screen.getByTestId('end-date-input')).toBeDisabled();
+    expect(screen.getByTestId('trip-dates')).toHaveStyle({ gridTemplateColumns: '1fr 0fr' });
+    expect(screen.getByText('Date')).toBeInTheDocument();
+  });
+
+  it('makes a one-way trip one day, ignoring an end date set before', async () => {
+    await show();
+    await goTo('Tokyo, Japan');
+    fireEvent.click(screen.getByTestId('round-trip'));
+    await create();
+    expect(created()).toMatchObject({ startDate: '2026-11-07', endDate: '2026-11-07' });
+  });
+
+  it('has no way home on the tickets for one way', async () => {
+    await show();
+    await goTo('Tokyo, Japan');
+    fireEvent.click(screen.getByTestId('mode-flight'));
+    fireEvent.click(screen.getByTestId('tickets-booked-yes'));
+    expect(screen.getByTestId('ret-date')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('round-trip'));
+    expect(screen.queryByTestId('ret-date')).not.toBeInTheDocument();
   });
 });
 
