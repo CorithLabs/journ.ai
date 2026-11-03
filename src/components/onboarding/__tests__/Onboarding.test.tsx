@@ -4,13 +4,13 @@ import { MemoryRouter } from 'react-router-dom';
 import Onboarding from '../Onboarding';
 import AppShell from '../../layout/AppShell';
 import { ONBOARDED_STORAGE, hasOnboarded, requestOnboarding } from '../../../services/onboarding';
-import { setApiKey, ANTHROPIC_KEY_STORAGE } from '../../../services/aiKey';
-import { getActiveProvider } from '../../../services/aiClient';
+import { DEMO_PLAN_ID } from '../../../db/seed';
 
-vi.mock('../../../services/aiKey', async () => {
-  const actual = await vi.importActual<typeof import('../../../services/aiKey')>('../../../services/aiKey');
-  return { ...actual, setApiKey: vi.fn().mockResolvedValue(undefined) };
-});
+const navigate = vi.hoisted(() => vi.fn());
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router-dom')>()),
+  useNavigate: () => navigate,
+}));
 vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => [] }));
 
 const onClose = vi.fn();
@@ -42,7 +42,7 @@ describe('first run', () => {
     expect(screen.getByTestId('onboarding')).toBeInTheDocument();
   });
 
-  it('is remembered even when skipped at the first screen', () => {
+  it('is remembered when closed', () => {
     show();
     fireEvent.click(screen.getByTestId('onboarding-skip'));
     expect(hasOnboarded()).toBe(true);
@@ -58,95 +58,54 @@ describe('first run', () => {
   });
 });
 
-describe('the optional keys', () => {
-  const toKeyStep = () => {
+/*
+ * It was four screens: a pitch, a list of what the app is and is not, an AI
+ * key form and a "you're set". The app's real use is simpler — everything
+ * about a trip in one place — so the introduction is one screen that says so.
+ */
+describe('one screen', () => {
+  it('says what the app keeps in one place', () => {
     show();
-    fireEvent.click(screen.getByTestId('onboarding-next'));
-    fireEvent.click(screen.getByTestId('onboarding-about-next'));
-  };
-
-  /*
-   * The manual path is finished and real, so it is offered as a choice. Anyone
-   * who meets a wall of key fields with no way past assumes the app does not
-   * work without them.
-   */
-  it('lets both keys be skipped outright', () => {
-    toKeyStep();
-    fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
-    expect(screen.getByTestId('onboarding-ready')).toBeInTheDocument();
+    const w = screen.getByTestId('onboarding-welcome');
+    expect(w).toHaveTextContent('Your whole trip, in one place');
+    expect(w).toHaveTextContent(/plan, day by day/i);
+    expect(w).toHaveTextContent(/weather/i);
+    expect(w).toHaveTextContent(/boarding passes, check-ins and booking emails/i);
   });
 
-  it('rejects a key that is not the shape the provider issues', () => {
-    toKeyStep();
-    fireEvent.change(screen.getByTestId('onboarding-key-input'), { target: { value: 'hunter2' } });
-    fireEvent.click(screen.getByTestId('onboarding-save-key'));
-    expect(screen.getByTestId('onboarding-key-error')).toHaveTextContent('sk-');
-    expect(setApiKey).not.toHaveBeenCalled();
+  // The key is optional; asking for it first said otherwise. It is in Settings.
+  it('does not ask for an AI key, or carry the long lists', () => {
+    show();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByText(/api key/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/What Journ.ai is not/)).not.toBeInTheDocument();
   });
 
-  it('saves a key against the provider that was picked', async () => {
-    toKeyStep();
-    fireEvent.click(screen.getByTestId('onboarding-provider-anthropic'));
-    fireEvent.change(screen.getByTestId('onboarding-key-input'), { target: { value: 'sk-ant-abc123' } });
-    fireEvent.click(screen.getByTestId('onboarding-save-key'));
-
-    await waitFor(() => expect(setApiKey).toHaveBeenCalledWith('sk-ant-abc123', ANTHROPIC_KEY_STORAGE));
-    // Saving a key for a provider the app is not set to call would be worse
-    // than not saving it.
-    expect(getActiveProvider()).toBe('anthropic');
-    expect(screen.getByTestId('onboarding-key-saved')).toBeInTheDocument();
-  });
-
-  // The map needs no token any more, so there is nothing to ask for.
-  it('does not ask for a map token', () => {
-    toKeyStep();
-    fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
-    expect(screen.getByTestId('onboarding-ready')).toBeInTheDocument();
-    expect(screen.queryByText(/mapbox/i)).not.toBeInTheDocument();
+  it('says where things are kept, in a line', () => {
+    show();
+    expect(screen.getByTestId('onboarding-privacy')).toHaveTextContent('Saved in this browser. No account needed.');
   });
 });
 
 describe('finishing', () => {
-  it('hands over to the new-plan form', () => {
+  it('hands over to the new-trip form', () => {
     show();
-    fireEvent.click(screen.getByTestId('onboarding-next'));
-    fireEvent.click(screen.getByTestId('onboarding-about-next'));
-    fireEvent.click(screen.getByTestId('onboarding-skip-ai'));
     fireEvent.click(screen.getByTestId('onboarding-create-plan'));
     expect(hasOnboarded()).toBe(true);
     expect(onClose).toHaveBeenCalled();
-  });
-});
-
-/*
- * The second list is the point of showing this at all. Every line in it is
- * something a traveller could reasonably assume a travel app does — book
- * things, know the visa rules, keep a backup — and being wrong about any of
- * them costs more than the app is worth.
- */
-describe('what the app is and is not', () => {
-  it('says both, before any key is asked for', () => {
-    show();
-    fireEvent.click(screen.getByTestId('onboarding-next'));
-    const about = screen.getByTestId('onboarding-about');
-    expect(about).toHaveTextContent('What Journ.ai is');
-    expect(about).toHaveTextContent('What Journ.ai is not');
+    expect(navigate).toHaveBeenCalledWith('/plan/new');
   });
 
-  it('is honest about the things that would cost the user most', () => {
+  it('opens the sample trip when there is one', () => {
+    localStorage.setItem(DEMO_PLAN_ID, 'demo-1');
     show();
-    fireEvent.click(screen.getByTestId('onboarding-next'));
-    const about = screen.getByTestId('onboarding-about');
-    expect(about).toHaveTextContent(/never buys anything/i);
-    expect(about).toHaveTextContent(/does not know them/i);
-    expect(about).toHaveTextContent(/no account to restore them from/i);
-  });
-
-  it('can be skipped like every other screen', () => {
-    show();
-    fireEvent.click(screen.getByTestId('onboarding-next'));
-    fireEvent.click(screen.getByTestId('onboarding-skip-about'));
+    fireEvent.click(screen.getByTestId('onboarding-see-sample'));
+    expect(navigate).toHaveBeenCalledWith('/plan/demo-1/itinerary');
     expect(hasOnboarded()).toBe(true);
-    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('offers no sample when there is none', () => {
+    show();
+    expect(screen.queryByTestId('onboarding-see-sample')).not.toBeInTheDocument();
   });
 });
