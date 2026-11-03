@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// No network in tests. A test that needs a response mocks fetch itself; one
+// that does not must not depend on, or wait for, the real internet — which
+// newer tooling started to reach, so results changed with whatever a live
+// service answered.
+globalThis.fetch = (() => Promise.reject(new TypeError('No network in tests'))) as typeof fetch;
+
 // Mock the entire db module to avoid Dexie/IndexedDB in tests
 vi.mock('../db', () => ({
   db: {

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { STYLE_URL, paperStyle, type MapStyle } from './paperStyle';
 import type { LngLat } from './paperGeometry';
 
@@ -72,16 +72,25 @@ export default function PaperBaseMap({ frame, padding, frameKey, recentre, onVie
 
     (async () => {
       try {
-        const [{ default: maplibregl }, style] = await Promise.all([
+        // MapLibre 6 is an ES module with named exports and no default one.
+        const [maplibregl, style, , worker] = await Promise.all([
           import('maplibre-gl'),
           loadStyle(),
           import('maplibre-gl/dist/maplibre-gl.css'),
+          import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
         ]);
         if (cancelled || !el.current) return;
+        /*
+         * MapLibre 6 looks for its worker beside its own file, which a build
+         * does not copy and the dev server's pre-bundling moves: the street
+         * map never drew ("Worker failed to load"). Vite bundles the worker
+         * as its own file and says where it is.
+         */
+        maplibregl.setWorkerUrl(worker.default);
 
         const map = new maplibregl.Map({
           container: el.current,
-          style: style as unknown as maplibregl.StyleSpecification,
+          style: style as unknown as StyleSpecification,
           bounds: latest.current.frame,
           fitBoundsOptions: { padding: latest.current.padding, maxZoom: 16 },
           attributionControl: { compact: true },

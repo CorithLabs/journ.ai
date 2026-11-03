@@ -10,6 +10,17 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
+// No network in tests: the live lookups come back empty, so suggestions come
+// from the bundled list ("Toronto, Canada") and no place is looked up.
+vi.mock('../../../services/cityLookup', () => ({
+  searchCities: vi.fn(async () => []),
+  lookupCity: vi.fn(async () => null),
+}));
+vi.mock('../../../services/origin', async () => {
+  const actual = await vi.importActual<typeof import('../../../services/origin')>('../../../services/origin');
+  return { ...actual, guessOrigin: vi.fn(async () => null) };
+});
+
 describe('NewPlanModal', () => {
   const onClose = vi.fn();
 
