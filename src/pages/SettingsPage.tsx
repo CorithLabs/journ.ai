@@ -348,12 +348,12 @@ export default function SettingsPage() {
         <AboutJournai />
       </section>
 
-      {/* Anything the introduction offered can be reached from this page, so
-          replaying it is a reminder rather than the only route back. */}
+      {/* The welcome is one screen now; the AI key and the longer account of
+          what the app is and is not live on this page. */}
       <section className="border-t border-white/5 pt-4 mt-4">
         <h2 className="text-sm font-semibold text-ink-primary mb-1">Introduction</h2>
         <p className="text-xs text-ink-secondary mb-3">
-          Walk through what Journ.ai does and what the optional keys are for.
+          The welcome screen from the first time you opened the app.
         </p>
         <button
           onClick={requestOnboarding}

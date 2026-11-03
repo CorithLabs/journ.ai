@@ -1,42 +1,33 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Compass, Sparkles, Check, ArrowRight, ShieldCheck } from 'lucide-react';
-import { setApiKey, OPENAI_KEY_STORAGE, ANTHROPIC_KEY_STORAGE } from '../../services/aiKey';
-import { setActiveProvider, type AiProvider } from '../../services/aiClient';
+import { CalendarDays, CloudSun, Paperclip, Sparkles, X } from 'lucide-react';
 import { setOnboarded } from '../../services/onboarding';
-import AboutJournai from './AboutJournai';
-
-const KEY_PREFIX: Record<AiProvider, string> = { openai: 'sk-', anthropic: 'sk-ant-' };
-const PROVIDER_LABEL: Record<AiProvider, string> = { openai: 'OpenAI', anthropic: 'Anthropic' };
-const KEY_URL: Record<AiProvider, string> = {
-  openai: 'https://platform.openai.com/api-keys',
-  anthropic: 'https://console.anthropic.com/settings/keys',
-};
-
-type Step = 'welcome' | 'about' | 'ai' | 'ready';
-const ORDER: Step[] = ['welcome', 'about', 'ai', 'ready'];
+import { DEMO_PLAN_ID } from '../../db/seed';
 
 interface Props {
   onClose: () => void;
 }
 
+const KEEPS = [
+  { icon: CalendarDays, label: 'Your plan, day by day' },
+  { icon: CloudSun, label: 'The weather for each day' },
+  { icon: Paperclip, label: 'Boarding passes, check-ins and booking emails' },
+  // Said, so the AI is not a surprise later; marked optional, because it is.
+  { icon: Sparkles, label: 'Optional: an AI that drafts the plan for you' },
+];
+
 /**
- * The first run.
+ * The first run: one screen, saying what the app is for.
  *
- * The AI key is optional, and saying so is the whole point of this flow: a
- * plan can be built entirely by hand. Someone who lands on a wall of key
- * fields with no indication that they can skip assumes the app is unusable
- * without them. The map, places and weather need no key at all.
+ * It used to be four — a pitch about planning in parts of the day, a list
+ * of what the app is and is not, an AI key form, and a "you're set" — when
+ * the real use is simpler: everything about a trip, kept in one place. The
+ * rest is still there, in Settings, for whoever wants it; the AI key in
+ * particular is optional, and asking for it up front said otherwise.
  */
 export default function Onboarding({ onClose }: Props) {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>('welcome');
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const [provider, setProvider] = useState<AiProvider>('openai');
-  const [key, setKey] = useState('');
-  const [keyState, setKeyState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [keyError, setKeyError] = useState('');
 
   const finish = (then?: () => void) => {
     setOnboarded();
@@ -44,9 +35,9 @@ export default function Onboarding({ onClose }: Props) {
     then?.();
   };
 
-  // Escape skips the whole thing, like every other dismissible layer in the
-  // app. It is an introduction, not a gate.
+  // Escape skips it, like every other dismissible layer. An introduction, not a gate.
   useEffect(() => {
+    panelRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') finish();
     };
@@ -54,32 +45,10 @@ export default function Onboarding({ onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    panelRef.current?.focus();
-  }, [step]);
-
-  const saveKey = async () => {
-    const trimmed = key.trim();
-    if (!trimmed) return;
-    if (!trimmed.startsWith(KEY_PREFIX[provider])) {
-      setKeyState('error');
-      setKeyError(`That does not look like an ${PROVIDER_LABEL[provider]} key — they start with "${KEY_PREFIX[provider]}".`);
-      return;
-    }
-    setKeyState('saving');
-    setKeyError('');
-    try {
-      await setApiKey(trimmed, provider === 'anthropic' ? ANTHROPIC_KEY_STORAGE : OPENAI_KEY_STORAGE);
-      setActiveProvider(provider);
-      setKeyState('saved');
-      setKey('');
-    } catch {
-      setKeyState('error');
-      setKeyError('Could not save the key on this device.');
-    }
-  };
-
-  const index = ORDER.indexOf(step);
+  // The seeded sample trip, if it is still there, is the quickest way to see it.
+  const demoId = (() => {
+    try { return localStorage.getItem(DEMO_PLAN_ID); } catch { return null; }
+  })();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-glass overlay-enter" data-testid="onboarding">
@@ -89,172 +58,56 @@ export default function Onboarding({ onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="onboarding-title"
-        className="w-full max-w-md max-h-full overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 focus:outline-none panel-enter"
+        className="relative w-full max-w-sm bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 focus:outline-none panel-enter"
+        data-testid="onboarding-welcome"
       >
-        {/* Position first: four screens with no end in sight is why people
-            close a first-run flow. */}
-        <div className="flex items-center gap-1.5 mb-5" aria-hidden="true">
-          {ORDER.map((s, i) => (
-            <span
-              key={s}
-              className={`h-1 flex-1 rounded-full transition-colors ${i <= index ? 'bg-accent' : 'bg-white/10'}`}
-            />
+        <button
+          type="button"
+          onClick={() => finish()}
+          className="absolute top-3 right-3 w-9 h-9 grid place-items-center rounded-lg text-ink-muted hover:text-ink-primary hover:bg-white/5"
+          aria-label="Close"
+          data-testid="onboarding-skip"
+        >
+          <X size={18} aria-hidden="true" />
+        </button>
+
+        <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight pr-8">
+          Your whole trip, in one place
+        </h2>
+
+        <ul className="mt-5 space-y-3">
+          {KEEPS.map(({ icon: Icon, label }) => (
+            <li key={label} className="flex items-center gap-3 text-sm text-ink-primary">
+              <span className="w-9 h-9 shrink-0 grid place-items-center rounded-xl bg-accent/10 text-accent" aria-hidden="true">
+                <Icon size={18} />
+              </span>
+              {label}
+            </li>
           ))}
+        </ul>
+
+        <p className="mt-5 text-xs text-ink-muted" data-testid="onboarding-privacy">
+          Saved in this browser. No account needed.
+        </p>
+
+        <div className="mt-5 flex flex-col gap-2">
+          <button
+            onClick={() => finish(() => navigate('/plan/new'))}
+            className="w-full bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
+            data-testid="onboarding-create-plan"
+          >
+            Start a trip
+          </button>
+          {demoId && (
+            <button
+              onClick={() => finish(() => navigate(`/plan/${demoId}/itinerary`))}
+              className="w-full py-2.5 rounded-xl text-sm text-ink-secondary hover:text-ink-primary hover:bg-white/5"
+              data-testid="onboarding-see-sample"
+            >
+              See a sample trip
+            </button>
+          )}
         </div>
-
-        {step === 'welcome' && (
-          <div className="space-y-4" data-testid="onboarding-welcome">
-            <Compass size={36} className="text-accent" aria-hidden="true" />
-            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
-              Plan a trip, day by day
-            </h2>
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              Build an itinerary in parts of the day rather than exact times, keep bookings
-              and confirmations in a clipboard beside it, and see the whole trip on a map.
-            </p>
-            <div className="flex gap-3 items-start bg-surface-raised border border-white/10 rounded-card p-3">
-              <ShieldCheck size={16} className="text-accent shrink-0 mt-0.5" aria-hidden="true" />
-              <p className="text-xs text-ink-secondary leading-relaxed">
-                Your trips live in this browser and any API keys are encrypted here — there is
-                no account and no journ.ai server. To find maps, photos and weather, place names
-                (never anything about you) go to OpenStreetMap, Wikipedia and Open-Meteo. When
-                you ask the AI, the trip goes to the provider you chose.
-              </p>
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setStep('about')}
-                className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
-                data-testid="onboarding-next"
-              >
-                Get started <ArrowRight size={16} aria-hidden="true" />
-              </button>
-              <button onClick={() => finish()} className="px-4 py-2.5 rounded-xl text-sm text-ink-muted hover:text-ink-primary" data-testid="onboarding-skip">
-                Skip
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'about' && (
-          <div className="space-y-4" data-testid="onboarding-about">
-            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
-              Before you start
-            </h2>
-            {/* The second list is the point. Every line in it is something a
-                traveller could reasonably assume a travel app does, and being
-                wrong about any of them costs more than the app is worth. */}
-            <AboutJournai />
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => setStep('ai')}
-                className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
-                data-testid="onboarding-about-next"
-              >
-                Got it <ArrowRight size={16} aria-hidden="true" />
-              </button>
-              <button onClick={() => finish()} className="px-4 py-2.5 rounded-xl text-sm text-ink-muted hover:text-ink-primary" data-testid="onboarding-skip-about">
-                Skip
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'ai' && (
-          <div className="space-y-4" data-testid="onboarding-ai">
-            <Sparkles size={32} className="text-accent" aria-hidden="true" />
-            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
-              Add an AI key, or don't
-            </h2>
-            {/* The manual path is real and finished, so it is offered as a
-                choice rather than buried as a consolation. */}
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              With a key, the app can draft a whole itinerary and answer questions about your
-              trip. Without one, you can still build every day by hand — nothing else is
-              locked. You bring your own key and pay your provider directly.
-            </p>
-
-            <div className="flex gap-1" role="group" aria-label="AI provider">
-              {(['openai', 'anthropic'] as AiProvider[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => { setProvider(p); setKeyState('idle'); setKeyError(''); }}
-                  aria-pressed={provider === p}
-                  className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
-                    provider === p
-                      ? 'bg-accent/15 border-accent/40 text-ink-primary'
-                      : 'border-white/10 text-ink-secondary hover:text-ink-primary'
-                  }`}
-                  data-testid={`onboarding-provider-${p}`}
-                >
-                  {PROVIDER_LABEL[p]}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-2">
-              <input
-                type="password"
-                value={key}
-                onChange={(e) => { setKey(e.target.value); setKeyState('idle'); }}
-                placeholder={`${KEY_PREFIX[provider]}…`}
-                aria-label={`${PROVIDER_LABEL[provider]} API key`}
-                className="w-full bg-surface-raised border border-white/10 rounded-lg px-3 py-2 text-sm text-ink-primary placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
-                data-testid="onboarding-key-input"
-              />
-              <a href={KEY_URL[provider]} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-accent hover:underline">
-                Where do I get a key?
-              </a>
-              {keyState === 'saved' && (
-                <p className="flex items-center gap-1 text-xs text-status-success" data-testid="onboarding-key-saved">
-                  <Check size={12} aria-hidden="true" /> Key saved and encrypted on this device.
-                </p>
-              )}
-              {keyState === 'error' && (
-                <p className="text-xs text-status-danger" role="alert" data-testid="onboarding-key-error">{keyError}</p>
-              )}
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={keyState === 'saved' ? () => setStep('ready') : saveKey}
-                disabled={keyState === 'saving' || (keyState !== 'saved' && !key.trim())}
-                className="flex-1 bg-accent hover:bg-accent-light disabled:opacity-40 disabled:cursor-not-allowed text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
-                data-testid="onboarding-save-key"
-              >
-                {keyState === 'saving' ? 'Saving…' : keyState === 'saved' ? 'Continue' : 'Save key'}
-              </button>
-              <button onClick={() => setStep('ready')} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="onboarding-skip-ai">
-                I'll plan manually
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 'ready' && (
-          <div className="space-y-4" data-testid="onboarding-ready">
-            <Check size={32} className="text-status-success" aria-hidden="true" />
-            <h2 id="onboarding-title" className="text-xl font-bold text-ink-primary tracking-tight">
-              You're set
-            </h2>
-            <p className="text-sm text-ink-secondary leading-relaxed">
-              Name a destination and pick your dates, and you'll have a trip to build on.
-              Anything you skipped is in Settings whenever you want it.
-            </p>
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={() => finish(() => navigate('/plan/new'))}
-                className="flex-1 bg-accent hover:bg-accent-light text-ink-inverse font-semibold py-2.5 rounded-xl transition-colors"
-                data-testid="onboarding-create-plan"
-              >
-                Create your first trip
-              </button>
-              <button onClick={() => finish()} className="px-4 py-2.5 rounded-xl text-sm text-ink-secondary border border-white/10 hover:text-ink-primary" data-testid="onboarding-look-around">
-                Look around first
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
