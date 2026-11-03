@@ -73,6 +73,12 @@ describe('one screen', () => {
     expect(w).toHaveTextContent(/boarding passes, check-ins and booking emails/i);
   });
 
+  // Mentioned so it is not a surprise later, and as optional, because it is.
+  it('mentions the AI, as optional', () => {
+    show();
+    expect(screen.getByTestId('onboarding-welcome')).toHaveTextContent('Optional: an AI that drafts the plan for you');
+  });
+
   // The key is optional; asking for it first said otherwise. It is in Settings.
   it('does not ask for an AI key, or carry the long lists', () => {
     show();

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, CloudSun, Paperclip, X } from 'lucide-react';
+import { CalendarDays, CloudSun, Paperclip, Sparkles, X } from 'lucide-react';
 import { setOnboarded } from '../../services/onboarding';
 import { DEMO_PLAN_ID } from '../../db/seed';
 
@@ -12,6 +12,8 @@ const KEEPS = [
   { icon: CalendarDays, label: 'Your plan, day by day' },
   { icon: CloudSun, label: 'The weather for each day' },
   { icon: Paperclip, label: 'Boarding passes, check-ins and booking emails' },
+  // Said, so the AI is not a surprise later; marked optional, because it is.
+  { icon: Sparkles, label: 'Optional: an AI that drafts the plan for you' },
 ];
 
 /**
