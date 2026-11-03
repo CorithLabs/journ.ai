@@ -43,8 +43,9 @@ describe('fields that belong together sit together', () => {
       screen.getByTestId('end-date-input'),
     );
 
-    expect(row?.className).toContain('flex');
-    expect(row?.className).toContain('gap-3');
+    // A two-column grid, so the end date can fold away for a one-way trip.
+    expect(row?.className).toContain('grid');
+    expect(row?.className).toContain('gap-x-3');
   });
 
   it('pairs the provider with its model once there is a model to pick', () => {

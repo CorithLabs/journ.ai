@@ -181,8 +181,11 @@ export default function NewPlanModal({ onClose }: Props) {
   const [showStops, setShowStops] = useState(false);
   const [stops, setStops] = useState<TripStop[]>([]);
 
-  const tooLong = exceedsMaxTripDays(startDate, endDate);
-  const endBeforeStart = !!(startDate && endDate && endDate < startDate);
+  // One way has no end date: the trip starts as its first day, and grows when
+  // dates are changed later (Trip details adds the days).
+  const effectiveEnd = oneWay ? startDate : endDate;
+  const tooLong = exceedsMaxTripDays(startDate, effectiveEnd);
+  const endBeforeStart = !!(startDate && effectiveEnd && effectiveEnd < startDate);
   const endDateError = (endBeforeStart ? 'End date must be after start date' : '') || (tooLong ? MAX_TRIP_DAYS_ERROR : '') || errors.endDate || '';
 
   const validate = () => {
@@ -229,7 +232,7 @@ export default function NewPlanModal({ onClose }: Props) {
         destination,
         ...(country ? { country } : {}),
         startDate: startDate || today,
-        endDate: endDate || startDate || today,
+        endDate: effectiveEnd || startDate || today,
         ...(originText_ ? {
           origin: {
             label: originText_,
@@ -329,31 +332,48 @@ export default function NewPlanModal({ onClose }: Props) {
           {errors.destination && <p id="destination-error" role="alert" className="mt-1 text-xs text-status-danger">{errors.destination}</p>}
         </div>
 
-        {/* When */}
-        <div className="flex gap-3">
-          <div className="flex-1 min-w-0">
-            <label htmlFor="start-date" className={label}>Start Date</label>
+        {/* When. Round trip sits with the dates because it decides whether
+            there is an end date to ask for: one way, and the end slides away. */}
+        <div>
+        <div className="flex items-center justify-between gap-3 mb-1.5">
+          <p className="text-sm font-medium text-ink-secondary">When</p>
+          <label className="min-h-11 -my-3 flex items-center gap-2 text-sm text-ink-secondary cursor-pointer">
+            <input type="checkbox" checked={!oneWay} onChange={(e) => setOneWay(!e.target.checked)}
+              className="w-5 h-5 accent-cyan-500" data-testid="round-trip" />
+            Round trip
+          </label>
+        </div>
+        <div
+          className={`grid transition-[grid-template-columns,column-gap] duration-300 ease-out ${oneWay ? 'gap-x-0' : 'gap-x-3'}`}
+          style={{ gridTemplateColumns: oneWay ? '1fr 0fr' : '1fr 1fr' }}
+          data-testid="trip-dates"
+        >
+          <div className="min-w-0">
+            <label htmlFor="start-date" className={label}>{oneWay ? 'Date' : 'Start Date'}</label>
             <input id="start-date" type="date" value={startDate}
               onChange={(e) => { setStartDate(e.target.value); if (errors.endDate) setErrors((p) => ({ ...p, endDate: '' })); }}
               className={`${fieldClass} text-base md:text-sm`} data-testid="start-date-input" />
           </div>
-          <div className="flex-1 min-w-0">
-            <label htmlFor="end-date" className={label}>End Date</label>
+          <div className={`min-w-0 overflow-hidden transition-opacity duration-300 ${oneWay ? 'opacity-0' : 'opacity-100'}`} aria-hidden={oneWay || undefined}>
+            <label htmlFor="end-date" className={`${label} whitespace-nowrap`}>End Date</label>
             <input id="end-date" type="date" value={endDate}
               min={startDate || undefined} max={maxEndDate(startDate) || undefined}
               onChange={(e) => { setEndDate(e.target.value); if (errors.endDate) setErrors((p) => ({ ...p, endDate: '' })); }}
               className={`${fieldClass} text-base md:text-sm`}
               aria-describedby={endDateError ? 'end-date-error' : 'end-date-help'}
+              disabled={oneWay}
+              tabIndex={oneWay ? -1 : undefined}
               data-testid="end-date-input" />
           </div>
         </div>
-        {endDateError ? (
-          <p id="end-date-error" role="alert" className="-mt-4 text-xs text-status-danger" data-testid="end-date-error">{endDateError}</p>
+        {!oneWay && (endDateError ? (
+          <p id="end-date-error" role="alert" className="mt-1 text-xs text-status-danger" data-testid="end-date-error">{endDateError}</p>
         ) : (
-          <p id="end-date-help" className="-mt-4 text-xs text-ink-muted">
+          <p id="end-date-help" className="mt-1 text-xs text-ink-muted">
             Up to {MAX_TRIP_DAYS} days{startDate ? ` — latest ${maxEndDate(startDate)}` : ''}
           </p>
-        )}
+        ))}
+        </div>
 
         {/* Getting there */}
         <div className="space-y-3" data-testid="getting-there">
@@ -364,12 +384,6 @@ export default function NewPlanModal({ onClose }: Props) {
               <button type="button" onClick={() => setAllModes((v) => !v)} className="min-h-11 text-sm text-ink-muted hover:text-ink-primary" data-testid="more-modes">
                 {allModes ? 'Fewer options' : 'Other ways'}
               </button>
-            )}
-            {mode && (
-              <label className="min-h-11 flex items-center gap-2 text-sm text-ink-secondary">
-                <input type="checkbox" checked={oneWay} onChange={(e) => setOneWay(e.target.checked)} className="w-4 h-4 accent-cyan-500" data-testid="one-way" />
-                One way
-              </label>
             )}
           </div>
         </div>

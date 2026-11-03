@@ -6,6 +6,7 @@ import { exportTrip, saveFile } from '../../services/tripTransfer';
 import { db, type Plan, type TripLeg, type TripStop } from '../../db';
 import { LegFields, StopsFields, BorderPicker } from './TripDetailsFields';
 import { MAX_TRIP_DAYS_ERROR, exceedsMaxTripDays, maxEndDate } from '../../utils/tripDuration';
+import { fitDaysToDates } from '../../utils/fitDays';
 import {
   searchDestinations,
   isPlausibleDestination,
@@ -75,6 +76,14 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
   const tooLong = exceedsMaxTripDays(startDate, endDate);
   const endBeforeStart = !!(startDate && endDate && endDate < startDate);
 
+  // What the dates would do to the days already planned, shown before saving.
+  const datesChanged = startDate !== plan.startDate || endDate !== plan.endDate;
+  const fit = datesChanged && plan.itinerary.length > 0 && !endBeforeStart && !tooLong
+    ? fitDaysToDates(plan.itinerary, startDate, endDate)
+    : null;
+  const added = fit ? fit.days.length - Math.min(plan.itinerary.length, fit.days.length) : 0;
+  const lostStops = fit ? fit.removed.reduce((n, d) => n + d.activities.length, 0) : 0;
+
   const save = async () => {
     const name = destination.trim();
     if (!name) return setError('Destination is required');
@@ -104,8 +113,20 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
         departure: clean(departure),
         stops: stops.filter((s) => s.city.trim()).map((s) => ({ ...s, city: s.city.trim() })),
         international: international ?? undefined,
+        ...(fit ? { itinerary: fit.days } : {}),
         updatedAt: new Date().toISOString(),
       });
+      // Things filed against a day that no longer exists lose the link, not themselves.
+      if (fit?.removed.length) {
+        const gone = fit.days.length;
+        const stamp = new Date().toISOString();
+        const clips = await db.clipboard.where('planId').equals(plan.id).toArray();
+        await Promise.all(clips.filter((c) => (c.linkedDayIndex ?? -1) >= gone)
+          .map((c) => db.clipboard.update(c.id, { linkedDayIndex: undefined, linkedActivityId: undefined, updatedAt: stamp })));
+        const todos = await db.todos.where('planId').equals(plan.id).toArray();
+        await Promise.all(todos.filter((t) => (t.sourceDayIndex ?? -1) >= gone)
+          .map((t) => db.todos.update(t.id, { sourceDayIndex: undefined, updatedAt: stamp })));
+      }
       onClose();
     } finally {
       setSaving(false);
@@ -194,13 +215,16 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
             </div>
           </div>
 
-          {/* Days already in the itinerary are not rewritten by a date change:
-              silently deleting a day the user had filled in would be worse
-              than a range that no longer lines up. */}
-          {(startDate !== plan.startDate || endDate !== plan.endDate) && plan.itinerary.length > 0 && (
-            <p className="text-xs text-status-warning" role="status" data-testid="td-dates-warning">
-              Changing the dates does not move the days already in your itinerary. You may need to
-              add or remove days afterwards.
+          {/* Said before saving, so a shorter trip never removes a planned day unseen. */}
+          {fit && (added > 0 || fit.removed.length > 0) && (
+            <p
+              className={`text-xs ${fit.removed.length ? 'text-status-warning' : 'text-ink-secondary'}`}
+              role="status"
+              data-testid="td-dates-warning"
+            >
+              {fit.removed.length
+                ? `${fit.removed.length === 1 ? `Day ${plan.itinerary.length}` : `Days ${fit.days.length + 1}–${plan.itinerary.length}`} will be removed${lostStops ? `, with ${lostStops} ${lostStops === 1 ? 'stop' : 'stops'}` : ''}.`
+                : `${added} empty ${added === 1 ? 'day' : 'days'} will be added to the end.`}
             </p>
           )}
 
