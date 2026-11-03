@@ -85,6 +85,9 @@ describe('searchDestinations', () => {
         city: 'Toronto',
         country: 'Canada',
         label: 'Toronto, Ontario, Canada',
+        // Kept for the new-trip form: where it is, for the distance to it.
+        countryCode: null,
+        coordinates: [-79.4, 43.7],
       });
     });
 
@@ -93,7 +96,7 @@ describe('searchDestinations', () => {
         { name: 'Japan', country: 'Japan', latitude: 35.7, longitude: 139.8, feature_code: 'PCLI' },
       ]));
       const [japan] = await searchDestinations('japan');
-      expect(japan).toEqual({ city: 'Japan', country: 'Japan', label: 'Japan' });
+      expect(japan).toMatchObject({ city: 'Japan', country: 'Japan', label: 'Japan' });
     });
 
     // "Tokyo Heliport" and "Banff Airport" are not where anyone is going.

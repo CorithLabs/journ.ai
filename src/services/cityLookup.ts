@@ -19,6 +19,8 @@ export interface City {
   /** State, province or prefecture, when there is one. */
   region: string | null;
   country: string | null;
+  /** ISO 3166 alpha-2, e.g. "CA". Absent on cities cached before it was kept. */
+  countryCode?: string | null;
   /** [lng, lat], the order everything else in the app uses. */
   coordinates: [number, number];
   /** "Banff, Alberta, Canada" — what is shown and stored. */
@@ -105,6 +107,7 @@ export async function searchCities(
       name: p.name!.trim(),
       region: p.admin1?.trim() || null,
       country: p.country?.trim() || null,
+      countryCode: p.country_code?.toUpperCase() || null,
       coordinates: [p.longitude!, p.latitude!],
       label: labelOf(p),
     }));

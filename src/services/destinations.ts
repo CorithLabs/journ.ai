@@ -19,6 +19,9 @@ export interface DestinationSuggestion {
   city: string;
   /** Country name, or null when it could not be determined. */
   country: string | null;
+  /** From a live lookup; absent for the bundled list. */
+  countryCode?: string | null;
+  coordinates?: [number, number];
 }
 
 /**
@@ -108,6 +111,6 @@ export async function searchDestinations(
   // An empty result is a real answer ("no such place"), but showing nothing
   // is unhelpful mid-typing — fall back so the user still gets options.
   return hits.length
-    ? hits.map((c) => ({ label: c.label, city: c.name, country: c.country }))
+    ? hits.map((c) => ({ label: c.label, city: c.name, country: c.country, countryCode: c.countryCode, coordinates: c.coordinates }))
     : searchPopular(trimmed);
 }

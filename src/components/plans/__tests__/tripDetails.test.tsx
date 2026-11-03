@@ -31,7 +31,7 @@ describe('the simple case stays simple', () => {
   // knows where and when.
   it('keeps the extra questions collapsed', () => {
     show();
-    expect(screen.queryByTestId('arrival-city')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tickets-question')).not.toBeInTheDocument();
     expect(screen.queryByTestId('stop-city-0')).not.toBeInTheDocument();
   });
 
@@ -44,36 +44,6 @@ describe('the simple case stays simple', () => {
     expect(plan.arrival).toBeUndefined();
     expect(plan.departure).toBeUndefined();
     expect(plan.stops).toBeUndefined();
-  });
-});
-
-describe('arrival and departure', () => {
-  it('records how, where and when, at both ends', async () => {
-    show();
-    fill();
-    fireEvent.click(screen.getByTestId('toggle-travel'));
-
-    fireEvent.click(screen.getByTestId('arrival-mode-train'));
-    fireEvent.change(screen.getByTestId('arrival-city'), { target: { value: 'Osaka' } });
-    fireEvent.change(screen.getByTestId('arrival-time'), { target: { value: '22:40' } });
-
-    fireEvent.click(screen.getByTestId('departure-mode-bus'));
-    fireEvent.change(screen.getByTestId('departure-time'), { target: { value: '07:15' } });
-
-    fireEvent.click(screen.getByTestId('create-plan-btn'));
-    await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
-    const plan = created();
-    expect(plan.arrival).toEqual({ mode: 'train', city: 'Osaka', time: '22:40' });
-    expect(plan.departure).toEqual({ mode: 'bus', time: '07:15' });
-  });
-
-  // Every mode is offered, not just the one the app used to assume.
-  it('offers more than flying', () => {
-    show();
-    fireEvent.click(screen.getByTestId('toggle-travel'));
-    for (const mode of ['flight', 'train', 'bus', 'car', 'ferry', 'other']) {
-      expect(screen.getByTestId(`arrival-mode-${mode}`)).toBeInTheDocument();
-    }
   });
 });
 
@@ -130,26 +100,7 @@ describe('multi-city', () => {
   });
 });
 
-describe('whether the trip crosses a border', () => {
-  it('records a domestic trip, which needs no visa task at all', async () => {
-    show();
-    fill();
-    fireEvent.click(screen.getByTestId('border-domestic'));
-    fireEvent.click(screen.getByTestId('create-plan-btn'));
-    await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
-    expect(created().international).toBe(false);
-  });
-
-  // Unsure is the default and stays unrecorded, so the to-do list keeps
-  // asking rather than deciding.
-  it('leaves it unset when nobody says', async () => {
-    show();
-    fill();
-    fireEvent.click(screen.getByTestId('create-plan-btn'));
-    await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
-    expect(created().international).toBeUndefined();
-  });
-});
+// How a trip is travelled, and whether it crosses a border, are in newTripFlow.test.tsx.
 
 describe('what the itinerary prompt is told', () => {
   const plan = (extra: Partial<Plan>): Plan => ({

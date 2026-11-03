@@ -1,522 +1,450 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../../db';
-import type { Plan, TripLeg, TripStop } from '../../db';
-import { X, MapPin, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
-import { hasAnyAiKey, NO_AI_KEY_MESSAGE } from '../../services/aiKeyStatus';
-import {
-  MAX_TRIP_DAYS,
-  MAX_TRIP_DAYS_ERROR,
-  exceedsMaxTripDays,
-  maxEndDate,
-} from '../../utils/tripDuration';
-import { LegFields, StopsFields, BorderPicker } from './TripDetailsFields';
-import {
-  searchDestinations,
-  isPlausibleDestination,
-  DESTINATION_ERROR,
-  type DestinationSuggestion,
-} from '../../services/destinations';
+import { Bus, Car, ChevronDown, ChevronRight, LocateFixed, Plane, Ship, TrainFront, X } from 'lucide-react';
+import { db, type Plan, type TravelMode, type TripLeg, type TripStop } from '../../db';
+import { MAX_TRIP_DAYS, MAX_TRIP_DAYS_ERROR, exceedsMaxTripDays, maxEndDate } from '../../utils/tripDuration';
+import { isPlausibleDestination, DESTINATION_ERROR, type DestinationSuggestion } from '../../services/destinations';
+import { lookupCity } from '../../services/cityLookup';
+import { guessOrigin, locateOrigin, LocationError } from '../../services/origin';
+import { suggestModes, needsTicket } from '../../utils/travelSuggest';
+import { tripStartTodos } from '../../utils/tripStartTodos';
 import { fieldClass } from '../ui/formStyles';
-import { internationalFlightDefaults, wouldFillTravel } from '../../utils/tripDefaults';
+import { airportForCity, airportLabel } from '../../data/airports';
+import { StopsFields } from './TripDetailsFields';
+import PlaceField from './PlaceField';
 
 interface Props {
   onClose: () => void;
 }
 
+/** A place as the form knows it: what is shown, and where it is when known. */
+interface Spot {
+  label: string;
+  city: string;
+  country: string | null;
+  countryCode?: string | null;
+  coordinates?: [number, number];
+}
+
+const MODES: { id: TravelMode; label: string; icon: React.ReactNode; tickets: string }[] = [
+  { id: 'flight', label: 'Flight', icon: <Plane size={16} />, tickets: 'flights' },
+  { id: 'train', label: 'Train', icon: <TrainFront size={16} />, tickets: 'train tickets' },
+  { id: 'car', label: 'Car', icon: <Car size={16} />, tickets: '' },
+  { id: 'bus', label: 'Bus', icon: <Bus size={16} />, tickets: 'bus tickets' },
+  { id: 'ferry', label: 'Ferry', icon: <Ship size={16} />, tickets: 'ferry tickets' },
+];
+
+const fromSuggestion = (s: DestinationSuggestion): Spot => ({
+  label: s.label, city: s.city, country: s.country, countryCode: s.countryCode, coordinates: s.coordinates,
+});
+
+/** Where a typed or picked place is, looked up when the pick did not say. */
+function useLocated(spot: Spot | null, text: string): Spot | null {
+  const [found, setFound] = useState<Spot | null>(null);
+  useEffect(() => {
+    if (spot?.coordinates) { setFound(spot); return; }
+    const q = (spot?.label ?? text).trim();
+    if (q.length < 2) { setFound(null); return; }
+    let live = true;
+    const t = setTimeout(async () => {
+      const c = await lookupCity(q);
+      if (live) {
+        setFound(c ? { label: spot?.label ?? q, city: spot?.city ?? c.name, country: spot?.country ?? c.country, countryCode: c.countryCode, coordinates: c.coordinates } : null);
+      }
+    }, 500);
+    return () => { live = false; clearTimeout(t); };
+  }, [spot, text]);
+  return found;
+}
+
+/** A row of large choices: one tap each, at thumb size. */
+function Choice<T extends string>({ value, options, onChange, label, testId }: {
+  value: T | null;
+  options: { id: T; label: string; icon?: React.ReactNode }[];
+  onChange: (v: T) => void;
+  label: string;
+  testId: string;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={label} data-testid={testId}>
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          aria-pressed={value === o.id}
+          className={`min-h-11 flex items-center gap-2 px-4 rounded-xl border text-sm transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none ${
+            value === o.id
+              ? 'bg-accent/15 border-accent text-ink-primary'
+              : 'border-white/10 text-ink-secondary hover:text-ink-primary'
+          }`}
+          data-testid={`${testId}-${o.id}`}
+        >
+          {o.icon && <span className="text-accent" aria-hidden="true">{o.icon}</span>}
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const label = 'block text-sm font-medium text-ink-secondary mb-1.5';
+
+/**
+ * Making a trip, phone first.
+ *
+ * From, to and when; then how you are getting there — offered from the
+ * distance, so Toronto to Tokyo offers a flight and Toronto to Montréal a
+ * train first — and whether the tickets and the stay are booked. What is not
+ * booked becomes a to-do in Essentials; booked tickets get their times on
+ * the itinerary and a place to keep them.
+ *
+ * It used to be destination, dates, a Domestic / International / Not sure
+ * question and two collapsed sections of travel fields asking for the mode
+ * of each leg from all six. Whether the trip crosses a border now follows
+ * from where it starts and ends.
+ */
 export default function NewPlanModal({ onClose }: Props) {
   const navigate = useNavigate();
-  const [destination, setDestination] = useState('');
+
+  // ── From ────────────────────────────────────────────────────────────
+  const [originText, setOriginText] = useState('');
+  const [originPick, setOriginPick] = useState<Spot | null>(null);
+  const [originNote, setOriginNote] = useState('');
+  // Once the traveller has typed or chosen, a late guess must not overwrite it.
+  const originTouched = useRef(false);
+  const setOriginTouched = (v: boolean) => { originTouched.current = v; };
+  const [locating, setLocating] = useState(false);
+
+  // Suggested from the time zone: no prompt, and only until the traveller types.
+  useEffect(() => {
+    let live = true;
+    guessOrigin().then((c) => {
+      if (!live || !c || originTouched.current) return;
+      setOriginText(c.label);
+      setOriginPick({ label: c.label, city: c.name, country: c.country, countryCode: c.countryCode, coordinates: c.coordinates });
+      setOriginNote('Suggested from your time zone');
+    });
+    return () => { live = false; };
+  }, []);
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    setOriginNote('');
+    try {
+      const c = await locateOrigin();
+      setOriginTouched(true);
+      setOriginText(c.label);
+      setOriginPick({ label: c.label, city: c.name, country: c.country, countryCode: c.countryCode, coordinates: c.coordinates });
+      setOriginNote('Your location');
+    } catch (e) {
+      setOriginNote(e instanceof LocationError ? e.message : 'Could not find your location.');
+    } finally {
+      setLocating(false);
+    }
+  };
+
+  // ── To and when ─────────────────────────────────────────────────────
+  const [destText, setDestText] = useState('');
+  const [destPick, setDestPick] = useState<Spot | null>(null);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  // Country comes from the picked suggestion. Cleared whenever the field is
-  // edited by hand, so it can never disagree with the destination text.
-  const needsKey = !hasAnyAiKey();
+  const origin = useLocated(originPick, originText);
+  const dest = useLocated(destPick, destText);
 
-  const [country, setCountry] = useState<string | null>(null);
+  // ── Getting there ───────────────────────────────────────────────────
+  const suggested = useMemo(() => (origin && dest ? suggestModes(origin, dest) : []), [origin, dest]);
+  const [mode, setMode] = useState<TravelMode | null>(null);
+  const [allModes, setAllModes] = useState(false);
+  const [oneWay, setOneWay] = useState(false);
+  const shownModes = suggested.length && !allModes
+    ? MODES.filter((m) => suggested.includes(m.id)).sort((a, b) => suggested.indexOf(a.id) - suggested.indexOf(b.id))
+    : MODES;
+  // A choice the suggestions no longer include stays chosen, and shown.
+  const modeOptions = mode && !shownModes.some((m) => m.id === mode) ? [...shownModes, MODES.find((m) => m.id === mode)!] : shownModes;
+  const tickets = mode ? MODES.find((m) => m.id === mode)!.tickets : '';
 
-  // Everything below the destination and dates is optional, and collapsed so
-  // the simple case stays three fields. A trip is worth creating long before
-  // the travel is worked out.
-  const [showTravel, setShowTravel] = useState(false);
+  const [ticketsBooked, setTicketsBooked] = useState<'yes' | 'no' | null>(null);
+  const [outDate, setOutDate] = useState<string | null>(null);
+  const [outTime, setOutTime] = useState('');
+  const [retDate, setRetDate] = useState<string | null>(null);
+  const [retTime, setRetTime] = useState('');
+  // Follow the trip dates until changed by hand: an overnight flight may leave the day before.
+  const outbound = outDate ?? startDate;
+  const inbound = retDate ?? endDate;
+
+  const [stayBooked, setStayBooked] = useState<'yes' | 'no' | null>(null);
   const [showStops, setShowStops] = useState(false);
-  const [arrival, setArrival] = useState<TripLeg>({});
-  const [departure, setDeparture] = useState<TripLeg>({});
   const [stops, setStops] = useState<TripStop[]>([]);
-  const [international, setInternational] = useState<boolean | null>(null);
-  const [suggestions, setSuggestions] = useState<DestinationSuggestion[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [highlighted, setHighlighted] = useState(-1);
-  const skipNextSearch = useRef(false);
 
-  // Debounced lookup. The abort controller drops responses from superseded
-  // keystrokes, which otherwise arrive out of order and flash stale options.
-  useEffect(() => {
-    if (skipNextSearch.current) {
-      skipNextSearch.current = false;
-      return;
-    }
-    const q = destination.trim();
-    if (q.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      const hits = await searchDestinations(q, controller.signal);
-      if (!controller.signal.aborted) {
-        setSuggestions(hits);
-        setHighlighted(-1);
-      }
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [destination]);
-
-  const pick = (s: DestinationSuggestion) => {
-    // Suppress the search this setState would otherwise trigger, so choosing an
-    // option doesn't immediately reopen the dropdown under the cursor.
-    skipNextSearch.current = true;
-    setDestination(s.label);
-    setCountry(s.country);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setHighlighted(-1);
-    setErrors((prev) => ({ ...prev, destination: '' }));
-  };
-
-  /*
-   * Saying a trip crosses a border answers most of the travel section by
-   * implication: you are flying, into the destination's main airport, landing
-   * on the first day and leaving on the last, and coming home from where you
-   * arrived. All of it was hidden behind a collapsed section and typed by
-   * hand.
-   *
-   * The section is opened rather than filled in quietly. An international trip
-   * is not always a flight — Copenhagen to Lund is a train across a border —
-   * so these are defaults to look at and change, not decisions made for you.
-   */
-  /*
-   * The leg dates we put there ourselves.
-   *
-   * Trip type is often chosen before the dates are settled, and a leg still
-   * carrying the old start date would be wrong in a way that is easy to miss.
-   * These follow the trip — but only while they still hold what we wrote. The
-   * moment either is edited by hand it belongs to the traveller, and an
-   * overnight flight leaving the day before the trip must survive a change to
-   * the dates.
-   */
-  const autoDates = useRef<{ arrival?: string; departure?: string }>({});
-
-  useEffect(() => {
-    if (international !== true) return;
-    /*
-     * Read before it is replaced. A state updater runs during the next render,
-     * not here — so an updater reading the ref directly would compare the old
-     * leg date against the new trip date and conclude the traveller had edited
-     * it, leaving every leg behind at the first date it was given.
-     */
-    const ours = autoDates.current;
-    setArrival((leg) => (leg.date && leg.date !== ours.arrival ? leg : { ...leg, date: startDate }));
-    setDeparture((leg) => (leg.date && leg.date !== ours.departure ? leg : { ...leg, date: endDate }));
-    autoDates.current = { arrival: startDate, departure: endDate };
-  }, [startDate, endDate, international]);
-
-  const chooseBorder = (value: boolean | null) => {
-    setInternational(value);
-    if (value !== true) return;
-
-    const next = internationalFlightDefaults({
-      destination,
-      country,
-      startDate,
-      endDate,
-      arrival,
-      departure,
-    });
-    if (!wouldFillTravel({ arrival, departure }, next)) return;
-
-    autoDates.current = { arrival: next.arrival.date, departure: next.departure.date };
-    setArrival(next.arrival);
-    setDeparture(next.departure);
-    setShowTravel(true);
-  };
-
-  const onDestinationKeyDown = (e: React.KeyboardEvent) => {
-    if (!showSuggestions || suggestions.length === 0) return;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlighted((h) => (h + 1) % suggestions.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlighted((h) => (h <= 0 ? suggestions.length - 1 : h - 1));
-    } else if (e.key === 'Enter' && highlighted >= 0) {
-      // Only intercept Enter when an option is actively highlighted, so the
-      // form still submits normally otherwise.
-      e.preventDefault();
-      pick(suggestions[highlighted]);
-    } else if (e.key === 'Escape') {
-      setShowSuggestions(false);
-    }
-  };
-
-  // Trip length must be <= MAX_TRIP_DAYS. Computed live so the Create button
-  // and inline error react immediately to any date change.
   const tooLong = exceedsMaxTripDays(startDate, endDate);
   const endBeforeStart = !!(startDate && endDate && endDate < startDate);
+  const endDateError = (endBeforeStart ? 'End date must be after start date' : '') || (tooLong ? MAX_TRIP_DAYS_ERROR : '') || errors.endDate || '';
 
   const validate = () => {
     const errs: Record<string, string> = {};
-    if (!destination.trim()) {
-      errs.destination = 'Destination is required';
-    } else if (!isPlausibleDestination(destination)) {
-      // Guards "12345" being accepted as a city, which produces a nonsense
-      // itinerary prompt and an unmappable plan.
-      errs.destination = DESTINATION_ERROR;
-    }
-    if (endBeforeStart) {
-      errs.endDate = 'End date must be after start date';
-    } else if (tooLong) {
-      errs.endDate = MAX_TRIP_DAYS_ERROR;
-    }
+    if (!destText.trim()) errs.destination = 'Destination is required';
+    else if (!isPlausibleDestination(destText)) errs.destination = DESTINATION_ERROR;
+    if (endBeforeStart) errs.endDate = 'End date must be after start date';
+    else if (tooLong) errs.endDate = MAX_TRIP_DAYS_ERROR;
     return errs;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs = validate();
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
-    }
+    if (Object.keys(errs).length) { setErrors(errs); return; }
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      // An untouched section should leave nothing behind, so empty legs and
-      // blank stop rows are dropped rather than stored as empty shapes.
-      const cleanLeg = (leg: TripLeg): TripLeg | undefined => {
-        const kept = Object.fromEntries(
-          Object.entries(leg).filter(([, v]) => v !== undefined && v !== ''),
-        ) as TripLeg;
-        return Object.keys(kept).length ? kept : undefined;
+      const today = now.split('T')[0];
+      const destination = destText.trim();
+      const destCity = dest?.city ?? destination.split(',')[0].trim();
+      const country = dest?.country ?? destPick?.country ?? null;
+      const booked = ticketsBooked === 'yes';
+      // A flight lands at an airport, whose city is not always the destination
+      // (Kyoto's is in Osaka). Known airports are filled in; others are left.
+      const airport = mode === 'flight' ? airportForCity(destination) : null;
+      const leg = (date: string, time: string): TripLeg => {
+        const l: TripLeg = { mode: mode!, city: airport?.city ?? destCity };
+        if (airport) l.airport = airportLabel(airport);
+        if (country) l.country = country;
+        if (date) l.date = date;
+        // Times only for a booked ticket: anything else would be a guess.
+        if (booked && time) l.time = time;
+        return l;
       };
-      const cleanArrival = cleanLeg(arrival);
-      const cleanDeparture = cleanLeg(departure);
-      const cleanStops = stops
-        .filter((s) => s.city.trim())
-        .map((s) => ({ ...s, city: s.city.trim() }));
+      const originCode = origin?.countryCode;
+      const destCode = dest?.countryCode;
+      const cleanStops = stops.filter((s) => s.city.trim()).map((s) => ({ ...s, city: s.city.trim() }));
+      const originText_ = originText.trim();
 
       const plan: Plan = {
         id: uuidv4(),
-        name: destination.trim(),
-        destination: destination.trim(),
+        name: destination,
+        destination,
         ...(country ? { country } : {}),
-        startDate: startDate || now.split('T')[0],
-        endDate: endDate || now.split('T')[0],
-        ...(cleanArrival ? { arrival: cleanArrival } : {}),
-        ...(cleanDeparture ? { departure: cleanDeparture } : {}),
+        startDate: startDate || today,
+        endDate: endDate || startDate || today,
+        ...(originText_ ? {
+          origin: {
+            label: originText_,
+            city: origin?.city ?? originText_.split(',')[0].trim(),
+            ...(origin?.country ? { country: origin.country } : {}),
+            ...(originCode ? { countryCode: originCode } : {}),
+            ...(origin?.coordinates ? { coordinates: origin.coordinates } : {}),
+          },
+        } : {}),
+        ...(mode ? { arrival: leg(outbound, outTime) } : {}),
+        ...(mode && !oneWay ? { departure: leg(inbound, retTime) } : {}),
         ...(cleanStops.length ? { stops: cleanStops } : {}),
-        ...(international !== null ? { international } : {}),
+        // Across a border when the two countries differ; unknown when either is.
+        ...(originCode && destCode ? { international: originCode !== destCode } : {}),
+        ...(mode ? { booked: { travel: !needsTicket(mode) || booked, stay: stayBooked === 'yes' } } : {}),
         createdAt: now,
         updatedAt: now,
         deleted: false,
         itinerary: [],
       };
       await db.plans.add(plan);
+
+      const todos = tripStartTodos(plan.id, {
+        mode: mode ?? undefined,
+        destination,
+        ticketsBooked: booked,
+        stayBooked: stayBooked === 'yes' ? true : stayBooked === 'no' ? false : null,
+      }).map((t) => ({ ...t, id: uuidv4(), createdAt: now, updatedAt: now }));
+      if (todos.length) await db.todos.bulkAdd(todos);
+
       navigate(`/plan/${plan.id}/itinerary`);
     } finally {
       setSaving(false);
     }
   };
 
-  // The end-date error shown inline: prefer the "end before start" message,
-  // then the length cap, then any error set by submit-time validation.
-  const endDateError =
-    (endBeforeStart ? 'End date must be after start date' : '') ||
-    (tooLong ? MAX_TRIP_DAYS_ERROR : '') ||
-    errors.endDate ||
-    '';
-
   return (
     <div
-      className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6"
+      className="w-full max-w-lg mx-auto md:max-h-[85vh] md:overflow-y-auto md:bg-surface-overlay md:border md:border-white/10 md:rounded-modal md:shadow-glass"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-plan-title"
       data-testid="new-plan-modal"
     >
-      <div className="flex items-center justify-between mb-5">
-        <h2
-          id="new-plan-title"
-          className="text-lg font-semibold text-ink-primary"
-        >
-          New Trip
-        </h2>
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-surface-raised transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
-          aria-label="Close modal"
-        >
-          <X size={18} aria-hidden="true" />
-        </button>
-      </div>
+      <form onSubmit={handleSubmit} noValidate className="px-4 pt-4 pb-28 md:p-6 md:pb-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 id="new-plan-title" className="text-xl font-semibold text-ink-primary">New trip</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-11 h-11 -mr-2 grid place-items-center rounded-xl text-ink-muted hover:text-ink-primary hover:bg-surface-raised focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            aria-label="Close modal"
+          >
+            <X size={20} aria-hidden="true" />
+          </button>
+        </div>
 
-      {/* A nudge, not a wall. Without a key the AI paths are unavailable, but
-          the itinerary can still be built by hand — so creating the plan is
-          worthwhile, and blocking it would make the app look broken rather
-          than unconfigured. */}
-      {needsKey && (
-        <div
-          role="status"
-          className="flex items-start gap-2 mb-4 p-3 bg-status-warning/10 border border-status-warning/20 rounded-xl"
-          data-testid="new-plan-needs-key"
-        >
-          <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-sm text-status-warning">{NO_AI_KEY_MESSAGE}</p>
+        {/* From */}
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <label htmlFor="origin" className={label}>From</label>
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                navigate('/settings');
-              }}
-              className="mt-1.5 text-xs text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded"
-              data-testid="new-plan-goto-settings"
+              onClick={useMyLocation}
+              disabled={locating}
+              className="min-h-11 -my-3 flex items-center gap-1.5 text-sm text-accent hover:underline disabled:opacity-50"
+              data-testid="use-my-location"
             >
-              Go to Settings →
+              <LocateFixed size={14} aria-hidden="true" /> {locating ? 'Finding you…' : 'Use my location'}
             </button>
           </div>
+          <PlaceField
+            id="origin"
+            value={originText}
+            onChange={(t) => { setOriginText(t); setOriginPick(null); setOriginTouched(true); setOriginNote(''); }}
+            onPick={(s) => { setOriginText(s.label); setOriginPick(fromSuggestion(s)); setOriginTouched(true); setOriginNote(''); }}
+            placeholder="Where you're starting from"
+            testId="origin-input"
+            describedBy="origin-note"
+          />
+          {originNote && <p id="origin-note" className="mt-1 text-xs text-ink-muted" data-testid="origin-note">{originNote}</p>}
         </div>
-      )}
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {/* To */}
         <div>
-          <label
-            htmlFor="destination"
-            className="block text-sm text-ink-secondary mb-1"
-          >
-            Destination <span className="text-status-danger">*</span>
-          </label>
-          <div className="relative">
-            <input
-              id="destination"
-              type="text"
-              value={destination}
-              onChange={(e) => {
-                setDestination(e.target.value);
-                // A hand-edit invalidates the country from any earlier pick.
-                setCountry(null);
-                setShowSuggestions(true);
-                if (errors.destination) setErrors((prev) => ({ ...prev, destination: '' }));
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              // Delayed so a click on an option registers before the list closes.
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              onKeyDown={onDestinationKeyDown}
-              placeholder="e.g. Tokyo, Japan"
-              className={fieldClass}
-              aria-required="true"
-              aria-describedby={errors.destination ? 'destination-error' : undefined}
-              role="combobox"
-              aria-expanded={showSuggestions && suggestions.length > 0}
-              aria-controls="destination-suggestions"
-              aria-autocomplete="list"
-              autoComplete="off"
-              data-testid="destination-input"
-            />
-            {showSuggestions && suggestions.length > 0 && (
-              <ul
-                id="destination-suggestions"
-                role="listbox"
-                className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass overflow-hidden max-h-56 overflow-y-auto"
-                data-testid="destination-suggestions"
-              >
-                {suggestions.map((s, n) => (
-                  <li key={`${s.label}-${n}`} role="option" aria-selected={n === highlighted}>
-                    <button
-                      type="button"
-                      // onMouseDown fires before the input's blur, so the pick
-                      // isn't cancelled by the list closing first.
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        pick(s);
-                      }}
-                      onMouseEnter={() => setHighlighted(n)}
-                      className={`w-full flex items-center gap-2 text-left px-3 py-2 text-sm transition-colors ${
-                        n === highlighted
-                          ? 'bg-accent/15 text-ink-primary'
-                          : 'text-ink-secondary hover:bg-surface-raised'
-                      }`}
-                      data-testid={`destination-option-${n}`}
-                    >
-                      <MapPin size={14} className="text-accent shrink-0" aria-hidden="true" />
-                      <span className="truncate">{s.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+          <label htmlFor="destination" className={label}>To</label>
+          <PlaceField
+            id="destination"
+            value={destText}
+            onChange={(t) => { setDestText(t); setDestPick(null); if (errors.destination) setErrors((p) => ({ ...p, destination: '' })); }}
+            onPick={(s) => { setDestText(s.label); setDestPick(fromSuggestion(s)); setErrors((p) => ({ ...p, destination: '' })); }}
+            placeholder="e.g. Tokyo, Japan"
+            invalid={!!errors.destination}
+            describedBy={errors.destination ? 'destination-error' : undefined}
+            testId="destination-input"
+          />
+          {errors.destination && <p id="destination-error" role="alert" className="mt-1 text-xs text-status-danger">{errors.destination}</p>}
+        </div>
+
+        {/* When */}
+        <div className="flex gap-3">
+          <div className="flex-1 min-w-0">
+            <label htmlFor="start-date" className={label}>Start Date</label>
+            <input id="start-date" type="date" value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); if (errors.endDate) setErrors((p) => ({ ...p, endDate: '' })); }}
+              className={`${fieldClass} text-base md:text-sm`} data-testid="start-date-input" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <label htmlFor="end-date" className={label}>End Date</label>
+            <input id="end-date" type="date" value={endDate}
+              min={startDate || undefined} max={maxEndDate(startDate) || undefined}
+              onChange={(e) => { setEndDate(e.target.value); if (errors.endDate) setErrors((p) => ({ ...p, endDate: '' })); }}
+              className={`${fieldClass} text-base md:text-sm`}
+              aria-describedby={endDateError ? 'end-date-error' : 'end-date-help'}
+              data-testid="end-date-input" />
+          </div>
+        </div>
+        {endDateError ? (
+          <p id="end-date-error" role="alert" className="-mt-4 text-xs text-status-danger" data-testid="end-date-error">{endDateError}</p>
+        ) : (
+          <p id="end-date-help" className="-mt-4 text-xs text-ink-muted">
+            Up to {MAX_TRIP_DAYS} days{startDate ? ` — latest ${maxEndDate(startDate)}` : ''}
+          </p>
+        )}
+
+        {/* Getting there */}
+        <div className="space-y-3" data-testid="getting-there">
+          <p className={label}>Getting there</p>
+          <Choice value={mode} options={modeOptions} onChange={(m) => { setMode(m); setTicketsBooked(null); }} label="How you're travelling" testId="mode" />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {suggested.length > 0 && suggested.length < MODES.length && (
+              <button type="button" onClick={() => setAllModes((v) => !v)} className="min-h-11 text-sm text-ink-muted hover:text-ink-primary" data-testid="more-modes">
+                {allModes ? 'Fewer options' : 'Other ways'}
+              </button>
+            )}
+            {mode && (
+              <label className="min-h-11 flex items-center gap-2 text-sm text-ink-secondary">
+                <input type="checkbox" checked={oneWay} onChange={(e) => setOneWay(e.target.checked)} className="w-4 h-4 accent-cyan-500" data-testid="one-way" />
+                One way
+              </label>
             )}
           </div>
-          {errors.destination && (
-            <p
-              id="destination-error"
-              role="alert"
-              className="mt-1 text-xs text-status-danger"
-            >
-              {errors.destination}
-            </p>
-          )}
         </div>
 
-        {/* A start and an end are a pair, and both are short. Stacked at full
-            width they read as two unrelated questions — and the trip details
-            panel, which edits these same two fields, already put them on one
-            row. */}
-        <div className="flex flex-wrap gap-3">
-        <div className="flex-1 min-w-[10rem]">
-          <label
-            htmlFor="start-date"
-            className="block text-sm text-ink-secondary mb-1"
-          >
-            Start Date
-          </label>
-          <input
-            id="start-date"
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
-            }}
-            className={fieldClass}
-            data-testid="start-date-input"
-          />
-        </div>
+        {mode && tickets && (
+          <div className="space-y-3" data-testid="tickets-question">
+            <p className={label}>Are your {tickets} booked?</p>
+            <Choice value={ticketsBooked} options={[{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'Not yet' }]} onChange={setTicketsBooked} label={`Are your ${tickets} booked?`} testId="tickets-booked" />
+            {ticketsBooked === 'yes' && (
+              <div className="space-y-3 rounded-card border border-white/10 p-3" data-testid="ticket-times">
+                <LegTime idPrefix="out" title={`To ${dest?.city ?? (destText.split(',')[0] || 'there')}`} date={outbound} time={outTime} onDate={setOutDate} onTime={setOutTime} />
+                {!oneWay && (
+                  <LegTime idPrefix="ret" title="Back home" date={inbound} time={retTime} onDate={setRetDate} onTime={setRetTime} />
+                )}
+                <p className="text-xs text-ink-muted">Times are optional. You can add the tickets themselves in Essentials.</p>
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="flex-1 min-w-[10rem]">
-          <label
-            htmlFor="end-date"
-            className="block text-sm text-ink-secondary mb-1"
-          >
-            End Date
-          </label>
-          <input
-            id="end-date"
-            type="date"
-            value={endDate}
-            // Constrain the picker itself rather than only reporting the
-            // problem after the fact: dates beyond the cap aren't selectable,
-            // and can't precede the start. The submit-time check stays as a
-            // backstop for typed input, which browsers don't clamp.
-            min={startDate || undefined}
-            max={maxEndDate(startDate) || undefined}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              if (errors.endDate) setErrors((prev) => ({ ...prev, endDate: '' }));
-            }}
-            className={fieldClass}
-            aria-describedby={
-              endDateError ? 'end-date-error' : 'end-date-help'
-            }
-            data-testid="end-date-input"
-          />
-          {endDateError ? (
-            <p
-              id="end-date-error"
-              role="alert"
-              className="mt-1 text-xs text-status-danger"
-              data-testid="end-date-error"
-            >
-              {endDateError}
-            </p>
-          ) : (
-            <p id="end-date-help" className="mt-1 text-xs text-ink-muted">
-              Up to {MAX_TRIP_DAYS} days supported
-              {startDate ? ` — latest ${maxEndDate(startDate)}.` : '.'}
-            </p>
-          )}
-        </div>
-        </div>
-
-        <div>
-          <p className="block text-sm text-ink-secondary mb-1.5">Trip type</p>
-          {/* Drives the entry-requirement to-dos. A domestic trip needs none,
-              and nothing else in the app can work that out — a train crosses
-              borders, a flight often does not, and the app never learns where
-              the traveller lives. */}
-          <BorderPicker value={international} onChange={chooseBorder} />
+        {/* Where you're staying */}
+        <div className="space-y-3" data-testid="stay-question">
+          <p className={label}>
+            Is your stay booked? <span className="font-normal text-ink-muted">Optional</span>
+          </p>
+          <Choice value={stayBooked} options={[{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'Not yet' }]} onChange={setStayBooked} label="Is your stay booked?" testId="stay-booked" />
         </div>
 
         <div className="border-t border-white/5 pt-3">
-          <button
-            type="button"
-            onClick={() => setShowTravel((v) => !v)}
-            className="w-full flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary"
-            aria-expanded={showTravel}
-            data-testid="toggle-travel"
-          >
-            {showTravel ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            Getting there and back
-            <span className="text-xs text-ink-muted ml-auto">Optional</span>
-          </button>
-          {showTravel && (
-            <div className="space-y-4 mt-3">
-              <LegFields
-                id="arrival"
-                legend="Arrival"
-                value={arrival}
-                onChange={setArrival}
-                cityPlaceholder={destination.trim() || 'City you arrive in'}
-                dateHint="A late arrival means a lighter first day — the itinerary will take it into account."
-              />
-              <LegFields
-                id="departure"
-                legend="Departure"
-                value={departure}
-                onChange={setDeparture}
-                cityPlaceholder={destination.trim() || 'City you leave from'}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-white/5 pt-3">
-          <button
-            type="button"
-            onClick={() => setShowStops((v) => !v)}
-            className="w-full flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary"
-            aria-expanded={showStops}
-            data-testid="toggle-stops"
-          >
+          <button type="button" onClick={() => setShowStops((v) => !v)}
+            className="min-h-11 w-full flex items-center gap-1.5 text-sm text-ink-secondary hover:text-ink-primary"
+            aria-expanded={showStops} data-testid="toggle-stops">
             {showStops ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             More cities
-            {stops.length > 0 && (
-              <span className="text-xs text-accent">{stops.length}</span>
-            )}
+            {stops.length > 0 && <span className="text-xs text-accent">{stops.length}</span>}
             <span className="text-xs text-ink-muted ml-auto">Optional</span>
           </button>
-          {showStops && (
-            <div className="mt-3">
-              <StopsFields stops={stops} onChange={setStops} />
-            </div>
-          )}
+          {showStops && <div className="mt-3"><StopsFields stops={stops} onChange={setStops} /></div>}
         </div>
 
-        <button
-          type="submit"
-          disabled={saving || tooLong}
-          className="w-full bg-accent hover:bg-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ink-inverse font-semibold px-4 py-2.5 rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none text-sm"
-          data-testid="create-plan-btn"
-        >
-          {saving ? 'Creating…' : 'Create Plan'}
-        </button>
+        {/* Fixed to the bottom on a phone, where the thumb is; in the flow on a wide screen. */}
+        <div className="fixed md:static inset-x-0 bottom-0 z-20 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:p-0 bg-surface-base/95 md:bg-transparent border-t border-white/10 md:border-0">
+          <button
+            type="submit"
+            disabled={saving || tooLong}
+            className="w-full min-h-12 bg-accent hover:bg-accent-light disabled:opacity-60 disabled:cursor-not-allowed text-ink-inverse font-semibold rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"
+            data-testid="create-plan-btn"
+          >
+            {saving ? 'Creating…' : 'Create trip'}
+          </button>
+        </div>
       </form>
     </div>
+  );
+}
+
+function LegTime({ idPrefix, title, date, time, onDate, onTime }: {
+  idPrefix: string; title: string; date: string; time: string;
+  onDate: (d: string) => void; onTime: (t: string) => void;
+}) {
+  return (
+    <fieldset>
+      <legend className="text-sm text-ink-primary mb-1.5">{title}</legend>
+      {/* Sized by wrappers: the shared field style is full width, which let
+          the time take the whole row and squeezed the date to nothing. */}
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0">
+          <input type="date" value={date} onChange={(e) => onDate(e.target.value)} aria-label={`${title}: date`}
+            className={`${fieldClass} text-base md:text-sm`} data-testid={`${idPrefix}-date`} />
+        </div>
+        <div className="w-32 shrink-0">
+          <input type="time" value={time} onChange={(e) => onTime(e.target.value)} aria-label={`${title}: time`}
+            className={`${fieldClass} text-base md:text-sm`} data-testid={`${idPrefix}-time`} />
+        </div>
+      </div>
+    </fieldset>
   );
 }
