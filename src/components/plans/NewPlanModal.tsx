@@ -44,6 +44,9 @@ function useLocated(spot: Spot | null, text: string): Spot | null {
   const [found, setFound] = useState<Spot | null>(null);
   useEffect(() => {
     if (spot?.coordinates) { setFound(spot); return; }
+    // Forget the last place at once: until the new lookup lands, a quick
+    // Create would otherwise save the previous place's country.
+    setFound(null);
     const q = (spot?.label ?? text).trim();
     if (q.length < 2) { setFound(null); return; }
     let live = true;

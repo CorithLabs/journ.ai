@@ -14,6 +14,8 @@ const APP_VERSION = pkg.version;
 const BUILD_SHA = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7);
 
 export default defineConfig({
+  // MapLibre 6 starts its worker as an ES module, so it is built as one.
+  worker: { format: 'es' },
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __BUILD_SHA__: JSON.stringify(BUILD_SHA),

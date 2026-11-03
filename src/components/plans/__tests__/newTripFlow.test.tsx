@@ -87,6 +87,19 @@ describe('where the trip starts', () => {
   });
 });
 
+// The last place's lookup used to linger until the next one landed, so a
+// quick Create after retyping saved the previous place's country.
+describe('retyping the destination', () => {
+  it('does not keep the previous place while the new one is looked up', async () => {
+    await show();
+    await goTo('Tokyo, Japan');
+    fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Somewhere, Nowhere' } });
+    await create();
+    expect(created().country).toBeUndefined();
+    expect(created().international).toBeUndefined();
+  });
+});
+
 describe('getting there', () => {
   it('offers only a flight across an ocean, the rest a tap away', async () => {
     await show();
