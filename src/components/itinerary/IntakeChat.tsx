@@ -274,6 +274,19 @@ export default function IntakeChat({ plan }: Props) {
   const handleBudgetSelect = (val: string) => {
     const budgetRange = val as 'budget' | 'mid' | 'premium' | 'luxury';
     addMessage('user', BUDGET_OPTIONS.find((o) => o.value === val)?.label ?? val);
+    // Answered already, when the trip was made: not asked twice.
+    if (plan.booked) {
+      const next = { ...intake, budgetRange, flightsBooked: plan.booked.travel, accommodationBooked: plan.booked.stay };
+      setIntake(next);
+      if (asksVisa) {
+        advance('visa', visaQuestion());
+      } else {
+        const finalIntake = { ...next, needsVisa: false };
+        setIntake(finalIntake);
+        saveIntake(finalIntake);
+      }
+      return;
+    }
     setIntake((prev) => ({ ...prev, budgetRange }));
     advance('bookings', bookingQuestion());
   };
@@ -297,7 +310,7 @@ export default function IntakeChat({ plan }: Props) {
       if (added.length > 0) {
         addMessage(
           'assistant',
-          `I'll add these to your To-Do list: ${added.map((t) => `"${t}"`).join(', ')}.`,
+          `I'll add these to Essentials: ${added.map((t) => `"${t}"`).join(', ')}.`,
         );
       }
 

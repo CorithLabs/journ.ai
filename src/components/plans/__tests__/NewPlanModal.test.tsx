@@ -29,43 +29,13 @@ describe('NewPlanModal', () => {
       </MemoryRouter>,
     );
 
-  // A key unlocks the AI paths, but an itinerary can still be built by hand,
-  // so the warning is a nudge rather than a wall — blocking creation would
-  // make the app look broken rather than unconfigured.
-  describe('without an AI key', () => {
-    beforeEach(() => localStorage.clear());
-
-    it('warns but still allows the plan to be created', async () => {
-      renderModal();
-      expect(screen.getByTestId('new-plan-needs-key')).toBeInTheDocument();
-      expect(screen.getByTestId('create-plan-btn')).not.toBeDisabled();
-
-      fireEvent.change(screen.getByTestId('destination-input'), { target: { value: 'Tokyo' } });
-      fireEvent.click(screen.getByTestId('create-plan-btn'));
-      await waitFor(() => expect(db.plans.add).toHaveBeenCalled());
-    });
-
-    it('offers a route to Settings for those who do want AI', () => {
-      renderModal();
-      expect(screen.getByTestId('new-plan-goto-settings')).toBeInTheDocument();
-    });
-
-    it('navigates to Settings and closes the modal', () => {
-      renderModal();
-      fireEvent.click(screen.getByTestId('new-plan-goto-settings'));
-      expect(onClose).toHaveBeenCalled();
-      expect(mockNavigate).toHaveBeenCalledWith('/settings');
-    });
-  });
-
-  it('shows no key warning once a key is configured', () => {
+  // The AI is optional, and the welcome says so; the form does not nag about it.
+  it('does not warn about a missing AI key', () => {
+    localStorage.clear();
     renderModal();
     expect(screen.queryByTestId('new-plan-needs-key')).not.toBeInTheDocument();
-    expect(screen.getByTestId('create-plan-btn')).not.toBeDisabled();
   });
 
-  // "12345" used to be accepted as a city, producing a nonsense itinerary
-  // prompt and an unmappable plan.
   describe('destination validation', () => {
     it.each(['12345', '!!!', '7'])('rejects %s and creates no plan', async (value) => {
       renderModal();

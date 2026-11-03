@@ -85,6 +85,18 @@ export interface Plan {
    * either way.
    */
   international?: boolean | null;
+  /**
+   * Where the traveller sets off from, as chosen when the trip was made —
+   * suggested from the device's time zone or location. Not indexed, so no
+   * Dexie version bump is needed.
+   */
+  origin?: { label: string; city: string; country?: string; countryCode?: string; coordinates?: [number, number] };
+  /**
+   * What the traveller said was already booked when making the trip. Read by
+   * the intake so it does not ask again, and by the to-do rules. `travel` is
+   * true for a road trip, which has nothing to book.
+   */
+  booked?: { travel: boolean; stay: boolean };
   createdAt: string;   // ISO 8601 datetime
   updatedAt: string;
   deleted: boolean;    // soft-delete flag

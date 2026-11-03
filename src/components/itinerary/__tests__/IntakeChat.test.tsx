@@ -53,6 +53,28 @@ describe('IntakeChat visa question', () => {
     fireEvent.click(screen.getByTestId('intake-suggestion-Both booked'));
   };
 
+  // Answered when the trip was made: asking again would be the app forgetting.
+  it('does not ask what is booked when the new-trip form already did', async () => {
+    const plan = { ...mockPlan, country: 'Japan', booked: { travel: true, stay: false } };
+    render(<IntakeChat plan={plan} />);
+    fireEvent.click(screen.getByTestId('intake-suggestion-2'));
+    await screen.findByText(/Are any of the travellers children/i);
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    await screen.findByText(/What kinds of activities/i);
+    await sendAnswer('skip');
+    await screen.findByText(/like to avoid/i);
+    await sendAnswer('skip');
+    await screen.findByText(/budget range/i);
+    fireEvent.click(screen.getByText(/Mid-range/));
+    expect(await screen.findByText(/do you need a visa to visit Japan/i)).toBeInTheDocument();
+    expect(screen.queryByText(/already booked your/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('intake-suggestion-No'));
+    await waitFor(() => expect(db.plans.update).toHaveBeenCalled());
+    const [, patch] = vi.mocked(db.plans.update).mock.calls.at(-1)!;
+    expect((patch as { intake: { flightsBooked: boolean; accommodationBooked: boolean } }).intake)
+      .toMatchObject({ flightsBooked: true, accommodationBooked: false });
+  });
+
   it('names the country, not the city', async () => {
     await answerThrough({ ...mockPlan, destination: 'Toronto, Canada', country: 'Canada' });
     expect(await screen.findByText(/do you need a visa to visit Canada/i)).toBeInTheDocument();
