@@ -5,7 +5,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useAppStore } from '../../store';
 import PlanBreadcrumb from './PlanBreadcrumb';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CalendarDays, CheckSquare, Map, Paperclip } from 'lucide-react';
+import { Briefcase, CalendarDays, Map } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import { itineraryStage } from '../../utils/planState';
@@ -26,17 +26,12 @@ const TABS: Tab[] = [
     path: 'itinerary',
     icon: <CalendarDays size={16} aria-hidden="true" />,
   },
+  // To-Do and Clipboard, together: what is still to sort, and what is kept.
   {
-    key: 'todo',
-    label: 'To-Do',
-    path: 'todo',
-    icon: <CheckSquare size={16} aria-hidden="true" />,
-  },
-  {
-    key: 'clipboard',
-    label: 'Clipboard',
-    path: 'clipboard',
-    icon: <Paperclip size={16} aria-hidden="true" />,
+    key: 'essentials',
+    label: 'Essentials',
+    path: 'essentials',
+    icon: <Briefcase size={16} aria-hidden="true" />,
   },
   {
     key: 'map',

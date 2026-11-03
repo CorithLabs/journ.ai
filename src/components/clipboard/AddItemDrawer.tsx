@@ -19,7 +19,9 @@ import { fieldOnCard, notesOnCard } from '../ui/formStyles';
 interface Props {
   planId: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (item: ClipboardItem) => void;
+  /** Filled in, e.g. from the task this is the proof for. */
+  initialTitle?: string;
 }
 
 /**
@@ -28,9 +30,9 @@ interface Props {
  * attachment (boarding pass PDF / image), stored as a native Blob in
  * IndexedDB with a 10 MB per-item cap enforced by FileDropzone.
  */
-export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
+export default function AddItemDrawer({ planId, onClose, onSaved, initialTitle = '' }: Props) {
   const [type, setType] = useState<ClipboardType>('Note');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState('');
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [time, setTime] = useState('');
@@ -63,7 +65,7 @@ export default function AddItemDrawer({ planId, onClose, onSaved }: Props) {
       await db.clipboard.add(item);
       // Preview URL is no longer needed once the item is persisted.
       if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl);
-      onSaved();
+      onSaved(item);
       onClose();
     } finally {
       setSaving(false);

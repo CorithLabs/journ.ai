@@ -41,8 +41,8 @@ function Panel({ title, meta, onMore, accent, children, testId }: {
  * Beside the days on a wide screen: what is still to do, what is filed
  * against the trip, and what it was planned around.
  *
- * Only on screens with room for it. On anything narrower these are the To-do
- * and Clipboard tabs, and repeating them under the last day would only make
+ * Only on screens with room for it. On anything narrower these are in the
+ * Essentials tab, and repeating them under the last day would only make
  * the itinerary longer.
  */
 export default function TripSidePanel({ plan, todos, clips, onNavigate }: Props) {
@@ -60,7 +60,7 @@ export default function TripSidePanel({ plan, todos, clips, onNavigate }: Props)
         <Panel
           title="To-do"
           meta={`${open.length} open`}
-          onMore={() => onNavigate(`/plan/${plan.id}/todo`)}
+          onMore={() => onNavigate(`/plan/${plan.id}/essentials`)}
           accent="border-t-category-amber"
           testId="side-todos"
         >
@@ -84,7 +84,7 @@ export default function TripSidePanel({ plan, todos, clips, onNavigate }: Props)
         <Panel
           title="Clipboard"
           meta={`${filed.length} linked`}
-          onMore={() => onNavigate(`/plan/${plan.id}/clipboard`)}
+          onMore={() => onNavigate(`/plan/${plan.id}/essentials`)}
           accent="border-t-category-violet"
           testId="side-clipboard"
         >

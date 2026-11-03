@@ -10,7 +10,7 @@ export interface WeatherDay {
   apparentTempMax: number;
 }
 
-export type ActiveTab = 'itinerary' | 'todo' | 'map' | 'clipboard';
+export type ActiveTab = 'itinerary' | 'essentials' | 'map';
 
 /** Which BYOK AI provider is currently selected. Mirrors `aitp_ai_provider`. */
 export type SelectedProvider = 'openai' | 'anthropic';
