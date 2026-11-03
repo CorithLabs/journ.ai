@@ -151,7 +151,7 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
         role="dialog"
         aria-modal="true"
         aria-labelledby="trip-details-title"
-        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 panel-enter"
+        className="w-full max-w-2xl max-h-[85vh] overflow-y-auto scroll-rounded bg-surface-overlay border border-white/10 rounded-modal shadow-glass p-6 panel-enter"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 id="trip-details-title" className="text-lg font-semibold text-ink-primary">Trip details</h2>
@@ -182,7 +182,7 @@ export default function TripDetailsPanel({ plan, onClose }: { plan: Plan; onClos
                 data-testid="td-destination"
               />
               {showSuggestions && suggestions.length > 0 && (
-                <ul className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass max-h-56 overflow-y-auto" role="listbox">
+                <ul className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass max-h-56 overflow-y-auto scroll-rounded-sm" role="listbox">
                   {suggestions.map((s, n) => (
                     <li key={`${s.label}-${n}`} role="option" aria-selected={false}>
                       <button
