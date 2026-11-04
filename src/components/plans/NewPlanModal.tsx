@@ -274,7 +274,7 @@ export default function NewPlanModal({ onClose }: Props) {
 
   return (
     <div
-      className="w-full max-w-lg mx-auto md:max-h-[85vh] md:overflow-y-auto md:bg-surface-overlay md:border md:border-white/10 md:rounded-modal md:shadow-glass"
+      className="w-full max-w-lg mx-auto md:max-h-[85vh] md:overflow-y-auto scroll-rounded md:bg-surface-overlay md:border md:border-white/10 md:rounded-modal md:shadow-glass"
       role="dialog"
       aria-modal="true"
       aria-labelledby="new-plan-title"

@@ -171,7 +171,7 @@ export default function LocationField({
         <ul
           id={`${testId}-options`}
           role="listbox"
-          className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass overflow-hidden max-h-56 overflow-y-auto"
+          className="absolute z-10 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass max-h-56 overflow-y-auto scroll-rounded-sm"
           data-testid={`${testId}-suggestions`}
         >
           {suggestions.map((v, n) => (

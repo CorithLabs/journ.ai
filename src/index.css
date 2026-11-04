@@ -96,6 +96,26 @@ body,
   background: var(--color-ink-secondary);
 }
 
+/*
+ * Rounded boxes that scroll: the track stops short of the corners. It ran
+ * the box's full height, so at the top and bottom the bar stood straight up
+ * through the rounded corner and showed outside the box.
+ */
+.scroll-rounded::-webkit-scrollbar-track {
+  margin-block: 1.25rem; /* rounded-modal, 1.5rem */
+}
+.scroll-rounded-sm::-webkit-scrollbar-track {
+  margin-block: 0.75rem; /* rounded-card */
+}
+
+/* Firefox ignores the rules above; give it the same thin, quiet bar. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-muted) transparent;
+  }
+}
+
 /* Focus ring */
 *:focus-visible {
   outline: none;

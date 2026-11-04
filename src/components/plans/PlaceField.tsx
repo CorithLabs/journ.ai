@@ -102,7 +102,7 @@ export default function PlaceField({ id, value, onChange, onPick, placeholder, i
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass overflow-hidden max-h-64 overflow-y-auto"
+          className="absolute z-20 mt-1 w-full bg-surface-overlay border border-white/10 rounded-card shadow-glass max-h-64 overflow-y-auto scroll-rounded-sm"
           data-testid={`${testId.replace(/-input$/, '')}-suggestions`}
         >
           {suggestions.map((s, n) => (

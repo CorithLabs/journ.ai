@@ -63,7 +63,7 @@ export default function Modal({
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        className={`w-full ${maxWidth} max-h-full overflow-y-auto bg-surface-overlay border border-white/10 rounded-modal shadow-glass panel-enter`}
+        className={`w-full ${maxWidth} max-h-full overflow-y-auto scroll-rounded bg-surface-overlay border border-white/10 rounded-modal shadow-glass panel-enter`}
         data-testid="modal"
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-3 sticky top-0 bg-surface-overlay z-10">
