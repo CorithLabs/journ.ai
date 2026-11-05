@@ -378,13 +378,21 @@ export default function Sidebar() {
               aloud when something looks wrong, and to make a browser serving a
               stale service-worker cache obvious at a glance. */}
           {!narrow && (
-            <p
-              className="px-3 pt-1 text-[10px] text-ink-muted tabular-nums select-text"
-              data-testid="app-version"
-              title="App version"
-            >
-              {versionLabel()}
-            </p>
+            <div className="px-3 pt-1 flex items-baseline gap-1.5 text-[10px] text-ink-muted">
+              <p className="tabular-nums select-text" data-testid="app-version" title="App version">
+                {versionLabel()}
+              </p>
+              <span aria-hidden="true">·</span>
+              <a
+                href="https://sutrasdd.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-accent hover:underline focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none rounded"
+                data-testid="built-with-sutra"
+              >
+                Built with Sutra
+              </a>
+            </div>
           )}
         </div>
       </aside>
