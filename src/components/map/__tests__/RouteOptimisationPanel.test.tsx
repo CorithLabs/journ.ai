@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import RouteOptimisation from '../../tabs/RouteOptimisation';
 import { type Day } from '../../../db';
 
@@ -55,6 +56,15 @@ describe('RouteOptimisation', () => {
     render(<RouteOptimisation planId="plan-1" day={dayWith3Stops} planStartDate="2025-07-14" isOffline={false} />);
     const btn = screen.getByTestId('optimise-route-btn');
     expect(btn.getAttribute('aria-disabled')).toBe('false');
+  });
+
+  // The AI reorders the stops, so without a key the button could only fail.
+  it('is disabled without an AI key, and says where to add one', () => {
+    localStorage.clear();
+    render(<MemoryRouter><RouteOptimisation planId="plan-1" day={dayWith3Stops} planStartDate="2025-07-14" isOffline={false} /></MemoryRouter>);
+    expect(screen.getByTestId('optimise-route-btn')).toBeDisabled();
+    expect(screen.getByTestId('optimise-needs-key')).toHaveTextContent('Needs an AI key');
+    expect(screen.getByRole('link', { name: 'Add one in Settings' })).toHaveAttribute('href', '/settings');
   });
 
   it('does not show optimisation overlay by default', () => {

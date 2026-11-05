@@ -26,7 +26,7 @@ const TABS: Tab[] = [
     path: 'itinerary',
     icon: <CalendarDays size={16} aria-hidden="true" />,
   },
-  // To-Do and Clipboard, together: what is still to sort, and what is kept.
+  // To-Do and Clipboard, together: what is still to do, and what is kept.
   {
     key: 'essentials',
     label: 'Essentials',

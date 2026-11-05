@@ -58,10 +58,10 @@ describe('TodoList', () => {
 
   // ── Add/Edit/Delete (Flow 10, Story 1) ──────────────────────────────────
 
-  it('lists open tasks under To sort, and folds done ones away', () => {
+  it('lists open tasks under To do, and folds done ones away', () => {
     vi.mocked(useLiveQuery).mockReturnValue(mockTodos);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByRole('region', { name: /to sort/i })).toHaveTextContent('Book flights to Tokyo');
+    expect(screen.getByRole('region', { name: /to do/i })).toHaveTextContent('Book flights to Tokyo');
     expect(screen.queryByText('Pack rain jacket')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('done-toggle'));
     expect(screen.getByText('Pack rain jacket')).toBeInTheDocument();
@@ -212,10 +212,10 @@ describe('TodoList', () => {
 
   // ── Progress / Complete (Flow 10, Story 2) ──────────────────────────────
 
-  it('counts what is left to sort, and what is done', () => {
+  it('counts what is left to do, and what is done', () => {
     vi.mocked(useLiveQuery).mockReturnValue(mockTodos);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByRole('heading', { name: /to sort/i })).toHaveTextContent('1');
+    expect(screen.getByRole('heading', { name: /to do/i })).toHaveTextContent('1');
     expect(screen.getByTestId('done-toggle')).toHaveTextContent('Done (1)');
   });
 
@@ -229,7 +229,7 @@ describe('TodoList', () => {
     const allDone = mockTodos.map((t) => ({ ...t, status: 'done' }));
     vi.mocked(useLiveQuery).mockReturnValue(allDone);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
-    expect(screen.getByTestId('to-sort-empty')).toHaveTextContent('All sorted.');
+    expect(screen.getByTestId('to-sort-empty')).toHaveTextContent('All done.');
   });
 
   it('toggles task status on checkbox click', async () => {
@@ -274,6 +274,26 @@ describe('TodoList', () => {
     vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
     render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
     expect(screen.queryByText('Generated')).not.toBeInTheDocument();
+  });
+
+  // ── Travel basics ────────────────────────────────────────────────────────
+
+  // For trips made before new ones came with them.
+  it('offers the travel basics to a trip that has none, and adds them', async () => {
+    vi.mocked(useLiveQuery).mockReturnValue([mockTodos[0]]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    fireEvent.click(screen.getByTestId('add-travel-basics'));
+    await waitFor(() => expect(db.todos.bulkAdd).toHaveBeenCalled());
+    const added = vi.mocked(db.todos.bulkAdd).mock.calls[0][0] as Array<{ title: string; planId: string }>;
+    expect(added.map((t) => t.title)).toContain('Pack a universal plug adapter');
+    expect(added.every((t) => t.planId === 'plan-1')).toBe(true);
+  });
+
+  // Deleting one on purpose must not bring the offer back.
+  it('does not offer them once the trip has any', () => {
+    vi.mocked(useLiveQuery).mockReturnValue([{ ...mockTodos[0], id: 'b', title: 'Pack headache medicine' }]);
+    render(<MemoryRouter><TodoList planId="plan-1" /></MemoryRouter>);
+    expect(screen.queryByTestId('add-travel-basics')).not.toBeInTheDocument();
   });
 
   // ── Attach proof ─────────────────────────────────────────────────────────

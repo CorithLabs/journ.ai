@@ -360,10 +360,17 @@ async function locateActivity(
 export async function geocodePlanActivities(
   plan: Plan,
   onFail?: (activityName: string) => void,
+  /** How many of the stops to look up are done, so the map can show progress. */
+  onProgress?: (done: number, total: number) => void,
 ): Promise<Set<string>> {
   const failed = new Set<string>();
   const itinerary = plan.itinerary.map(d => ({ ...d, activities: [...d.activities] }));
   let changed = false;
+  const total = itinerary
+    .flatMap((d) => d.activities)
+    .filter((a) => !a.coordinates && (a.locationName.trim() || a.name.trim())).length;
+  let done = 0;
+  onProgress?.(0, total);
 
   /*
    * Resolve every city the trip visits, not just the destination.
@@ -405,6 +412,7 @@ export async function geocodePlanActivities(
         anchored.find((a) => haystack.includes(a.city.toLowerCase())) ?? primary;
 
       const place = await locateActivity(act, owner, allAnchors);
+      onProgress?.(++done, total);
       if (place) {
         day.activities[i] = {
           ...act,

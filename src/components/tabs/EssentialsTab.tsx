@@ -6,12 +6,12 @@ interface Props {
 }
 
 /**
- * Everything for the trip that is not the plan itself: what is still to sort,
+ * Everything for the trip that is not the plan itself: what is still to do,
  * and what is kept — boarding passes, check-ins, booking emails.
  *
  * These were two tabs, To-Do and Clipboard, though most tasks are finished by
  * getting something the other tab kept ("Book the hotel" → the hotel's
- * email). One tab, one scroll: to sort on top, saved below.
+ * email). One tab, one scroll: to do on top, saved below.
  */
 export default function EssentialsTab({ planId }: Props) {
   return (
