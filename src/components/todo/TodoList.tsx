@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { db, type TodoItem, type Plan } from '../../db';
 import Toast from '../ui/Toast';
 import { scrollBehavior } from '../../utils/motion';
+import { travelBasics } from '../../utils/tripStartTodos';
 
 interface Props { planId: string; }
 
@@ -261,7 +262,7 @@ function Row({ item, plan, onToggle, onDel, onUpd, onPin, onAttach, onNavigateTo
 }
 
 /**
- * Essentials' "To sort": what still needs doing for the trip.
+ * Essentials' "To do": what still needs doing for the trip.
  *
  * Was its own tab, grouped by category under a progress bar. Most of these
  * are finished by getting something — the booking, the ticket — and that
@@ -302,6 +303,12 @@ export default function TodoList({ planId }: Props) {
     }, 150);
   };
 
+  const basics = travelBasics(planId, plan?.international);
+  const addBasics = async () => {
+    const now = stamp();
+    await db.todos.bulkAdd(basics.map((b) => ({ ...b, id: uuidv4(), createdAt: now, updatedAt: now })));
+  };
+
   // Pinned first: the one or two that matter, in a list the app also adds to.
   const open = todos.filter((t) => t.status !== 'done').sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
   const done = todos.filter((t) => t.status === 'done');
@@ -313,14 +320,28 @@ export default function TodoList({ planId }: Props) {
 
   return (
     <section aria-labelledby="to-sort" data-testid="todo-list">
-      <SectionHead id="to-sort" title="To sort" count={open.length} addLabel="Add task" onAdd={() => setShowAdd(true)} addTestId="add-task-btn" />
+      <SectionHead id="to-sort" title="To do" count={open.length} addLabel="Add task" onAdd={() => setShowAdd(true)} addTestId="add-task-btn" />
 
       {open.length === 0 && (
         <p className="py-3 text-sm text-ink-muted" data-testid="to-sort-empty">
-          {done.length > 0 ? 'All sorted.' : 'Nothing to sort yet.'}
+          {done.length > 0 ? 'All done.' : 'Nothing to do yet.'}
         </p>
       )}
       <div className="space-y-1.5">{open.map(row)}</div>
+
+      {/* For trips made before new ones came with these. Offered only while the
+          trip has none of them, so deleting one on purpose does not bring the
+          offer back. */}
+      {basics.length > 0 && basics.every((b) => !todos.some((t) => t.title === b.title)) && (
+        <button
+          type="button"
+          onClick={addBasics}
+          className="mt-2 min-h-11 flex items-center gap-1.5 text-sm text-accent hover:underline"
+          data-testid="add-travel-basics"
+        >
+          + Add travel basics <span className="text-ink-muted">(plug adapter, eSIM, headache medicine, power bank)</span>
+        </button>
+      )}
 
       {done.length > 0 && (
         <div className="mt-2">

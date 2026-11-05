@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sparkles, CheckCircle2, XCircle, AlertTriangle, GripVertical } from 'lucide-react';
 import { type Day, type Activity, db } from '../../db';
 import { streamCompletion, MissingKeyError } from '../../services/aiClient';
+import { hasAnyAiKey } from '../../services/aiKeyStatus';
 import { totalRouteDistanceKm } from '../../services/places';
 import Toast from '../ui/Toast';
 
@@ -69,7 +70,10 @@ export default function RouteOptimisation({ planId, day, isOffline }: Props) {
   const [err, setErr] = useState<string | null>(null);
 
   const withCoords = day.activities.filter(a => a.coordinates);
-  const canOpt = withCoords.length >= 3;
+  // The AI does the reordering, so without a key the button could only fail.
+  // Said up front rather than after a request that was never going to work.
+  const needsKey = !hasAnyAiKey();
+  const canOpt = withCoords.length >= 3 && !needsKey;
 
   const optimise = async () => {
     if (!canOpt || isOffline) return;
@@ -108,11 +112,16 @@ export default function RouteOptimisation({ planId, day, isOffline }: Props) {
         <div className="px-4 py-2 border-t border-white/5 flex items-center gap-3">
           <button onClick={optimise} disabled={!canOpt || isOffline}
             className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-xl font-semibold transition-colors ${canOpt && !isOffline ? 'bg-accent hover:bg-accent-light text-ink-inverse' : 'bg-surface-overlay text-ink-muted border border-white/10 cursor-not-allowed'}`}
-            title={isOffline ? 'AI unavailable offline' : !canOpt ? 'Need at least 3 stops to optimise' : undefined}
+            title={needsKey ? 'Add an AI key in Settings to optimise a route' : isOffline ? 'AI unavailable offline' : !canOpt ? 'Need at least 3 stops to optimise' : undefined}
             aria-disabled={!canOpt || isOffline} data-testid="optimise-route-btn">
             <Sparkles size={12} aria-hidden="true" /> Optimise Route
           </button>
-          {!canOpt && withCoords.length > 0 && withCoords.length < 3 && <span className="text-xs text-ink-muted">Need at least 3 geocoded stops to optimise</span>}
+          {needsKey && (
+            <span className="text-xs text-ink-muted" data-testid="optimise-needs-key">
+              Needs an AI key. <a href="/settings" className="text-accent hover:underline">Add one in Settings</a>
+            </span>
+          )}
+          {!needsKey && !canOpt && withCoords.length > 0 && withCoords.length < 3 && <span className="text-xs text-ink-muted">Need at least 3 geocoded stops to optimise</span>}
           {err && <div className="flex items-center gap-1 text-xs text-status-danger"><AlertTriangle size={12} aria-hidden="true" />{err}</div>}
         </div>
       )}

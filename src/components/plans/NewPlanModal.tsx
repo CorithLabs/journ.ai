@@ -263,6 +263,7 @@ export default function NewPlanModal({ onClose }: Props) {
         destination,
         ticketsBooked: booked,
         stayBooked: stayBooked === 'yes' ? true : stayBooked === 'no' ? false : null,
+        international: plan.international,
       }).map((t) => ({ ...t, id: uuidv4(), createdAt: now, updatedAt: now }));
       if (todos.length) await db.todos.bulkAdd(todos);
 
