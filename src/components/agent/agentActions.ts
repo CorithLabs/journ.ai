@@ -358,6 +358,22 @@ export const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_weather',
+      description:
+        'Real weather for a place and dates: the forecast when it is within about 16 days, otherwise what those dates were like over recent years. Defaults to the trip destination and dates. Use it for any question about the weather instead of guessing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          place: { type: 'string', description: 'A city; defaults to the trip destination' },
+          startDate: { type: 'string', description: 'ISO date; defaults to the trip start' },
+          endDate: { type: 'string', description: 'ISO date; defaults to the trip end' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'save_clipboard',
       description: 'Save a note to the clipboard for the current plan.',
       parameters: {
@@ -895,6 +911,19 @@ export async function executeAgentAction(
           ok: true,
           message: `Read ${hits.length} saved item${hits.length === 1 ? '' : 's'}.`,
           data: JSON.stringify(hits),
+        };
+      }
+
+      case 'get_weather': {
+        const iso = /^\d{4}-\d{2}-\d{2}$/;
+        const place = typeof call.args.place === 'string' && call.args.place.trim() ? call.args.place.trim() : plan.destination;
+        const start = typeof call.args.startDate === 'string' && iso.test(call.args.startDate) ? call.args.startDate : plan.startDate;
+        const end = typeof call.args.endDate === 'string' && iso.test(call.args.endDate) ? call.args.endDate : plan.endDate;
+        const w = await weatherFor(place, start, end);
+        return {
+          ok: w.basis !== 'none',
+          message: w.basis === 'none' ? `I couldn't get the weather for ${place}.` : 'Checked the weather.',
+          data: JSON.stringify({ basis: w.basis, summary: describeWeather(w), packingToDos: packingFor(w) }),
         };
       }
 
