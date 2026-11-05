@@ -234,6 +234,7 @@ export default function NewPlanModal({ onClose }: Props) {
         name: destination,
         destination,
         ...(country ? { country } : {}),
+        ...(destCode ? { countryCode: destCode } : {}),
         startDate: startDate || today,
         endDate: effectiveEnd || startDate || today,
         ...(originText_ ? {
@@ -264,6 +265,7 @@ export default function NewPlanModal({ onClose }: Props) {
         ticketsBooked: booked,
         stayBooked: stayBooked === 'yes' ? true : stayBooked === 'no' ? false : null,
         international: plan.international,
+        countries: { destination: destCode ?? country, origin: originCode ?? plan.origin?.country },
       }).map((t) => ({ ...t, id: uuidv4(), createdAt: now, updatedAt: now }));
       if (todos.length) await db.todos.bulkAdd(todos);
 

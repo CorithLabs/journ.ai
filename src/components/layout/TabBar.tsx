@@ -68,9 +68,13 @@ export default function TabBar({ planId }: Props) {
   // keeps the bottom bar to one row. Without a shell (a test rendering the
   // bar alone) it stays in the bar.
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  // Checked after every render, not only when the breakpoint changes: on a
+  // resize across it, this bar can switch before the shell has drawn its top
+  // bar, and a single look found no slot and left the switcher in the pill.
   useLayoutEffect(() => {
-    setHeaderSlot(isMobile ? document.getElementById(MOBILE_HEADER_SLOT) : null);
-  }, [isMobile]);
+    const slot = isMobile ? document.getElementById(MOBILE_HEADER_SLOT) : null;
+    if (slot !== headerSlot) setHeaderSlot(slot);
+  });
 
   const activeTab = TABS.find((t) =>
     location.pathname.endsWith(`/${t.path}`),

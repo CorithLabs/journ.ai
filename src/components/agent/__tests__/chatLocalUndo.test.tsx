@@ -148,3 +148,16 @@ describe('the opening briefing', () => {
     expect(screen.queryByText("What's on during my trip?")).not.toBeInTheDocument();
   });
 });
+
+// "Ask about tipping, phrases and scams" in Essentials opens the chat with it.
+describe('a question asked from elsewhere', () => {
+  it('is sent when the chat opens, instead of the briefing', async () => {
+    vi.mocked(aiClient.chatWithTools).mockResolvedValue({ text: 'Tipping is not expected in Japan.', toolCalls: [] });
+    useAppStore.setState({ pendingAgentQuestion: 'What about tipping in Japan?' });
+    show();
+    expect(await screen.findByText('What about tipping in Japan?')).toBeInTheDocument();
+    expect(await screen.findByText('Tipping is not expected in Japan.')).toBeInTheDocument();
+    expect(useAppStore.getState().pendingAgentQuestion).toBeNull();
+    expect(tripWeather.tripWeather).not.toHaveBeenCalled();
+  });
+});
