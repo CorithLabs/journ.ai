@@ -17,6 +17,8 @@ interface Tab {
   label: string;
   path: string;
   icon: React.ReactNode;
+  /** Still being worked on, and said so on the tab. */
+  beta?: boolean;
 }
 
 const TABS: Tab[] = [
@@ -26,7 +28,7 @@ const TABS: Tab[] = [
     path: 'itinerary',
     icon: <CalendarDays size={16} aria-hidden="true" />,
   },
-  // To-Do and Clipboard, together: what is still to sort, and what is kept.
+  // To-Do and Clipboard, together: what is still to do, and what is kept.
   {
     key: 'essentials',
     label: 'Essentials',
@@ -37,6 +39,9 @@ const TABS: Tab[] = [
     key: 'map',
     label: 'Map',
     path: 'map',
+    // Places are looked up one by one from free services, which can be slow
+    // or miss a stop; the badge sets that expectation.
+    beta: true,
     icon: <Map size={16} aria-hidden="true" />,
   },
 ];
@@ -157,12 +162,27 @@ export default function TabBar({ planId }: Props) {
                    ${isActive ? 'border-accent text-ink-primary' : 'border-transparent text-ink-secondary hover:text-ink-primary'}`
               }
             `}
+            aria-label={tab.beta ? `${tab.label}, beta` : undefined}
             data-testid={`tab-${tab.key}`}
           >
-            {tab.icon}
+            {/* On a phone the badge sits on the icon's corner, since the cell
+                has no room beside the label; on a wide screen it follows it. */}
+            <span className="relative inline-flex">
+              {tab.icon}
+              {tab.beta && isMobile && (
+                <span className="absolute -top-1.5 -right-5 px-1 rounded-full bg-accent/20 text-accent text-[8px] font-semibold uppercase leading-[1.4] tracking-wide" aria-hidden="true" data-testid={`tab-${tab.key}-beta`}>
+                  Beta
+                </span>
+              )}
+            </span>
             <span className={isMobile ? 'text-[10px] leading-none truncate max-w-full' : ''}>
               {tab.label}
             </span>
+            {tab.beta && !isMobile && (
+              <span className="px-1.5 py-0.5 rounded-full bg-accent/15 text-accent text-[10px] font-semibold uppercase tracking-wide leading-none" aria-hidden="true" data-testid={`tab-${tab.key}-beta`}>
+                Beta
+              </span>
+            )}
           </button>
         );
       })}

@@ -40,9 +40,10 @@ describe('seedDemoDataIfNeeded', () => {
     expect(addedPlan.intake?.numTravellers).toBe(2);
     expect(addedPlan.intake?.budgetRange).toBe('mid');
 
-    // 3 todos, 1 clipboard item written
+    // 3 trip todos and the 4 travel basics, 1 clipboard item written
     const todos = vi.mocked(db.todos.bulkAdd).mock.calls[0][0];
-    expect(todos).toHaveLength(3);
+    expect(todos).toHaveLength(7);
+    expect(todos.map((t: { title: string }) => t.title)).toContain('Charge and pack a power bank');
     const clip = vi.mocked(db.clipboard.bulkAdd).mock.calls[0][0];
     expect(clip).toHaveLength(1);
     expect(clip[0].title).toBe('Hotel — Shinjuku Grand');

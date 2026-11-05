@@ -42,8 +42,8 @@ describe('the order of the tabs', () => {
   // To-Do and Clipboard became one tab, Essentials.
   it('runs itinerary, essentials, map', () => {
     render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
-    expect(screen.getAllByRole('tab').map(t => t.textContent))
-      .toEqual(['Itinerary', 'Essentials', 'Map']);
+    expect(screen.getAllByRole('tab').map(t => t.getAttribute('data-testid')))
+      .toEqual(['tab-itinerary', 'tab-essentials', 'tab-map']);
   });
 
   // Arrow-key traversal walks the same array, so the two cannot disagree.
@@ -53,5 +53,20 @@ describe('the order of the tabs', () => {
     tabs[0].focus();
     fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
     expect(document.activeElement).toBe(tabs[1]);
+  });
+});
+
+// Places are looked up one by one from free services: the map says it is early.
+describe('the map tab', () => {
+  it('is marked beta, and says so to screen readers', () => {
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    expect(screen.getByTestId('tab-map-beta')).toHaveTextContent('Beta');
+    expect(screen.getByRole('tab', { name: /map, beta/i })).toBeInTheDocument();
+  });
+
+  it('is the only one marked', () => {
+    render(<MemoryRouter><TabBar planId="p1" /></MemoryRouter>);
+    expect(screen.queryByTestId('tab-itinerary-beta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('tab-essentials-beta')).not.toBeInTheDocument();
   });
 });

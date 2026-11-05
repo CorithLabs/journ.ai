@@ -43,6 +43,8 @@ export default function MapTab({ planId }: Props) {
   const [distance, setDistance] = useState<number | null>(null);
   const [toast, setToast] = useState<{ msg: string } | null>(null);
   const [geocoding, setGeocoding] = useState(false);
+  // Stops looked up so far, out of how many: null until the count is known.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   const [openPin, setOpenPin] = useState<PinActivity | null>(null);
   /*
@@ -102,11 +104,15 @@ export default function MapTab({ planId }: Props) {
     if (unresolved.length === 0) return;
 
     setGeocoding(true);
+    setProgress(null);
     setGeocodeError(null);
-    const failed = await geocodePlanActivities(plan, (name) => {
-      setToast({ msg: `Could not locate: ${name}` });
-    });
+    const failed = await geocodePlanActivities(
+      plan,
+      (name) => setToast({ msg: `Could not locate: ${name}` }),
+      (done, total) => setProgress({ done, total }),
+    );
     setGeocoding(false);
+    setProgress(null);
 
     if (failed.size > 0) {
       setGeocodeError(`${failed.size} location(s) could not be resolved`);
@@ -288,15 +294,7 @@ export default function MapTab({ planId }: Props) {
           );
         })}
 
-        {geocoding && (
-          <span className="shrink-0 flex items-center gap-1 text-xs text-ink-muted ml-auto">
-            <div
-              className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin"
-              aria-label="Geocoding in progress"
-            />
-            Geocoding…
-          </span>
-        )}
+
       </div>
 
       {/* What the map can find, rather than only what it can draw. Off by
@@ -342,6 +340,33 @@ export default function MapTab({ planId }: Props) {
 
       {/* Map area */}
       <div className="flex-1 relative min-h-0 p-2 md:p-3">
+        {/* The pins wait for every stop to be looked up, which takes a moment
+            per stop: a bar says how far along it is, rather than a map that
+            looks empty. Before the count is known it runs without a value. */}
+        {geocoding && (
+          <div className="absolute inset-x-2 md:inset-x-3 top-2 md:top-3 z-20 pointer-events-none" data-testid="map-progress">
+            <div
+              className="h-1 rounded-full bg-white/10 overflow-hidden"
+              role="progressbar"
+              aria-label="Placing stops on the map"
+              aria-valuemin={0}
+              aria-valuemax={progress?.total || undefined}
+              aria-valuenow={progress?.total ? progress.done : undefined}
+            >
+              {progress?.total ? (
+                <div
+                  className="h-full bg-accent rounded-full transition-[width] duration-300 ease-out"
+                  style={{ width: `${Math.max(4, Math.round((progress.done / progress.total) * 100))}%` }}
+                />
+              ) : (
+                <div className="h-full w-1/3 bg-accent rounded-full map-progress-indeterminate" />
+              )}
+            </div>
+            <p className="mt-2 mx-auto w-fit px-3 py-1 rounded-full bg-surface-overlay/90 border border-white/10 text-xs text-ink-secondary shadow-glass" data-testid="map-progress-label">
+              Placing stops on the map{progress?.total ? ` · ${progress.done} of ${progress.total}` : '…'}
+            </p>
+          </div>
+        )}
         {selectedDayAllUnresolved && (
           <div
             className="absolute top-3 left-1/2 -translate-x-1/2 z-10 bg-surface-overlay border border-white/10 rounded-card px-4 py-2 text-xs text-ink-secondary shadow-glass"

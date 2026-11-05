@@ -31,7 +31,7 @@ describe('adding a to-do', () => {
     show(() => <TodoList planId="p1" />);
     const add = screen.getByTestId('add-task-btn');
     expect(add).toHaveAccessibleName('Add task');
-    expect(screen.getByRole('region', { name: /to sort/i })).toContainElement(add);
+    expect(screen.getByRole('region', { name: /to do/i })).toContainElement(add);
   });
 
   it('opens as a dialog', () => {

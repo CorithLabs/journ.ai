@@ -233,6 +233,7 @@ describe('the stay', () => {
     await goTo('Tokyo, Japan');
     fireEvent.click(screen.getByTestId('stay-booked-yes'));
     await create();
-    expect(todos().map((t) => t.title)).toEqual(['Save your hotel booking']);
+    expect(todos().map((t) => t.title)).toContain('Save your hotel booking');
+    expect(todos().map((t) => t.title)).not.toContain('Book accommodation for each night');
   });
 });

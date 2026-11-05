@@ -346,6 +346,16 @@ body,
   .generating-route, .generating-pin, .generating-pulse, .generating-stop { animation: none !important; }
 }
 
+/* The map's progress bar before it knows how many stops there are. */
+@keyframes map-progress-slide {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(300%); }
+}
+.map-progress-indeterminate { animation: map-progress-slide 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .map-progress-indeterminate { animation: none; width: 100%; opacity: 0.4; }
+}
+
 /*
  * Modals arrive rather than appearing.
  *
