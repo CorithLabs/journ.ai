@@ -94,13 +94,14 @@ describe('AI agent panel', () => {
     });
   });
 
-  it('shows a degraded banner and disables input when no key is configured', async () => {
+  // The app's own commands need no key, so the chat stays usable without one.
+  it('says what it can do without a key, and still takes commands', async () => {
     vi.mocked(aiKey.hasStoredKey).mockReturnValue(false);
     renderAgent();
     fireEvent.click(screen.getByTestId('agent-fab'));
     await waitFor(() => {
-      expect(screen.getByTestId('agent-no-key-banner')).toBeInTheDocument();
-      expect(screen.getByTestId('agent-input')).toBeDisabled();
+      expect(screen.getByTestId('agent-no-key-banner')).toHaveTextContent(/still swap, move, remove/);
+      expect(screen.getByTestId('agent-input')).toBeEnabled();
     });
   });
 

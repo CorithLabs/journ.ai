@@ -18,6 +18,7 @@ import ActionMenu from '../ui/ActionMenu';
 import { useTripActions } from '../plans/useTripActions';
 import ImportTripButton from '../plans/ImportTripButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useAppStore } from '../../store';
 import { versionLabel } from '../../utils/appVersion';
 import { hasAnyAiKey } from '../../services/aiKeyStatus';
 
@@ -70,6 +71,7 @@ export default function Sidebar() {
 
   const { canInstall, triggerInstall } = usePwaInstall();
   // Lives here, not in the menus, so an Undo outlasts the menu closing.
+  const agentOpen = useAppStore((st) => st.agentPanelOpen);
   const tripActions = useTripActions({
     // As when a trip is tapped: the drawer would cover the copy just opened.
     onOpenTrip: () => { if (isMobile) setDrawerOpen(false); },
@@ -115,7 +117,8 @@ export default function Sidebar() {
     <>
       {/* Floating trigger — lives outside the drawer so it stays reachable
           when the drawer is slid off-screen. */}
-      {isMobile && !drawerOpen && (
+      {/* Hidden while the chat fills a phone screen: it sat on the chat's header. */}
+      {isMobile && !drawerOpen && !agentOpen && (
         <button
           onClick={() => setDrawerOpen(true)}
           className="fixed top-[calc(0.4375rem+env(safe-area-inset-top))] left-3 z-40 p-2.5 rounded-card bg-surface-raised/85 backdrop-blur-glass border border-white/10 shadow-card text-ink-primary focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"

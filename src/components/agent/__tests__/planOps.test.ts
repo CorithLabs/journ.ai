@@ -76,6 +76,13 @@ describe('finding an activity', () => {
     expect(r.kind === 'found' && r.hit.activity.name).toBe('Mori Art Museum');
   });
 
+  // "Swap tsukiji on day 2…" when it is on day 1 should say so.
+  it('says which day it is on when it is not on the day named', () => {
+    const r = resolveActivity(plan, { nameMatch: 'senso', dayIndex: 1 });
+    expect(r.kind).toBe('missing');
+    expect(r.kind === 'missing' && r.elsewhere?.[0].dayIndex).toBe(0);
+  });
+
   it('matches the location too', () => {
     const r = resolveActivity(plan, { nameMatch: 'roppongi' });
     expect(r.kind === 'found' && r.hit.activity.name).toBe('Mori Art Museum');

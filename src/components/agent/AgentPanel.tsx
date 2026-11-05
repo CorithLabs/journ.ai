@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Sparkles, X, Send, AlertTriangle, PanelRight } from 'lucide-react';
+import { Sparkles, X, Send, AlertTriangle, PanelRight, Undo2 } from 'lucide-react';
 import { db } from '../../db';
 import { useAppStore, type ActiveTab } from '../../store';
 import { hasStoredKey } from '../../services/aiKey';
@@ -79,14 +79,30 @@ export default function AgentPanel({ planId }: Props) {
   // Only for the opening suggestions — what is still open is one of the more
   // useful things to be asked before anything has been said.
   const todos = useLiveQuery(() => db.todos.where('planId').equals(planId).toArray(), [planId]);
-  const { send, busy } = useAgentChat(plan);
+  const { send, undo, brief, busy } = useAgentChat(plan);
+
+  /*
+   * The trip's weather as soon as the chat opens on it, once per trip per
+   * session: the first thing worth knowing, and it needs no AI.
+   */
+  const briefed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || !plan || briefed.current === plan.id) return;
+    if (useAppStore.getState().agentMessages.length > 0) return;
+    briefed.current = plan.id;
+    void brief();
+  }, [open, plan, brief]);
+
+  // Each change a reply made can be undone, once, from the reply that made it.
+  const undoOn = new Map<string, string>();
+  for (const m of messages) if (m.undoId && !m.undone) undoOn.set(m.undoId, m.id);
 
   /*
    * Tapping a pill sends it as though it had been typed, so the thread reads
    * the same either way and the assistant sees a normal request.
    */
   const ask = (text: string) => {
-    if (busy || !keyConfigured) return;
+    if (busy) return;
     setInput('');
     void send(text);
   };
@@ -195,7 +211,7 @@ export default function AgentPanel({ planId }: Props) {
         >
           <AlertTriangle size={16} className="text-status-warning shrink-0 mt-0.5" aria-hidden="true" />
           <p className="text-sm text-status-warning">
-            Set up your API key in Settings to use the AI agent.
+            No AI key yet. I can still swap, move, remove and tick things off, show the weather, and undo — add a key in Settings for the rest.
           </p>
         </div>
       )}
@@ -213,7 +229,7 @@ export default function AgentPanel({ planId }: Props) {
           <SuggestionPills
             suggestions={openingSuggestions(plan, todos ?? [])}
             onPick={ask}
-            disabled={busy || !keyConfigured}
+            disabled={busy}
           />
         )}
         {messages
@@ -242,9 +258,21 @@ export default function AgentPanel({ planId }: Props) {
                 <SuggestionPills
                   suggestions={m.suggestions ?? []}
                   onPick={ask}
-                  disabled={busy || !keyConfigured}
+                  disabled={busy}
                 />
               )}
+              {m.undoId && undoOn.get(m.undoId) === m.id && (
+                <button
+                  type="button"
+                  onClick={() => void undo(m.undoId!)}
+                  disabled={busy}
+                  className="mt-2 flex items-center gap-1 text-xs text-accent hover:underline disabled:opacity-40"
+                  data-testid="agent-undo"
+                >
+                  <Undo2 size={12} aria-hidden="true" /> Undo
+                </button>
+              )}
+              {m.undone && <p className="mt-1 text-[11px] text-ink-muted" data-testid="agent-undone">Undone</p>}
             </div>
           ))}
         {busy && (
@@ -260,15 +288,15 @@ export default function AgentPanel({ planId }: Props) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={keyConfigured ? 'Message the agent…' : 'Add a key in Settings first'}
-          disabled={!keyConfigured || busy}
+          placeholder={keyConfigured ? 'Message the agent…' : 'e.g. "swap the museum with the market"'}
+          disabled={busy}
           aria-label="Message the AI agent"
           data-testid="agent-input"
           className={`flex-1 ${fieldOnCardAuto}`}
         />
         <button
           type="submit"
-          disabled={!keyConfigured || busy || !input.trim()}
+          disabled={busy || !input.trim()}
           aria-label="Send"
           data-testid="agent-send"
           className="p-2 rounded-xl bg-accent hover:bg-accent-light disabled:opacity-50 text-ink-inverse transition-colors focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:outline-none"

@@ -28,6 +28,10 @@ export interface Message {
    * not show what the newest one suggested.
    */
   suggestions?: string[];
+  /** The change this reply made can be undone with this id (see agent/undo). */
+  undoId?: string;
+  /** Set once that change has been undone. */
+  undone?: boolean;
 }
 
 const PROVIDER_STORAGE = 'aitp_ai_provider';
@@ -66,6 +70,7 @@ interface AppStore {
   toggleAgentPanel: () => void;
   setAgentPanelOpen: (open: boolean) => void;
   pushAgentMessage: (msg: Message) => void;
+  updateAgentMessage: (id: string, patch: Partial<Message>) => void;
   clearAgentSession: () => void;
   setOfflineBanner: (visible: boolean) => void;
   setWeather: (data: Record<string, WeatherDay>) => void;
@@ -87,6 +92,8 @@ export const useAppStore = create<AppStore>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   toggleAgentPanel: () => set((s) => ({ agentPanelOpen: !s.agentPanelOpen })),
   setAgentPanelOpen: (open) => set({ agentPanelOpen: open }),
+  updateAgentMessage: (id, patch) =>
+    set((s) => ({ agentMessages: s.agentMessages.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
   pushAgentMessage: (msg) =>
     set((s) => ({ agentMessages: [...s.agentMessages, msg] })),
   clearAgentSession: () => set({ agentMessages: [] }),

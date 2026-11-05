@@ -11,6 +11,7 @@ import {
 } from '../../db';
 import { TRAVEL_MODES, describeLeg, tripRoute } from '../../utils/travel';
 import { fitDaysToDates } from '../../utils/fitDays';
+import { describeWeather, packingFor, weatherFor } from '../../services/tripWeather';
 import { MAX_TRIP_DAYS_ERROR, exceedsMaxTripDays } from '../../utils/tripDuration';
 import { dateForDayIndex } from '../../utils/tripDay';
 import { shortDate } from '../../utils/dateText';
@@ -352,6 +353,22 @@ export const AGENT_TOOLS = [
           },
         },
         required: ['stops'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_weather',
+      description:
+        'Real weather for a place and dates: the forecast when it is within about 16 days, otherwise what those dates were like over recent years. Defaults to the trip destination and dates. Use it for any question about the weather instead of guessing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          place: { type: 'string', description: 'A city; defaults to the trip destination' },
+          startDate: { type: 'string', description: 'ISO date; defaults to the trip start' },
+          endDate: { type: 'string', description: 'ISO date; defaults to the trip end' },
+        },
       },
     },
   },
@@ -898,6 +915,19 @@ export async function executeAgentAction(
         };
       }
 
+      case 'get_weather': {
+        const iso = /^\d{4}-\d{2}-\d{2}$/;
+        const place = typeof call.args.place === 'string' && call.args.place.trim() ? call.args.place.trim() : plan.destination;
+        const start = typeof call.args.startDate === 'string' && iso.test(call.args.startDate) ? call.args.startDate : plan.startDate;
+        const end = typeof call.args.endDate === 'string' && iso.test(call.args.endDate) ? call.args.endDate : plan.endDate;
+        const w = await weatherFor(place, start, end);
+        return {
+          ok: w.basis !== 'none',
+          message: w.basis === 'none' ? `I couldn't get the weather for ${place}.` : 'Checked the weather.',
+          data: JSON.stringify({ basis: w.basis, summary: describeWeather(w), packingToDos: packingFor(w) }),
+        };
+      }
+
       case 'save_clipboard': {
         const title = String(call.args.title ?? '').trim();
         if (!title) return { ok: false, message: 'What should I title this clipboard item?' };
@@ -1006,6 +1036,17 @@ export function buildSystemPrompt(
     'Time works in parts of the day: morning (5am–12pm), noon (12–5pm, i.e. the afternoon), evening (5–9pm) and night. Pass time as "morning", "noon", "evening" or "night" unless something is genuinely fixed — a booking, a show, a train — then use 24h HH:MM. The app places an activity among its part of the day for you; use position "first"/"last", or before/after a ref, when the user says where ("first thing", "before lunch", "after the temple").',
     'Never add something that is already in the trip: check the summary first. add_activity and add_todo refuse duplicates and say where the existing one is; tell the user that rather than trying again. Only set allowRepeat for things that genuinely recur on several days (breakfast at the hotel).',
     'When a request needs several changes ("swap these and add lunch"), make all of them in the same turn, one tool call each.',
+    /*
+     * Weather is fetched, not remembered: a forecast when the trip is close,
+     * recent years for the same dates otherwise. The answer ends in what to
+     * do about it, offered as follow-ups the user can tap.
+     */
+    'For any question about the weather — "what is it usually like in Kyoto in April?", "will it rain on our trip?" — call get_weather and answer from it, saying whether it is a forecast or what those dates are usually like. Then offer what follows: put its packingToDos (and anything else it implies) in your follow-ups as "Add to-do: Pack an umbrella", and suggest moving outdoor plans off a wet day if the forecast shows one.',
+    /*
+     * Events and crowds are not in any data the app has. They come from the
+     * model's own knowledge, which is worth having and worth hedging.
+     */
+    'You can also say what is usually on during the trip dates — festivals, public holidays, seasonal events — and how busy places tend to be (school holidays, peak season, which sights draw queues and when to go). This comes from your general knowledge, so say it is what usually happens and that dates should be checked, and offer to add a to-do to check or book anything that needs it.',
     'Use set_trip_dates to change the trip dates; it adds or removes days at the end. If it says days with activities would be removed, ask the user before calling it again with confirmRemoval.',
     'Use pin_activity_to_todo when the user wants to track booking or preparing for something already in the itinerary.',
     'The destination is what the trip is ABOUT, not necessarily where it starts. If the user says they set off from somewhere else — "we drive up from Montreal" — record it with set_travel_leg rather than adding an activity for it, or the next generated itinerary will still start at the far end. Use set_trip_stops to set or correct the cities in between, in visit order.',
