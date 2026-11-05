@@ -149,6 +149,21 @@ function buildDemoClipboard(planId: string): ClipboardItem[] {
  * every boot. Any IndexedDB error is swallowed so app boot is never blocked.
  * Returns the seeded plan's id, or null if no seed was written.
  */
+/**
+ * The sample Tokyo trip, added now whatever came before — from Settings, for
+ * anyone who deleted it or whose first launch did not add it. Dated from
+ * today, so its weather is live.
+ */
+export async function addSampleTrip(): Promise<string> {
+  const plan = buildDemoPlan();
+  await db.plans.add(plan);
+  await db.todos.bulkAdd(buildDemoTodos(plan.id));
+  await db.clipboard.bulkAdd(buildDemoClipboard(plan.id));
+  localStorage.setItem(SEEDED_FLAG, 'true');
+  localStorage.setItem(DEMO_PLAN_ID, plan.id);
+  return plan.id;
+}
+
 export async function seedDemoDataIfNeeded(): Promise<string | null> {
   try {
     // Flag guard: once seeded, never seed again — even if the user deletes
@@ -164,18 +179,10 @@ export async function seedDemoDataIfNeeded(): Promise<string | null> {
       return null;
     }
 
-    const plan = buildDemoPlan();
-    await db.plans.add(plan);
-    await db.todos.bulkAdd(buildDemoTodos(plan.id));
-    await db.clipboard.bulkAdd(buildDemoClipboard(plan.id));
-
-    localStorage.setItem(SEEDED_FLAG, 'true');
-    localStorage.setItem(DEMO_PLAN_ID, plan.id);
-
+    const id = await addSampleTrip();
     // Highlight the demo plan in the sidebar immediately.
-    useAppStore.getState().setActivePlan(plan.id);
-
-    return plan.id;
+    useAppStore.getState().setActivePlan(id);
+    return id;
   } catch (err) {
     // Log and continue — a seed failure must never block app boot.
     // eslint-disable-next-line no-console
