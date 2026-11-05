@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { requestOnboarding } from '../services/onboarding';
 import AboutJournai from '../components/onboarding/AboutJournai';
+import DeviceReport from '../components/settings/DeviceReport';
 import { getTempUnit, setTempUnit, type TempUnit } from '../services/units';
 import {
   Settings,
@@ -362,6 +363,15 @@ export default function SettingsPage() {
         >
           Show the introduction again
         </button>
+      </section>
+
+      {/* For bug reports: the numbers that decide phone or desktop layout. */}
+      <section className="border-t border-white/5 pt-4 mt-4">
+        <h2 className="text-sm font-semibold text-ink-primary mb-1">This device</h2>
+        <p className="text-xs text-ink-secondary mb-3">
+          What the app sees here. Copy it into a bug report if something looks wrong.
+        </p>
+        <DeviceReport />
       </section>
     </div>
   );
