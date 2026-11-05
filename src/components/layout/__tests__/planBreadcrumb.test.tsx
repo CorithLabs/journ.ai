@@ -64,6 +64,16 @@ describe('version badge', () => {
     // The phone drawer is full width, so the version is still shown there.
     expect(screen.getByTestId('app-version')).toBeInTheDocument();
   });
+
+  it('credits Sutra beside the version, opening its site in a new tab', () => {
+    setViewport(DESKTOP);
+    vi.mocked(useLiveQuery).mockReturnValue([]);
+    render(<MemoryRouter><Sidebar /></MemoryRouter>);
+    const link = screen.getByRole('link', { name: 'Built with Sutra' });
+    expect(link).toHaveAttribute('href', 'https://sutrasdd.app');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
 });
 
 /*
