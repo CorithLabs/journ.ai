@@ -303,7 +303,10 @@ export default function TodoList({ planId }: Props) {
     }, 150);
   };
 
-  const basics = travelBasics(planId, plan?.international);
+  const basics = travelBasics(planId, plan?.international, {
+    destination: plan?.countryCode ?? plan?.country,
+    origin: plan?.origin?.countryCode ?? plan?.origin?.country,
+  });
   const addBasics = async () => {
     const now = stamp();
     await db.todos.bulkAdd(basics.map((b) => ({ ...b, id: uuidv4(), createdAt: now, updatedAt: now })));

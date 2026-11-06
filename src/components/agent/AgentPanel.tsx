@@ -86,12 +86,22 @@ export default function AgentPanel({ planId }: Props) {
    * session: the first thing worth knowing, and it needs no AI.
    */
   const briefed = useRef<string | null>(null);
+  const pending = useAppStore((s) => s.pendingAgentQuestion);
+  const askAgent = useAppStore((s) => s.askAgent);
   useEffect(() => {
-    if (!open || !plan || briefed.current === plan.id) return;
+    if (!open || !plan) return;
+    // A question asked from elsewhere (Know before you go) is sent instead.
+    if (pending) {
+      briefed.current = plan.id;
+      askAgent(null);
+      void send(pending);
+      return;
+    }
+    if (briefed.current === plan.id) return;
     if (useAppStore.getState().agentMessages.length > 0) return;
     briefed.current = plan.id;
     void brief();
-  }, [open, plan, brief]);
+  }, [open, plan, brief, pending]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Each change a reply made can be undone, once, from the reply that made it.
   const undoOn = new Map<string, string>();

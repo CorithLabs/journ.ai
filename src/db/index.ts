@@ -91,6 +91,8 @@ export interface Plan {
    * Dexie version bump is needed.
    */
   origin?: { label: string; city: string; country?: string; countryCode?: string; coordinates?: [number, number] };
+  /** ISO code of the destination's country, when the lookup gave one. */
+  countryCode?: string;
   /**
    * What the traveller said was already booked when making the trip. Read by
    * the intake so it does not ask again, and by the to-do rules. `travel` is

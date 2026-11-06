@@ -71,6 +71,9 @@ interface AppStore {
   setAgentPanelOpen: (open: boolean) => void;
   pushAgentMessage: (msg: Message) => void;
   updateAgentMessage: (id: string, patch: Partial<Message>) => void;
+  /** A question to put to the chat from elsewhere in the app; the panel opens and sends it. */
+  pendingAgentQuestion: string | null;
+  askAgent: (question: string | null) => void;
   clearAgentSession: () => void;
   setOfflineBanner: (visible: boolean) => void;
   setWeather: (data: Record<string, WeatherDay>) => void;
@@ -92,6 +95,8 @@ export const useAppStore = create<AppStore>((set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }),
   toggleAgentPanel: () => set((s) => ({ agentPanelOpen: !s.agentPanelOpen })),
   setAgentPanelOpen: (open) => set({ agentPanelOpen: open }),
+  pendingAgentQuestion: null,
+  askAgent: (question) => set(question ? { pendingAgentQuestion: question, agentPanelOpen: true } : { pendingAgentQuestion: null }),
   updateAgentMessage: (id, patch) =>
     set((s) => ({ agentMessages: s.agentMessages.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
   pushAgentMessage: (msg) =>
