@@ -31,7 +31,7 @@ export interface Located {
 export type Resolution =
   | { kind: 'found'; hit: Located }
   | { kind: 'ambiguous'; hits: Located[] }
-  | { kind: 'missing' };
+  | { kind: 'missing'; elsewhere?: Located[] };
 
 /**
  * Find one activity, by ref or by name, optionally on one day.
@@ -69,6 +69,12 @@ export function resolveActivity(
   });
   if (hits.length === 1) return { kind: 'found', hit: hits[0] };
   if (hits.length > 1) return { kind: 'ambiguous', hits };
+  // Not on that day: say if it is on another, rather than only "not found".
+  if (day != null) {
+    const other = resolveActivity(plan, { nameMatch: q.nameMatch });
+    if (other.kind === 'found') return { kind: 'missing', elsewhere: [other.hit] };
+    if (other.kind === 'ambiguous') return { kind: 'missing', elsewhere: other.hits };
+  }
   return { kind: 'missing' };
 }
 
@@ -81,7 +87,9 @@ export function listHits(hits: Located[]): string {
 export function resolutionError(r: Exclude<Resolution, { kind: 'found' }>, asked: unknown): string {
   return r.kind === 'ambiguous'
     ? `More than one activity matches "${String(asked ?? '')}": ${listHits(r.hits)}. Say which, by its ref or its day.`
-    : `I couldn't find an activity matching "${String(asked ?? '')}".`;
+    : r.elsewhere?.length
+      ? `There's no "${String(asked ?? '')}" on that day — I found ${listHits(r.elsewhere)}.`
+      : `I couldn't find an activity matching "${String(asked ?? '')}".`;
 }
 
 /**

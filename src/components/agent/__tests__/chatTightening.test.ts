@@ -200,3 +200,20 @@ describe('what the chat is told about the trip', () => {
     expect(prompt).toMatch(/Never add something that is already in the trip/);
   });
 });
+
+// A lost import once left this tool failing at run time with no test noticing.
+describe('the weather tool', () => {
+  it('answers from the forecast or recent years, with what to pack', async () => {
+    const tw = await import('../../../services/tripWeather');
+    vi.spyOn(tw, 'weatherFor').mockResolvedValue({
+      basis: 'typical', place: 'Kyoto', startDate: '2027-04-01', endDate: '2027-04-03',
+      typical: { years: 3, avgHigh: 18, avgLow: 7, wetShare: 0.4, snowShare: 0, maxWind: 20 },
+    });
+    const res = await executeAgentAction(plan(), { name: 'get_weather', args: { place: 'Kyoto' } });
+    expect(res.ok).toBe(true);
+    const data = JSON.parse(res.data!);
+    expect(data.basis).toBe('typical');
+    expect(data.summary).toMatch(/Kyoto is usually like/);
+    expect(data.packingToDos).toContain('Pack an umbrella or rain jacket');
+  });
+});
