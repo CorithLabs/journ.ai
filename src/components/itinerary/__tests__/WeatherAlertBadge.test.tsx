@@ -164,3 +164,36 @@ describe('WeatherAlertBadge', () => {
     expect(prompt).toContain('mid');
   });
 });
+
+// The day you land and the day you fly out are set by the travel.
+describe('weather swaps and the arrival and departure days', () => {
+  const day = (i: number, name: string): Day => ({
+    dayIndex: i,
+    label: `Day ${i + 1}`,
+    activities: [{ id: name, name, time: '09:00', locationName: 'Tokyo', notes: '', pinnedToTodo: false }],
+  });
+  const days = [day(0, 'Arrive'), day(1, 'Garden walk'), day(2, 'Museum'), day(3, 'Fly home')];
+
+  const promptFor = (target: Day) => {
+    const onGetSuggestions = vi.fn();
+    render(
+      <WeatherAlertBadge weather={rainyDay} day={target} allDays={days} allWeather={{}}
+        planStartDate="2025-07-14" onGetSuggestions={onGetSuggestions} isOffline={false} />,
+    );
+    fireEvent.click(screen.getByTestId('get-ai-suggestions-btn'));
+    return onGetSuggestions.mock.calls[0][0] as string;
+  };
+
+  it('offers only the middle days as swap candidates', () => {
+    const prompt = promptFor(days[1]);
+    expect(prompt).toMatch(/Day 3: .*Museum/);
+    expect(prompt).not.toMatch(/Day 1: .*Arrive/);
+    expect(prompt).not.toMatch(/Day 4: .*Fly home/);
+  });
+
+  it('offers no swap at all for a wet arrival day', () => {
+    const prompt = promptFor(days[0]);
+    expect(prompt).toContain('is the arrival or departure day');
+    expect(prompt).toContain('DAY SWAP: Not available');
+  });
+});

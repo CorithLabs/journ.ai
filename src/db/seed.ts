@@ -28,8 +28,8 @@ export const SAMPLE_LEAD_DAYS = 7;
  * below the 16-day horizon. Past it, the trip is moved back in.
  */
 export const SAMPLE_LATEST_END_DAYS = 13;
-/** Days 1–3, so it ends two days after it starts. */
-const SAMPLE_LENGTH_DAYS = 3;
+/** Days 1–4: arrive, two full days, leave. */
+const SAMPLE_LENGTH_DAYS = 4;
 
 /**
  * YYYY-MM-DD N days from today in the user's own time zone. Not
@@ -43,7 +43,7 @@ function localDateOffset(days: number, from = new Date()): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** The sample trip's dates as of now: a week out, for three days. */
+/** The sample trip's dates as of now: a week out, for four days. */
 export function sampleTripDates(now = new Date()): { startDate: string; endDate: string } {
   return {
     startDate: localDateOffset(SAMPLE_LEAD_DAYS, now),
@@ -79,24 +79,52 @@ function sampleDay3Activities() {
   ];
 }
 
-/** The sample's Day 3 as first shipped: the Nikko day trip. */
+const SAMPLE_DAY4_LABEL = 'Day 4 — Departure';
+function sampleDay4Activities() {
+  return [
+    activity('Hotel check-out', '10:00', 'Shinjuku, Tokyo', 'Leave the bags at the front desk.'),
+    activity('Tokyo Character Street', '11:30', 'Tokyo Station, Tokyo', 'Last souvenirs in the station basement.'),
+    activity('Narita Express to the airport', '14:00', 'Narita Airport, Japan', 'About an hour from Tokyo Station.'),
+  ];
+}
+const SAMPLE_DAY4 = () => ({
+  dayIndex: 3,
+  label: SAMPLE_DAY4_LABEL,
+  estimatedDailySpend: { min: 40, max: 80, currency: 'USD' as const },
+  activities: sampleDay4Activities(),
+});
+
+/** The sample's Day 3 as first shipped: the Nikko day trip, on a 3-day trip. */
 const OLD_DAY3 = ['Nikko Tosho-gu Shrine', 'Kegon Falls', 'Return to Tokyo'];
 
 /**
- * Gives a sample trip seeded before Day 3 became the indoor day the new one,
- * so its rainy-day swap has somewhere to go. Only when Day 3 is exactly as it
- * was seeded: a Day 3 someone has changed is theirs.
+ * Brings a sample trip seeded as the old three days up to the current four,
+ * so its rainy Day 2 has an indoor Day 3 to swap with and the swap leaves the
+ * arrival and departure days alone. Only when it is exactly as it was seeded:
+ * three days, Day 3 untouched. A sample someone has reworked is theirs.
  */
 export async function upgradeSampleTrip(plan: Plan): Promise<boolean> {
-  const day = plan.itinerary?.find((d) => d.dayIndex === 2);
-  if (!day || day.activities.map((a) => a.name).join('|') !== OLD_DAY3.join('|')) return false;
-  const itinerary = plan.itinerary.map((d) =>
-    d.dayIndex === 2
-      ? { ...d, label: SAMPLE_DAY3_LABEL, estimatedDailySpend: { min: 90, max: 150, currency: 'USD' }, activities: sampleDay3Activities() }
-      : d,
-  );
-  await db.plans.update(plan.id, { itinerary, updatedAt: new Date().toISOString() });
+  const days = plan.itinerary ?? [];
+  const day3 = days.find((d) => d.dayIndex === 2);
+  if (days.length !== 3 || !day3 || day3.activities.map((a) => a.name).join('|') !== OLD_DAY3.join('|')) return false;
+  const itinerary = [
+    ...days.map((d) =>
+      d.dayIndex === 2
+        ? { ...d, label: SAMPLE_DAY3_LABEL, estimatedDailySpend: { min: 90, max: 150, currency: 'USD' }, activities: sampleDay3Activities() }
+        : d,
+    ),
+    SAMPLE_DAY4(),
+  ];
+  const endDate = dateAfter(plan.startDate, SAMPLE_LENGTH_DAYS - 1);
+  await db.plans.update(plan.id, { itinerary, ...(endDate ? { endDate } : {}), updatedAt: new Date().toISOString() });
   return true;
+}
+
+/** YYYY-MM-DD, N days after a YYYY-MM-DD. */
+function dateAfter(isoDate: string, days: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate ?? '');
+  if (!m) return null;
+  return localDateOffset(days, new Date(+m[1], +m[2] - 1, +m[3]));
 }
 
 function buildDemoPlan(): Plan {
@@ -150,6 +178,7 @@ function buildDemoPlan(): Plan {
         estimatedDailySpend: { min: 90, max: 150, currency: 'USD' },
         activities: sampleDay3Activities(),
       },
+      SAMPLE_DAY4(),
     ],
   };
 }
@@ -237,8 +266,8 @@ export async function ensureSampleTrip(): Promise<string> {
   if (existing) {
     const plan = await db.plans.get(existing);
     if (plan && !plan.deleted) {
-      await keepSampleTripAhead(plan);
       await upgradeSampleTrip(plan);
+      await keepSampleTripAhead(plan);
       return existing;
     }
   }
@@ -266,8 +295,8 @@ async function refreshSampleTripDates(): Promise<void> {
   if (!id) return;
   const plan = await db.plans.get(id);
   if (plan && !plan.deleted) {
-    await keepSampleTripAhead(plan);
     await upgradeSampleTrip(plan);
+    await keepSampleTripAhead(plan);
   }
 }
 

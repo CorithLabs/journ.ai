@@ -10,6 +10,7 @@ const plan = {
     { dayIndex: 0, label: 'Day 1 — Tokyo Arrival', activities: [act('Senso-ji Temple')] },
     { dayIndex: 1, label: 'Day 2 — Culture & Parks', activities: [act('Meiji Shrine', '09:00'), act('Shinjuku Gyoen', '13:30')] },
     { dayIndex: 2, label: 'Day 3 — Museums & Arcades', activities: [act('teamLab Planets', '10:00', 'All indoors.'), act('Tokyo National Museum')] },
+    { dayIndex: 3, label: 'Day 4 — Departure', activities: [act('Hotel check-out')] },
   ],
 } as unknown as Plan;
 
@@ -29,7 +30,10 @@ describe('built-in suggestions for the sample trip', () => {
     expect(demoWeatherSuggestions(edited, 1).filter((x) => x.type === 'alternative')).toHaveLength(1);
   });
 
-  it('never swaps with the arrival day, or with a day that is outdoors too', () => {
+  it('never swaps with the arrival or departure day, or a day that is outdoors too', () => {
+    // As a three-day trip, Day 3 is the departure day: nothing left to swap with.
+    const threeDays = { ...plan, itinerary: plan.itinerary.slice(0, 3) } as Plan;
+    expect(demoWeatherSuggestions(threeDays, 1).some((x) => x.type === 'swap')).toBe(false);
     const nikko = { ...plan, itinerary: plan.itinerary.map((d) => d.dayIndex === 2 ? { ...d, activities: [act('Kegon Falls', '12:00', 'Dramatic 97m waterfall.')] } : d) } as Plan;
     expect(demoWeatherSuggestions(nikko, 1).some((x) => x.type === 'swap')).toBe(false);
   });

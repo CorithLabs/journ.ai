@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Activity, Plan } from '../../db';
-import { swappableDays } from '../../utils/dayCity';
+import { swappableDays, isArrivalOrDeparture } from '../../utils/dayCity';
 import { hasOutdoorPlans } from '../../utils/outdoor';
 import { DEMO_RAIN_DAY_INDEX } from '../../utils/demoWeather';
 import type { Suggestion } from './WeatherSuggestionsPanel';
@@ -41,10 +41,14 @@ export function demoWeatherSuggestions(plan: Plan, dayIndex: number): Suggestion
 
   /*
    * A swap only makes sense with a day that can take the rain: nothing
-   * outdoors on it. Never Day 1, the arrival, which cannot move. On the
-   * sample as seeded that is Day 3, the museums and arcades.
+   * outdoors on it. Never the arrival or departure day, which are set by the
+   * travel. On the sample as seeded that is Day 3, the museums and arcades.
    */
-  const partner = swappableDays(plan, dayIndex).find((d) => d.dayIndex !== 0 && d.activities.length > 0 && !hasOutdoorPlans(d));
+  const partner = isArrivalOrDeparture(plan.itinerary, dayIndex)
+    ? undefined
+    : swappableDays(plan, dayIndex).find(
+        (d) => !isArrivalOrDeparture(plan.itinerary, d.dayIndex) && d.activities.length > 0 && !hasOutdoorPlans(d),
+      );
   if (partner) {
     const n = partner.dayIndex + 1;
     out.push({
