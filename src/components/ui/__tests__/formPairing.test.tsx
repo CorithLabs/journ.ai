@@ -49,7 +49,7 @@ describe('fields that belong together sit together', () => {
   });
 
   it('pairs the provider with its model once there is a model to pick', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('provider-select'), { target: { value: 'anthropic' } });
 
     const row = commonRow(
@@ -65,7 +65,7 @@ describe('fields that belong together sit together', () => {
    * and a two-option select were both `w-full` in the same 512px column.
    */
   it('leaves the API key the whole row, since it is the longest value here', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     // The select fills its cell — a control narrower than its cell looks
     // ragged. What differs is the cell: the provider sits in a shared,
@@ -76,7 +76,7 @@ describe('fields that belong together sit together', () => {
   });
 
   it('still shows the provider on its own when there is no model to pair it with', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
 
     expect(screen.getByTestId('provider-select')).toBeInTheDocument();
     expect(screen.queryByTestId('anthropic-model-select')).not.toBeInTheDocument();
