@@ -18,8 +18,16 @@ export const DEMO_BANNER_DISMISSED = 'aitp_demo_banner_dismissed';
 /** Records which plan is the demo, so the demo banner can target it. */
 export const DEMO_PLAN_ID = 'aitp_demo_plan_id';
 
-/** How far ahead the sample trip starts: always a trip still to come. */
-export const SAMPLE_LEAD_DAYS = 21;
+/**
+ * How far ahead the sample trip starts: a week, so the whole trip sits inside
+ * the live forecast (Open-Meteo goes about 16 days out) and shows real weather.
+ */
+export const SAMPLE_LEAD_DAYS = 7;
+/**
+ * The furthest out the sample trip may end and still be forecast, with margin
+ * below the 16-day horizon. Past it, the trip is moved back in.
+ */
+export const SAMPLE_LATEST_END_DAYS = 13;
 /** Days 1–3, so it ends two days after it starts. */
 const SAMPLE_LENGTH_DAYS = 3;
 
@@ -35,7 +43,7 @@ function localDateOffset(days: number, from = new Date()): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** The sample trip's dates as of now: three weeks out, for three days. */
+/** The sample trip's dates as of now: a week out, for three days. */
 export function sampleTripDates(now = new Date()): { startDate: string; endDate: string } {
   return {
     startDate: localDateOffset(SAMPLE_LEAD_DAYS, now),
@@ -61,8 +69,8 @@ function buildDemoPlan(): Plan {
     id: uuidv4(),
     name: 'Tokyo Explorer',
     destination: 'Tokyo, Japan',
-    // Three weeks out, past the forecast horizon: the weather shows what the
-    // same dates were usually like, which is what a trip being planned sees.
+    // A week out, inside the forecast horizon, so the itinerary shows the
+    // live weather forecast for every day.
     ...sampleTripDates(),
     createdAt: now,
     updatedAt: now,
@@ -205,18 +213,21 @@ export async function ensureSampleTrip(): Promise<string> {
 }
 
 /**
- * Moves the sample trip back to three weeks out once it is no longer in the
- * future, so it never turns into a trip that is under way or over. Dates the
- * user moved further out are left alone. Returns whether it moved.
+ * Keeps the sample trip in the window where it shows off the weather: still
+ * to come, and ending inside the forecast. Once it has started, or if it sits
+ * past the forecast (moved there, or dated by an older build), it goes back
+ * to a week out. Returns whether it moved.
  */
 export async function keepSampleTripAhead(plan: Plan, now = new Date()): Promise<boolean> {
   const today = localDateOffset(0, now);
-  if (plan.startDate && plan.startDate > today) return false;
+  const latestEnd = localDateOffset(SAMPLE_LATEST_END_DAYS, now);
+  const end = plan.endDate || plan.startDate;
+  if (plan.startDate && plan.startDate > today && end && end <= latestEnd) return false;
   await db.plans.update(plan.id, { ...sampleTripDates(now), updatedAt: now.toISOString() });
   return true;
 }
 
-/** On boot: keep the sample trip in this browser, if any, ahead of today. */
+/** On boot: keep the sample trip in this browser, if any, inside the forecast. */
 async function refreshSampleTripDates(): Promise<void> {
   const id = localStorage.getItem(DEMO_PLAN_ID);
   if (!id) return;
