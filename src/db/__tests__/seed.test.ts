@@ -32,10 +32,10 @@ describe('seedDemoDataIfNeeded', () => {
     expect(addedPlan.name).toBe('Tokyo Explorer');
     expect(addedPlan.deleted).toBe(false);
     expect(addedPlan.itinerary).toHaveLength(3);
-    // Day activity counts: 4, 4, 3
+    // Day activity counts: 4, 4, 4
     expect(addedPlan.itinerary[0].activities).toHaveLength(4);
     expect(addedPlan.itinerary[1].activities).toHaveLength(4);
-    expect(addedPlan.itinerary[2].activities).toHaveLength(3);
+    expect(addedPlan.itinerary[2].activities).toHaveLength(4);
     // Intake matches the spec
     expect(addedPlan.intake?.numTravellers).toBe(2);
     expect(addedPlan.intake?.budgetRange).toBe('mid');

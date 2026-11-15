@@ -63,6 +63,42 @@ function activity(name: string, time: string, locationName: string, notes: strin
   };
 }
 
+/*
+ * Day 3 is all under a roof on purpose: it is the day the rainy Day 2 can
+ * trade with. Day 1 is the arrival, which cannot move, and the Nikko day trip
+ * that used to be here was all waterfalls and shrines — swapping it onto a
+ * wet day only moved the problem.
+ */
+const SAMPLE_DAY3_LABEL = 'Day 3 — Museums & Arcades';
+function sampleDay3Activities() {
+  return [
+    activity('teamLab Planets', '10:00', 'Toyosu, Tokyo', 'Walk-through digital art, barefoot through the water rooms. All indoors.'),
+    activity('Tokyo National Museum', '13:30', 'Ueno, Tokyo', "Japan's oldest museum: samurai armour, ukiyo-e and Buddhist art."),
+    activity('Sunshine City', '16:30', 'Ikebukuro, Tokyo', 'Pokémon Center, an aquarium and anime shops under one roof.'),
+    activity('Ebisu Yokocho', '19:30', 'Ebisu, Tokyo', 'A covered hall of tiny izakaya counters.'),
+  ];
+}
+
+/** The sample's Day 3 as first shipped: the Nikko day trip. */
+const OLD_DAY3 = ['Nikko Tosho-gu Shrine', 'Kegon Falls', 'Return to Tokyo'];
+
+/**
+ * Gives a sample trip seeded before Day 3 became the indoor day the new one,
+ * so its rainy-day swap has somewhere to go. Only when Day 3 is exactly as it
+ * was seeded: a Day 3 someone has changed is theirs.
+ */
+export async function upgradeSampleTrip(plan: Plan): Promise<boolean> {
+  const day = plan.itinerary?.find((d) => d.dayIndex === 2);
+  if (!day || day.activities.map((a) => a.name).join('|') !== OLD_DAY3.join('|')) return false;
+  const itinerary = plan.itinerary.map((d) =>
+    d.dayIndex === 2
+      ? { ...d, label: SAMPLE_DAY3_LABEL, estimatedDailySpend: { min: 90, max: 150, currency: 'USD' }, activities: sampleDay3Activities() }
+      : d,
+  );
+  await db.plans.update(plan.id, { itinerary, updatedAt: new Date().toISOString() });
+  return true;
+}
+
 function buildDemoPlan(): Plan {
   const now = new Date().toISOString();
   return {
@@ -110,13 +146,9 @@ function buildDemoPlan(): Plan {
       },
       {
         dayIndex: 2,
-        label: 'Day 3 — Day Trip',
-        estimatedDailySpend: { min: 90, max: 160, currency: 'USD' },
-        activities: [
-          activity('Nikko Tosho-gu Shrine', '09:00', 'Nikko, Japan', 'Ornate UNESCO World Heritage shrine.'),
-          activity('Kegon Falls', '12:00', 'Nikko, Japan', 'Dramatic 97m waterfall.'),
-          activity('Return to Tokyo', '16:00', 'Tokyo, Japan', 'Train back to the city.'),
-        ],
+        label: SAMPLE_DAY3_LABEL,
+        estimatedDailySpend: { min: 90, max: 150, currency: 'USD' },
+        activities: sampleDay3Activities(),
       },
     ],
   };
@@ -206,6 +238,7 @@ export async function ensureSampleTrip(): Promise<string> {
     const plan = await db.plans.get(existing);
     if (plan && !plan.deleted) {
       await keepSampleTripAhead(plan);
+      await upgradeSampleTrip(plan);
       return existing;
     }
   }
@@ -232,7 +265,10 @@ async function refreshSampleTripDates(): Promise<void> {
   const id = localStorage.getItem(DEMO_PLAN_ID);
   if (!id) return;
   const plan = await db.plans.get(id);
-  if (plan && !plan.deleted) await keepSampleTripAhead(plan);
+  if (plan && !plan.deleted) {
+    await keepSampleTripAhead(plan);
+    await upgradeSampleTrip(plan);
+  }
 }
 
 export async function seedDemoDataIfNeeded(): Promise<string | null> {

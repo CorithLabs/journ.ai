@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sampleTripDates, keepSampleTripAhead, seedDemoDataIfNeeded, SEEDED_FLAG, DEMO_PLAN_ID } from '../seed';
+import { sampleTripDates, keepSampleTripAhead, seedDemoDataIfNeeded, upgradeSampleTrip, SEEDED_FLAG, DEMO_PLAN_ID } from '../seed';
 import { db, type Plan } from '../index';
 import { isBeyondForecast } from '../../services/weather';
 
@@ -60,5 +60,28 @@ describe('sample trip dates', () => {
     vi.mocked(db.plans.get).mockResolvedValueOnce(plan('2020-01-01') as never);
     await seedDemoDataIfNeeded();
     expect(db.plans.update).toHaveBeenCalledWith('demo', expect.objectContaining(sampleTripDates()));
+  });
+});
+
+describe('upgrading an older sample trip', () => {
+  const nikkoDay = {
+    dayIndex: 2, label: 'Day 3 — Day Trip',
+    activities: ['Nikko Tosho-gu Shrine', 'Kegon Falls', 'Return to Tokyo'].map((name) => ({ id: name, name, time: '09:00' })),
+  };
+  const old = (day3: object) => ({ id: 'demo', startDate: '2026-11-22', itinerary: [{ dayIndex: 0, activities: [] }, day3] }) as unknown as Plan;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('swaps the untouched Nikko day for the indoor Day 3', async () => {
+    expect(await upgradeSampleTrip(old(nikkoDay))).toBe(true);
+    const { itinerary } = vi.mocked(db.plans.update).mock.calls[0][1] as Plan;
+    expect(itinerary[1].label).toBe('Day 3 — Museums & Arcades');
+    expect(itinerary[1].activities.map((a) => a.name)).toContain('teamLab Planets');
+  });
+
+  it('leaves a Day 3 the visitor has changed alone', async () => {
+    const edited = { ...nikkoDay, activities: nikkoDay.activities.slice(0, 2) };
+    expect(await upgradeSampleTrip(old(edited))).toBe(false);
+    expect(db.plans.update).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Activity, Plan } from '../../db';
 import { swappableDays } from '../../utils/dayCity';
+import { hasOutdoorPlans } from '../../utils/outdoor';
 import { DEMO_RAIN_DAY_INDEX } from '../../utils/demoWeather';
 import type { Suggestion } from './WeatherSuggestionsPanel';
 
@@ -38,17 +39,21 @@ export function demoWeatherSuggestions(plan: Plan, dayIndex: number): Suggestion
   if (!day) return [];
   const out: Suggestion[] = [];
 
-  // Day 1 first: Day 3 is the Nikko day trip, all waterfalls and shrines.
-  const others = swappableDays(plan, dayIndex);
-  const partner = others.find((d) => d.dayIndex === 0) ?? others[0];
+  /*
+   * A swap only makes sense with a day that can take the rain: nothing
+   * outdoors on it. Never Day 1, the arrival, which cannot move. On the
+   * sample as seeded that is Day 3, the museums and arcades.
+   */
+  const partner = swappableDays(plan, dayIndex).find((d) => d.dayIndex !== 0 && d.activities.length > 0 && !hasOutdoorPlans(d));
   if (partner) {
+    const n = partner.dayIndex + 1;
     out.push({
       id: uuidv4(),
       type: 'swap',
       swapDayIndex: partner.dayIndex,
       // "Day N", not the label: labels carry their own dash, and the card
       // reads the reason from after the first one.
-      description: `Swap with Day ${partner.dayIndex + 1} — Move the shrine walk and the garden to a drier day, and bring Day ${partner.dayIndex + 1}'s plans here instead.`,
+      description: `Swap with Day ${n} — Day ${n} is all indoors, so it can take the rain, and the shrine walk and the garden move to Day ${n} instead.`,
       budgetWarning: false,
     });
   }
