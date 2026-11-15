@@ -166,6 +166,25 @@ export async function addSampleTrip(): Promise<string> {
   return plan.id;
 }
 
+/**
+ * The sample trip's id for the /demo link: the one already in this browser if
+ * it is still there, otherwise a fresh copy. A shared link should always land
+ * on the trip, whatever the visitor deleted before.
+ */
+export async function ensureSampleTrip(): Promise<string> {
+  let existing: string | null = null;
+  try {
+    existing = localStorage.getItem(DEMO_PLAN_ID);
+  } catch {
+    /* storage unavailable — add a fresh copy */
+  }
+  if (existing) {
+    const plan = await db.plans.get(existing);
+    if (plan && !plan.deleted) return existing;
+  }
+  return addSampleTrip();
+}
+
 export async function seedDemoDataIfNeeded(): Promise<string | null> {
   try {
     // Flag guard: once seeded, never seed again — even if the user deletes
