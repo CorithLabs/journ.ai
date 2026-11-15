@@ -23,6 +23,8 @@ interface Props {
   plan: Plan;
   affectedDayIndex: number;
   suggestions: Suggestion[];
+  /** Built-in answers for the sample trip, shown when there is no AI key. */
+  sample?: boolean;
   onClose: () => void;
   onToast: (msg: string, undo?: () => void) => void;
 }
@@ -168,6 +170,7 @@ export default function WeatherSuggestionsPanel({
   plan,
   affectedDayIndex,
   suggestions: initialSuggestions,
+  sample = false,
   onClose,
   onToast,
 }: Props) {
@@ -265,6 +268,12 @@ export default function WeatherSuggestionsPanel({
           <XCircle size={16} />
         </button>
       </div>
+
+      {sample && (
+        <p className="text-xs text-ink-secondary" data-testid="sample-suggestions-note">
+          Sample suggestions for the demo trip. Add an AI key in Settings to get your own.
+        </p>
+      )}
 
       {/* One at a time when there are several: three cards of prose in a
           panel this size is a wall, and only one of them can be acted on

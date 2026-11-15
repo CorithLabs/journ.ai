@@ -52,7 +52,7 @@ export default function WeatherStrip({ weather, useFahrenheit, isToday }: Props)
           : 'bg-surface-raised border border-white/5'
       }`}
       data-testid="weather-strip"
-      aria-label={`Weather: ${description}, high ${displayTemp(weather.tempMax)}, low ${displayTemp(weather.tempMin)}, precipitation ${weather.precipProbability}%`}
+      aria-label={`Weather: ${description}, high ${displayTemp(weather.tempMax)}, low ${displayTemp(weather.tempMin)}, precipitation ${weather.precipProbability}%${weather.simulated ? ' (simulated for the demo)' : ''}`}
     >
       {/* Icon + description */}
       <span className="text-accent flex items-center gap-1">
@@ -71,6 +71,16 @@ export default function WeatherStrip({ weather, useFahrenheit, isToday }: Props)
         <span className="text-ink-secondary flex items-center gap-0.5">
           <CloudRain size={12} aria-hidden="true" />
           {weather.precipProbability}%
+        </span>
+      )}
+
+      {weather.simulated && (
+        <span
+          className="ml-auto text-xs text-ink-muted border border-white/10 px-2 py-0.5 rounded-full"
+          title="Not the real forecast: rain added to the sample trip to show the weather suggestions"
+          data-testid="weather-simulated"
+        >
+          Simulated for the demo
         </span>
       )}
 

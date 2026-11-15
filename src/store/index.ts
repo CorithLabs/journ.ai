@@ -8,6 +8,12 @@ export interface WeatherDay {
   precipProbability: number;
   windspeedMax: number;
   apparentTempMax: number;
+  /**
+   * Not a forecast: weather written in for the sample trip, so its rain
+   * suggestions can be seen whatever Tokyo is actually doing. Labelled
+   * wherever it is shown.
+   */
+  simulated?: boolean;
 }
 
 export type ActiveTab = 'itinerary' | 'essentials' | 'map';

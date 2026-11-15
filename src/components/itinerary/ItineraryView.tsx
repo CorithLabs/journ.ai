@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { getTempUnit } from '../../services/units';
 import { isBeyondForecast } from '../../services/weather';
-import { streamCompletion } from '../../services/aiClient';
+import { streamCompletion, MissingKeyError } from '../../services/aiClient';
+import { isDemoPlan } from '../../utils/demoWeather';
+import { demoWeatherSuggestions } from './demoSuggestions';
 import { dateForDayIndex } from '../../utils/tripDay';
 import { hasOutdoorPlans } from '../../utils/outdoor';
 import WeatherStrip from './WeatherStrip';
@@ -239,7 +241,7 @@ export default function ItineraryView({ plan }: Props) {
   const isOffline = useAppStore((st) => st.offlineBannerVisible);
   const useFahrenheit = getTempUnit() === 'F';
   const [suggesting, setSuggesting] = useState<number | null>(null);
-  const [suggestions, setSuggestions] = useState<{ dayIndex: number; items: Suggestion[] } | null>(null);
+  const [suggestions, setSuggestions] = useState<{ dayIndex: number; items: Suggestion[]; sample?: boolean } | null>(null);
   const [suggestError, setSuggestError] = useState('');
 
   /**
@@ -260,6 +262,14 @@ export default function ItineraryView({ plan }: Props) {
       }
       setSuggestions({ dayIndex, items: parsed });
     } catch (e) {
+      // The sample trip can be tried without a key: it has answers of its own.
+      if (e instanceof MissingKeyError && isDemoPlan(plan.id)) {
+        const builtIn = demoWeatherSuggestions(plan, dayIndex);
+        if (builtIn.length) {
+          setSuggestions({ dayIndex, items: builtIn, sample: true });
+          return;
+        }
+      }
       setSuggestError(e instanceof Error ? e.message : 'Could not reach the AI.');
     } finally {
       setSuggesting(null);
@@ -792,6 +802,7 @@ export default function ItineraryView({ plan }: Props) {
           plan={plan}
           affectedDayIndex={suggestions.dayIndex}
           suggestions={suggestions.items}
+          sample={suggestions.sample}
           onClose={() => setSuggestions(null)}
           onToast={(msg, undo) => setToast({ msg, undo })}
         />
