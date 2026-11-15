@@ -14,7 +14,7 @@ import { outdoorActivities } from '../../utils/outdoor';
 import { HAZARD } from './weatherHazard';
 import { type Day } from '../../db';
 import type { Plan } from '../../db';
-import { cityForDay, swappableDays } from '../../utils/dayCity';
+import { cityForDay, swappableDays, isArrivalOrDeparture } from '../../utils/dayCity';
 
 interface Props {
   weather: WeatherDay;
@@ -105,7 +105,15 @@ export default function WeatherAlertBadge({
      * good the Osaka weather is — and asking the AI to work that out invites
      * it to answer wrongly on a question the plan already settles.
      */
-    const sameCity = plan ? swappableDays(plan, day.dayIndex) : allDays.filter(d => d.dayIndex !== day.dayIndex);
+    /*
+     * Never the arrival or the departure day, in either direction: they are
+     * set by the travel. A wet arrival day gets alternatives, not a swap.
+     */
+    const isFixed = isArrivalOrDeparture(allDays, day.dayIndex);
+    const sameCity = isFixed
+      ? []
+      : (plan ? swappableDays(plan, day.dayIndex) : allDays.filter(d => d.dayIndex !== day.dayIndex))
+          .filter(d => !isArrivalOrDeparture(allDays, d.dayIndex));
     /*
      * And not already committed to. The prompt used to ask the AI to avoid
      * days with confirmed bookings while passing it no booking data at all,
@@ -157,6 +165,8 @@ export default function WeatherAlertBadge({
       '',
       candidates.length
         ? `Days in ${city ?? 'the same city'} that could take these activities:`
+        : isFixed
+        ? `${day.label} is the arrival or departure day, so its plans cannot be swapped with another day.`
         : sameCity.length
         ? `Every other day in ${city ?? 'this city'} already has bookings against it, so a swap is not possible.`
         : `No other day of this trip is in the same city, so a swap is not possible.`,
@@ -171,7 +181,7 @@ export default function WeatherAlertBadge({
       '',
       `Please evaluate these two strategies in order:`,
       candidates.length
-        ? `1. DAY SWAP: If one of the days listed above has acceptable weather (low rain probability, no severe alerts), suggest swapping the full activity lists of the two days. Only the days listed are candidates — the rest are in another city or already have bookings against them — so do not propose any other swap.`
+        ? `1. DAY SWAP: If one of the days listed above has acceptable weather (low rain probability, no severe alerts), suggest swapping the full activity lists of the two days. Only the days listed are candidates — the rest are in another city, already have bookings against them, or are the arrival or departure day — so do not propose any other swap. Never move the first or last day of the trip.`
         : `1. DAY SWAP: Not available on this trip. Skip straight to alternatives.`,
       `2. ACTIVITY ALTERNATIVES: If a swap is not possible, suggest indoor or weather-appropriate alternatives for each affected outdoor activity. Alternatives must respect the user's likes/dislikes, be age-appropriate if kids are present, and stay within the budget range.`,
       `For each suggestion, indicate whether it may exceed the budget (budgetWarning: true).`,

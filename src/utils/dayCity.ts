@@ -90,3 +90,14 @@ export function swappableDays(plan: Plan, dayIndex: number): Day[] {
     (d) => d.dayIndex !== dayIndex && sameCity(cityForDay(plan, d), city),
   );
 }
+
+/**
+ * The first and last days of a trip: arriving and leaving. Weather-based
+ * swaps never move them — the day you land and the day you fly out are fixed
+ * by the travel, not by what you planned to see.
+ */
+export function isArrivalOrDeparture(days: Pick<Day, 'dayIndex'>[], dayIndex: number): boolean {
+  if (!days.length) return false;
+  const indexes = days.map((d) => d.dayIndex);
+  return dayIndex === Math.min(...indexes) || dayIndex === Math.max(...indexes);
+}

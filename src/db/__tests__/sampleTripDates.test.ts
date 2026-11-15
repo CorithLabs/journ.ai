@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sampleTripDates, keepSampleTripAhead, seedDemoDataIfNeeded, SEEDED_FLAG, DEMO_PLAN_ID } from '../seed';
+import { sampleTripDates, keepSampleTripAhead, seedDemoDataIfNeeded, upgradeSampleTrip, SEEDED_FLAG, DEMO_PLAN_ID } from '../seed';
 import { db, type Plan } from '../index';
 import { isBeyondForecast } from '../../services/weather';
 
@@ -12,11 +12,11 @@ describe('sample trip dates', () => {
     vi.clearAllMocks();
   });
 
-  it('starts a week from today, in local time, and runs three days', () => {
+  it('starts a week from today, in local time, and runs four days', () => {
     // Late evening local time: a UTC-based date could already be tomorrow.
     expect(sampleTripDates(new Date(2026, 10, 15, 23, 30))).toEqual({
       startDate: '2026-11-22',
-      endDate: '2026-11-24',
+      endDate: '2026-11-25',
     });
   });
 
@@ -27,7 +27,7 @@ describe('sample trip dates', () => {
   });
 
   it('crosses month and year ends', () => {
-    expect(sampleTripDates(new Date(2026, 11, 28))).toEqual({ startDate: '2027-01-04', endDate: '2027-01-06' });
+    expect(sampleTripDates(new Date(2026, 11, 28))).toEqual({ startDate: '2027-01-04', endDate: '2027-01-07' });
   });
 
   it('leaves a sample trip that is ahead and inside the forecast alone', async () => {
@@ -49,7 +49,7 @@ describe('sample trip dates', () => {
       expect(await keepSampleTripAhead(plan(start, end), NOW)).toBe(true);
       expect(db.plans.update).toHaveBeenCalledWith(
         'demo',
-        expect.objectContaining({ startDate: '2026-11-22', endDate: '2026-11-24' }),
+        expect.objectContaining({ startDate: '2026-11-22', endDate: '2026-11-25' }),
       );
     }
   });
@@ -60,5 +60,29 @@ describe('sample trip dates', () => {
     vi.mocked(db.plans.get).mockResolvedValueOnce(plan('2020-01-01') as never);
     await seedDemoDataIfNeeded();
     expect(db.plans.update).toHaveBeenCalledWith('demo', expect.objectContaining(sampleTripDates()));
+  });
+});
+
+describe('upgrading an older sample trip', () => {
+  const nikkoDay = {
+    dayIndex: 2, label: 'Day 3 — Day Trip',
+    activities: ['Nikko Tosho-gu Shrine', 'Kegon Falls', 'Return to Tokyo'].map((name) => ({ id: name, name, time: '09:00' })),
+  };
+  const old = (day3: object) => ({ id: 'demo', startDate: '2026-11-22', endDate: '2026-11-24', itinerary: [{ dayIndex: 0, activities: [] }, { dayIndex: 1, activities: [] }, day3] }) as unknown as Plan;
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('turns the untouched three-day sample into four: indoor Day 3, departure Day 4', async () => {
+    expect(await upgradeSampleTrip(old(nikkoDay))).toBe(true);
+    const { itinerary, endDate } = vi.mocked(db.plans.update).mock.calls[0][1] as Plan;
+    expect(itinerary.map((d) => d.label)).toEqual([undefined, undefined, 'Day 3 — Museums & Arcades', 'Day 4 — Departure']);
+    expect(itinerary[2].activities.map((a) => a.name)).toContain('teamLab Planets');
+    expect(endDate).toBe('2026-11-25');
+  });
+
+  it('leaves a Day 3 the visitor has changed alone', async () => {
+    const edited = { ...nikkoDay, activities: nikkoDay.activities.slice(0, 2) };
+    expect(await upgradeSampleTrip(old(edited))).toBe(false);
+    expect(db.plans.update).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,7 @@ import { type Plan, type Day, type Activity, db } from '../../db';
 import { v4 as uuidv4 } from 'uuid';
 import Toast from '../ui/Toast';
 import { suggestionReason } from '../../utils/plainText';
+import { isArrivalOrDeparture } from '../../utils/dayCity';
 
 export interface Suggestion {
   id: string;
@@ -35,6 +36,7 @@ interface Props {
  */
 export function parseSuggestions(aiText: string, plan: Plan, affectedDayIndex: number): Suggestion[] {
   const suggestions: Suggestion[] = [];
+  let droppedSwap = false;
   const lines = aiText.split('\n');
 
   for (const line of lines) {
@@ -59,6 +61,14 @@ export function parseSuggestions(aiText: string, plan: Plan, affectedDayIndex: n
             break;
           }
         }
+      }
+      // The arrival and departure days never move, whatever the AI says.
+      if (
+        isArrivalOrDeparture(plan.itinerary, affectedDayIndex) ||
+        (swapDayIndex !== undefined && isArrivalOrDeparture(plan.itinerary, swapDayIndex))
+      ) {
+        droppedSwap = true;
+        continue;
       }
       suggestions.push({
         id: uuidv4(),
@@ -119,7 +129,8 @@ export function parseSuggestions(aiText: string, plan: Plan, affectedDayIndex: n
   }
 
   // If no structured suggestions found, create a generic one
-  if (suggestions.length === 0 && aiText.trim()) {
+  // Not when the only answer was a swap we refused: that is not an alternative.
+  if (suggestions.length === 0 && !droppedSwap && aiText.trim()) {
     suggestions.push({
       id: uuidv4(),
       type: 'alternative',
@@ -180,7 +191,12 @@ export default function WeatherSuggestionsPanel({
   const [rejected, setRejected] = useState<Set<string>>(new Set());
 
   const accept = async (suggestion: Suggestion) => {
-    if (suggestion.type === 'swap' && suggestion.swapDayIndex !== undefined) {
+    if (
+      suggestion.type === 'swap' &&
+      suggestion.swapDayIndex !== undefined &&
+      !isArrivalOrDeparture(plan.itinerary, affectedDayIndex) &&
+      !isArrivalOrDeparture(plan.itinerary, suggestion.swapDayIndex)
+    ) {
       // Perform day swap
       const affDay = plan.itinerary.find(d => d.dayIndex === affectedDayIndex);
       const swapDay = plan.itinerary.find(d => d.dayIndex === suggestion.swapDayIndex);

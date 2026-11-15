@@ -32,14 +32,27 @@ const mockPlan: Plan = {
 };
 
 describe('parseSuggestions', () => {
+  // Four days: Day 1 arrives and Day 4 leaves, so only 2 and 3 can trade.
+  const fourDays = {
+    ...mockPlan,
+    itinerary: [0, 1, 2, 3].map((i) => ({ dayIndex: i, label: `Day ${i + 1}`, activities: [] })),
+  } as unknown as typeof mockPlan;
+
   it('parses a day swap suggestion', () => {
     const text = `
-DAY SWAP: Swap Day 1 with Day 2 since Day 2 has clear weather.
+DAY SWAP: Swap with Day 3 since Day 3 has clear weather.
     `.trim();
-    const suggestions = parseSuggestions(text, mockPlan, 0);
+    const suggestions = parseSuggestions(text, fourDays, 1);
     expect(suggestions.length).toBeGreaterThanOrEqual(1);
     expect(suggestions[0].type).toBe('swap');
-    expect(suggestions[0].description).toContain('Day 2');
+    expect(suggestions[0].swapDayIndex).toBe(2);
+    expect(suggestions[0].description).toContain('Day 3');
+  });
+
+  it('drops a swap that would move the arrival or departure day', () => {
+    expect(parseSuggestions('DAY SWAP: Swap with Day 1 — it is dry.', fourDays, 1)).toEqual([]);
+    expect(parseSuggestions('DAY SWAP: Swap with Day 4 — it is dry.', fourDays, 1)).toEqual([]);
+    expect(parseSuggestions('DAY SWAP: Swap with Day 3 — it is dry.', fourDays, 0)).toEqual([]);
   });
 
   it('parses an alternative suggestion with arrow', () => {

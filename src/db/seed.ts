@@ -28,8 +28,8 @@ export const SAMPLE_LEAD_DAYS = 7;
  * below the 16-day horizon. Past it, the trip is moved back in.
  */
 export const SAMPLE_LATEST_END_DAYS = 13;
-/** Days 1–3, so it ends two days after it starts. */
-const SAMPLE_LENGTH_DAYS = 3;
+/** Days 1–4: arrive, two full days, leave. */
+const SAMPLE_LENGTH_DAYS = 4;
 
 /**
  * YYYY-MM-DD N days from today in the user's own time zone. Not
@@ -43,7 +43,7 @@ function localDateOffset(days: number, from = new Date()): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-/** The sample trip's dates as of now: a week out, for three days. */
+/** The sample trip's dates as of now: a week out, for four days. */
 export function sampleTripDates(now = new Date()): { startDate: string; endDate: string } {
   return {
     startDate: localDateOffset(SAMPLE_LEAD_DAYS, now),
@@ -61,6 +61,70 @@ function activity(name: string, time: string, locationName: string, notes: strin
     pinnedToTodo: false,
     budgetWarning: false,
   };
+}
+
+/*
+ * Day 3 is all under a roof on purpose: it is the day the rainy Day 2 can
+ * trade with. Day 1 is the arrival, which cannot move, and the Nikko day trip
+ * that used to be here was all waterfalls and shrines — swapping it onto a
+ * wet day only moved the problem.
+ */
+const SAMPLE_DAY3_LABEL = 'Day 3 — Museums & Arcades';
+function sampleDay3Activities() {
+  return [
+    activity('teamLab Planets', '10:00', 'Toyosu, Tokyo', 'Walk-through digital art, barefoot through the water rooms. All indoors.'),
+    activity('Tokyo National Museum', '13:30', 'Ueno, Tokyo', "Japan's oldest museum: samurai armour, ukiyo-e and Buddhist art."),
+    activity('Sunshine City', '16:30', 'Ikebukuro, Tokyo', 'Pokémon Center, an aquarium and anime shops under one roof.'),
+    activity('Ebisu Yokocho', '19:30', 'Ebisu, Tokyo', 'A covered hall of tiny izakaya counters.'),
+  ];
+}
+
+const SAMPLE_DAY4_LABEL = 'Day 4 — Departure';
+function sampleDay4Activities() {
+  return [
+    activity('Hotel check-out', '10:00', 'Shinjuku, Tokyo', 'Leave the bags at the front desk.'),
+    activity('Tokyo Character Street', '11:30', 'Tokyo Station, Tokyo', 'Last souvenirs in the station basement.'),
+    activity('Narita Express to the airport', '14:00', 'Narita Airport, Japan', 'About an hour from Tokyo Station.'),
+  ];
+}
+const SAMPLE_DAY4 = () => ({
+  dayIndex: 3,
+  label: SAMPLE_DAY4_LABEL,
+  estimatedDailySpend: { min: 40, max: 80, currency: 'USD' as const },
+  activities: sampleDay4Activities(),
+});
+
+/** The sample's Day 3 as first shipped: the Nikko day trip, on a 3-day trip. */
+const OLD_DAY3 = ['Nikko Tosho-gu Shrine', 'Kegon Falls', 'Return to Tokyo'];
+
+/**
+ * Brings a sample trip seeded as the old three days up to the current four,
+ * so its rainy Day 2 has an indoor Day 3 to swap with and the swap leaves the
+ * arrival and departure days alone. Only when it is exactly as it was seeded:
+ * three days, Day 3 untouched. A sample someone has reworked is theirs.
+ */
+export async function upgradeSampleTrip(plan: Plan): Promise<boolean> {
+  const days = plan.itinerary ?? [];
+  const day3 = days.find((d) => d.dayIndex === 2);
+  if (days.length !== 3 || !day3 || day3.activities.map((a) => a.name).join('|') !== OLD_DAY3.join('|')) return false;
+  const itinerary = [
+    ...days.map((d) =>
+      d.dayIndex === 2
+        ? { ...d, label: SAMPLE_DAY3_LABEL, estimatedDailySpend: { min: 90, max: 150, currency: 'USD' }, activities: sampleDay3Activities() }
+        : d,
+    ),
+    SAMPLE_DAY4(),
+  ];
+  const endDate = dateAfter(plan.startDate, SAMPLE_LENGTH_DAYS - 1);
+  await db.plans.update(plan.id, { itinerary, ...(endDate ? { endDate } : {}), updatedAt: new Date().toISOString() });
+  return true;
+}
+
+/** YYYY-MM-DD, N days after a YYYY-MM-DD. */
+function dateAfter(isoDate: string, days: number): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate ?? '');
+  if (!m) return null;
+  return localDateOffset(days, new Date(+m[1], +m[2] - 1, +m[3]));
 }
 
 function buildDemoPlan(): Plan {
@@ -110,14 +174,11 @@ function buildDemoPlan(): Plan {
       },
       {
         dayIndex: 2,
-        label: 'Day 3 — Day Trip',
-        estimatedDailySpend: { min: 90, max: 160, currency: 'USD' },
-        activities: [
-          activity('Nikko Tosho-gu Shrine', '09:00', 'Nikko, Japan', 'Ornate UNESCO World Heritage shrine.'),
-          activity('Kegon Falls', '12:00', 'Nikko, Japan', 'Dramatic 97m waterfall.'),
-          activity('Return to Tokyo', '16:00', 'Tokyo, Japan', 'Train back to the city.'),
-        ],
+        label: SAMPLE_DAY3_LABEL,
+        estimatedDailySpend: { min: 90, max: 150, currency: 'USD' },
+        activities: sampleDay3Activities(),
       },
+      SAMPLE_DAY4(),
     ],
   };
 }
@@ -205,6 +266,7 @@ export async function ensureSampleTrip(): Promise<string> {
   if (existing) {
     const plan = await db.plans.get(existing);
     if (plan && !plan.deleted) {
+      await upgradeSampleTrip(plan);
       await keepSampleTripAhead(plan);
       return existing;
     }
@@ -232,7 +294,10 @@ async function refreshSampleTripDates(): Promise<void> {
   const id = localStorage.getItem(DEMO_PLAN_ID);
   if (!id) return;
   const plan = await db.plans.get(id);
-  if (plan && !plan.deleted) await keepSampleTripAhead(plan);
+  if (plan && !plan.deleted) {
+    await upgradeSampleTrip(plan);
+    await keepSampleTripAhead(plan);
+  }
 }
 
 export async function seedDemoDataIfNeeded(): Promise<string | null> {
