@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import { fetchWeatherByCity } from '../services/weather';
 import { cityForDay } from '../utils/dayCity';
 import { dateForDayIndex } from '../utils/tripDay';
+import { withDemoRain } from '../utils/demoWeather';
 
 /**
  * Fetches weather data for the given plan on mount and stores it in Zustand
@@ -42,8 +43,10 @@ export function useWeather(plan: Plan | null | undefined): void {
         plan.startDate,
         plan.endDate,
       );
-      if (!cancelled && weather) {
-        setWeather(weather);
+      // The sample trip always has a rainy day to show off the suggestions.
+      const shown = withDemoRain(plan, weather);
+      if (!cancelled && shown) {
+        setWeather(shown);
       }
     };
 

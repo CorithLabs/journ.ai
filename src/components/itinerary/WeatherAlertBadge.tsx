@@ -218,6 +218,11 @@ export default function WeatherAlertBadge({
             {outdoor} outdoor stop{outdoor === 1 ? '' : 's'} affected
           </p>
         )}
+        {weather.simulated && (
+          <p className="text-xs text-ink-muted mt-0.5" data-testid="weather-alert-simulated">
+            Simulated rain, so the demo trip can show what happens on a wet day.
+          </p>
+        )}
       </div>
 
       {/* Get AI suggestions button */}
