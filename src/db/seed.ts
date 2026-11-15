@@ -18,11 +18,29 @@ export const DEMO_BANNER_DISMISSED = 'aitp_demo_banner_dismissed';
 /** Records which plan is the demo, so the demo banner can target it. */
 export const DEMO_PLAN_ID = 'aitp_demo_plan_id';
 
-/** ISO date string N days from today (date portion only). */
-function isoDateOffset(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+/** How far ahead the sample trip starts: always a trip still to come. */
+export const SAMPLE_LEAD_DAYS = 21;
+/** Days 1–3, so it ends two days after it starts. */
+const SAMPLE_LENGTH_DAYS = 3;
+
+/**
+ * YYYY-MM-DD N days from today in the user's own time zone. Not
+ * toISOString(), which is UTC and would put an evening in Sydney or a late
+ * night in California on the wrong day.
+ */
+function localDateOffset(days: number, from = new Date()): string {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** The sample trip's dates as of now: three weeks out, for three days. */
+export function sampleTripDates(now = new Date()): { startDate: string; endDate: string } {
+  return {
+    startDate: localDateOffset(SAMPLE_LEAD_DAYS, now),
+    endDate: localDateOffset(SAMPLE_LEAD_DAYS + SAMPLE_LENGTH_DAYS - 1, now),
+  };
 }
 
 function activity(name: string, time: string, locationName: string, notes: string) {
@@ -43,11 +61,9 @@ function buildDemoPlan(): Plan {
     id: uuidv4(),
     name: 'Tokyo Explorer',
     destination: 'Tokyo, Japan',
-    // Inside the forecast horizon on purpose: at 30 days out Open-Meteo
-    // returns nothing, so the seeded plan demonstrated an itinerary with the
-    // weather silently missing from it.
-    startDate: isoDateOffset(4),
-    endDate: isoDateOffset(6),
+    // Three weeks out, past the forecast horizon: the weather shows what the
+    // same dates were usually like, which is what a trip being planned sees.
+    ...sampleTripDates(),
     createdAt: now,
     updatedAt: now,
     deleted: false,
@@ -180,16 +196,42 @@ export async function ensureSampleTrip(): Promise<string> {
   }
   if (existing) {
     const plan = await db.plans.get(existing);
-    if (plan && !plan.deleted) return existing;
+    if (plan && !plan.deleted) {
+      await keepSampleTripAhead(plan);
+      return existing;
+    }
   }
   return addSampleTrip();
+}
+
+/**
+ * Moves the sample trip back to three weeks out once it is no longer in the
+ * future, so it never turns into a trip that is under way or over. Dates the
+ * user moved further out are left alone. Returns whether it moved.
+ */
+export async function keepSampleTripAhead(plan: Plan, now = new Date()): Promise<boolean> {
+  const today = localDateOffset(0, now);
+  if (plan.startDate && plan.startDate > today) return false;
+  await db.plans.update(plan.id, { ...sampleTripDates(now), updatedAt: now.toISOString() });
+  return true;
+}
+
+/** On boot: keep the sample trip in this browser, if any, ahead of today. */
+async function refreshSampleTripDates(): Promise<void> {
+  const id = localStorage.getItem(DEMO_PLAN_ID);
+  if (!id) return;
+  const plan = await db.plans.get(id);
+  if (plan && !plan.deleted) await keepSampleTripAhead(plan);
 }
 
 export async function seedDemoDataIfNeeded(): Promise<string | null> {
   try {
     // Flag guard: once seeded, never seed again — even if the user deletes
     // all their plans.
-    if (localStorage.getItem(SEEDED_FLAG) === 'true') return null;
+    if (localStorage.getItem(SEEDED_FLAG) === 'true') {
+      await refreshSampleTripDates();
+      return null;
+    }
 
     // Never overwrite existing user data.
     const existingCount = await db.plans.filter((p) => !p.deleted).count();

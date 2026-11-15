@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { requestOnboarding } from '../services/onboarding';
 import AboutJournai from '../components/onboarding/AboutJournai';
-import DeviceReport from '../components/settings/DeviceReport';
+import { Link } from 'react-router-dom';
 import { getTempUnit, setTempUnit, type TempUnit } from '../services/units';
 import {
   Settings,
@@ -365,13 +365,19 @@ export default function SettingsPage() {
         </button>
       </section>
 
-      {/* For bug reports: the numbers that decide phone or desktop layout. */}
+      {/* For anyone who deleted it, or whose first launch did not add it. */}
       <section className="border-t border-white/5 pt-4 mt-4">
-        <h2 className="text-sm font-semibold text-ink-primary mb-1">This device</h2>
+        <h2 className="text-sm font-semibold text-ink-primary mb-1">Sample trip</h2>
         <p className="text-xs text-ink-secondary mb-3">
-          What the app sees here. Copy it into a bug report if something looks wrong.
+          Three days in Tokyo, to look around. Added back if you deleted it.
         </p>
-        <DeviceReport />
+        <Link
+          to="/demo"
+          className="inline-block text-xs px-3 py-2 rounded-xl border border-white/10 text-ink-secondary hover:text-ink-primary transition-colors"
+          data-testid="open-sample-trip"
+        >
+          Open the sample trip
+        </Link>
       </section>
     </div>
   );

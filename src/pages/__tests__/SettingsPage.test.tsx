@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import SettingsPage from '../SettingsPage';
+import { MemoryRouter } from 'react-router-dom';
 import * as aiKey from '../../services/aiKey';
 
 // Keep the real storage-key constants (aiClient.keyStorageFor reads them) and
@@ -36,7 +37,7 @@ afterEach(() => {
 // ── BYOK API key tests ────────────────────────────────────────────────────────
 describe('SettingsPage — BYOK', () => {
   it('renders the AI Provider section with a privacy notice', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     expect(screen.getByRole('region', { name: /AI Provider/i })).toBeInTheDocument();
     expect(
       screen.getByText(/stored only in your browser and never sent to our servers/i),
@@ -44,12 +45,12 @@ describe('SettingsPage — BYOK', () => {
   });
 
   it('masks the API key input (type=password)', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     expect(screen.getByTestId('api-key-input')).toHaveAttribute('type', 'password');
   });
 
   it('saves a valid key via the encrypted setApiKey service', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('api-key-input'), {
       target: { value: 'sk-valid-key-123' },
     });
@@ -62,7 +63,7 @@ describe('SettingsPage — BYOK', () => {
   });
 
   it('shows a format warning for a key not starting with sk-', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('api-key-input'), {
       target: { value: 'not-a-key' },
     });
@@ -74,7 +75,7 @@ describe('SettingsPage — BYOK', () => {
   });
 
   it('clearing the field and saving removes the key', async () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.click(screen.getByTestId('save-key-btn'));
     await waitFor(() => {
       expect(aiKey.clearApiKey).toHaveBeenCalled();
@@ -84,7 +85,7 @@ describe('SettingsPage — BYOK', () => {
 
   it('Test Connection shows ✓ Valid on a 200 response', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: true }) as unknown as typeof fetch;
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('api-key-input'), {
       target: { value: 'sk-valid-key-123' },
     });
@@ -96,7 +97,7 @@ describe('SettingsPage — BYOK', () => {
 
   it('Test Connection shows an invalid message on a 401 response', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('api-key-input'), {
       target: { value: 'sk-bad-key' },
     });
@@ -108,7 +109,7 @@ describe('SettingsPage — BYOK', () => {
 
   it('Test Connection shows a network error message on fetch failure', async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network')) as unknown as typeof fetch;
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     fireEvent.change(screen.getByTestId('api-key-input'), {
       target: { value: 'sk-key' },
     });
@@ -120,7 +121,7 @@ describe('SettingsPage — BYOK', () => {
 
   it('disables save and warns when crypto is unavailable', () => {
     vi.mocked(aiKey.isCryptoAvailable).mockReturnValue(false);
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     expect(screen.getByTestId('save-key-btn')).toBeDisabled();
     expect(
       screen.getByText(/does not support encrypted storage/i),
@@ -132,7 +133,7 @@ describe('SettingsPage — BYOK', () => {
 // The map, places and weather run on free services; there is no token to keep.
 describe('SettingsPage — map', () => {
   it('has no Mapbox token to ask for', () => {
-    render(<SettingsPage />);
+    render(<MemoryRouter><SettingsPage /></MemoryRouter>);
     expect(screen.queryByText(/mapbox/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('mapbox-token-input')).not.toBeInTheDocument();
   });
